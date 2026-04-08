@@ -17,7 +17,7 @@ import {
 
 export const router = createBrowserRouter([
   {
-    path: "/",
+    index: true,
     Component: LoginPage,
   },
   {
