@@ -21,10 +21,10 @@ export function GuardedInflablesPage() {
   );
 }
 
-/** Rutas — solo D'Onofrio */
+/** Rutas — ambas marcas */
 export function GuardedRoutesMapPage() {
   return (
-    <BrandGuard allowedBrands={["donofrio"]}>
+    <BrandGuard allowedBrands={["donofrio", "jugueton"]}>
       <RoutesMapPage />
     </BrandGuard>
   );

@@ -48,7 +48,7 @@ export function DashboardLayout() {
     { path: "/dashboard/inflables", label: "Inflables", icon: Wind, brands: ["jugueton"] },
     { path: "/dashboard/fichas", label: "Fichas", icon: FileText, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/logistica", label: "Logística", icon: Truck, brands: ["donofrio", "jugueton"] },
-    { path: "/dashboard/rutas", label: "Rutas", icon: Map, brands: ["donofrio"] },
+    { path: "/dashboard/rutas", label: "Rutas", icon: Map, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/reportes", label: "Reportes", icon: BarChart3, brands: ["donofrio", "jugueton"] },
   ];
 

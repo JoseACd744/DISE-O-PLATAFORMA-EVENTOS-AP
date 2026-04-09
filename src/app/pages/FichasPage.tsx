@@ -61,6 +61,96 @@ interface Ficha {
   brand: "donofrio" | "jugueton";
 }
 
+interface FichaFormData {
+  fecha: string;
+  distrito: string;
+  direccion: string;
+  referencia: string;
+  hora_entrega: string;
+  hora_recojo: string;
+  comentarios: string;
+  horasServicio: number;
+  cliente_nombre: string;
+  cliente_celular: string;
+  contacto_nombre: string;
+  contacto_celular: string;
+  cotizacion: number;
+  descuento: number;
+  paquetes: FichaPaquete[];
+  productosSueltos: FichaProductoSuelto[];
+  carritoIds: number[];
+  inflableIds: number[];
+  personalIds: number[];
+}
+
+const getInitialFormData = (): FichaFormData => ({
+  fecha: new Date().toISOString().slice(0, 10),
+  distrito: "",
+  direccion: "",
+  referencia: "",
+  hora_entrega: "",
+  hora_recojo: "",
+  comentarios: "",
+  horasServicio: 2,
+  cliente_nombre: "",
+  cliente_celular: "",
+  contacto_nombre: "",
+  contacto_celular: "",
+  cotizacion: 0,
+  descuento: 0,
+  paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
+  productosSueltos: [],
+  carritoIds: [],
+  inflableIds: [],
+  personalIds: [],
+});
+
+const DISTRITOS_LIMA = [
+  "Ancón",
+  "Ate",
+  "Barranco",
+  "Breña",
+  "Carabayllo",
+  "Chaclacayo",
+  "Chorrillos",
+  "Cieneguilla",
+  "Comas",
+  "El Agustino",
+  "Independencia",
+  "Jesús María",
+  "La Molina",
+  "La Victoria",
+  "Lima",
+  "Lince",
+  "Los Olivos",
+  "Lurigancho",
+  "Lurín",
+  "Magdalena del Mar",
+  "Miraflores",
+  "Pachacámac",
+  "Pucusana",
+  "Pueblo Libre",
+  "Puente Piedra",
+  "Punta Hermosa",
+  "Punta Negra",
+  "Rímac",
+  "San Bartolo",
+  "San Borja",
+  "San Isidro",
+  "San Juan de Lurigancho",
+  "San Juan de Miraflores",
+  "San Luis",
+  "San Martín de Porres",
+  "San Miguel",
+  "Santa Anita",
+  "Santa María del Mar",
+  "Santa Rosa",
+  "Santiago de Surco",
+  "Surquillo",
+  "Villa El Salvador",
+  "Villa María del Triunfo",
+];
+
 // ── Helpers ──────────────────────────────────────────────────────
 
 function getTotal(f: Ficha) { return f.cotizacion - f.descuento; }
@@ -105,7 +195,7 @@ export function FichasPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
-  const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
 
@@ -1183,14 +1273,14 @@ export function FichasPage() {
       });
 
       setShowAddModal(false);
-      setFormData(initialFormData);
+      setFormData(getInitialFormData());
       await loadFichas();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la ficha");
     }
   };
 
-  const handleCloseModal = () => { setShowAddModal(false); setFormData(initialFormData); };
+  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
 
