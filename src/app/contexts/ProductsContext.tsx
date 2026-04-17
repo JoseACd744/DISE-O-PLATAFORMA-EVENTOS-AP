@@ -1,5 +1,6 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { apiRequest, getCurrentBrand } from "../lib/api";
+import { isAdminUser } from "../lib/auth";
 import {
   mapApiCarritos,
   mapApiCategories,
@@ -110,7 +111,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const reloadData = async () => {
     const selectedBrand = getCurrentBrand();
     const paquetesBrand = selectedBrand;
-    const productsBrand = "donofrio";
+    const productsBrand = selectedBrand;
 
     const [categoriesData, paquetesData, carritosData, inflablesData, personalData] = await Promise.all([
       apiRequest<unknown[]>(`/products/categories?brand=${productsBrand}`),
@@ -149,7 +150,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   }, [allProducts]);
 
   const addProduct = async (catName: string, product: Omit<Product, "id">) => {
-    const brand = "donofrio";
+    const brand = getCurrentBrand();
 
     let category = categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
 
@@ -177,6 +178,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   };
 
   const addPaquete = async (paquete: Omit<Paquete, "id">) => {
+    const effectiveBrand = isAdminUser() ? paquete.brand : getCurrentBrand();
+
     await apiRequest("/paquetes", {
       method: "POST",
       body: JSON.stringify({
@@ -184,7 +187,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         descripcion: paquete.descripcion,
         tipo: paquete.tipo,
         precio_unitario: paquete.precioUnitario,
-        brand: paquete.brand,
+        brand: effectiveBrand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
       }),
     });

@@ -3,7 +3,7 @@ import { Package, LayoutDashboard, Users, Map, LogOut, FileText, Moon, Sun, BarC
 import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useBrand } from "../contexts/BrandContext";
-import { clearAuthSession, getAuthUser, isAuthenticated, isDriverRole } from "../lib/auth";
+import { clearAuthSession, getAuthUser, isAdminRole, isAuthenticated, isDriverRole } from "../lib/auth";
 
 export function DashboardLayout() {
   const navigate = useNavigate();
@@ -11,6 +11,8 @@ export function DashboardLayout() {
   const { theme, toggleTheme } = useTheme();
   const { brand, clearBrand } = useBrand();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const authUser = getAuthUser();
+  const isAdmin = isAdminRole(authUser?.rol);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -18,7 +20,6 @@ export function DashboardLayout() {
       return;
     }
 
-    const authUser = getAuthUser();
     if (isDriverRole(authUser?.rol)) {
       navigate("/chofer");
       return;
@@ -36,6 +37,7 @@ export function DashboardLayout() {
   };
 
   const handleSwitchBrand = () => {
+    if (!isAdmin) return;
     clearBrand();
     navigate("/seleccionar-marca");
   };
@@ -138,13 +140,15 @@ export function DashboardLayout() {
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-          <button
-            onClick={handleSwitchBrand}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            <ArrowLeftRight className="w-5 h-5" />
-            <span>Cambiar Marca</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={handleSwitchBrand}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ArrowLeftRight className="w-5 h-5" />
+              <span>Cambiar Marca</span>
+            </button>
+          )}
 
           <button
             onClick={toggleTheme}

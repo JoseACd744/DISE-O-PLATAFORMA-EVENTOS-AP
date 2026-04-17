@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { IceCreamCone, PartyPopper, ArrowRight, LogOut } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { clearAuthSession, getAuthUser, isAuthenticated, isDriverRole } from "../lib/auth";
+import { clearAuthSession, getAuthUser, isAdminRole, isAuthenticated, isDriverRole } from "../lib/auth";
 
 const brands = [
   {
@@ -48,6 +48,14 @@ export function BrandSelectPage() {
         setBrand(user.brand);
       }
       navigate("/chofer");
+      return;
+    }
+
+    if (user && !isAdminRole(user.rol)) {
+      if (user.brand) {
+        setBrand(user.brand);
+      }
+      navigate("/dashboard");
     }
   }, [navigate, setBrand]);
 

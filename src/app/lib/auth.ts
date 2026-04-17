@@ -36,6 +36,15 @@ export function getUserRole() {
   return getAuthUser()?.rol?.toLowerCase() || "";
 }
 
+export function isAdminRole(role?: string) {
+  if (!role) return false;
+  return role.toLowerCase() === "admin";
+}
+
+export function isAdminUser() {
+  return isAdminRole(getUserRole());
+}
+
 export function isDriverRole(role?: string) {
   if (!role) return false;
   const normalized = role.toLowerCase();
