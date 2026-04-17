@@ -137,6 +137,16 @@ export function ProductsPage() {
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
   });
 
+  // Carrito modal
+  const [showAddCarrito, setShowAddCarrito] = useState(false);
+  const [newCarrito, setNewCarrito] = useState({
+    modelo: "Blanco" as Carrito["modelo"],
+    codigo: "",
+    descripcion: "",
+    cantidadTotal: 1,
+    estado: "disponible" as Carrito["estado"],
+  });
+
   // Filter products
   const filteredProducts = allProducts.filter((product) => {
     const matchesSearch =
@@ -160,6 +170,13 @@ export function ProductsPage() {
   const totalPages = Math.ceil(displayItems.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedProducts = filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const filteredCarritos = carritos.filter(
+    (c) =>
+      c.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
@@ -209,6 +226,29 @@ export function ProductsPage() {
       tipo: "BASICO",
       precioUnitario: 0,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
+    });
+  };
+
+  const handleAddCarrito = async () => {
+    const codigo = newCarrito.codigo.trim();
+    const descripcion = newCarrito.descripcion.trim();
+    if (!codigo || !descripcion || newCarrito.cantidadTotal <= 0) return;
+
+    await addCarrito({
+      modelo: newCarrito.modelo,
+      codigo,
+      descripcion,
+      cantidadTotal: newCarrito.cantidadTotal,
+      estado: newCarrito.estado,
+    });
+
+    setShowAddCarrito(false);
+    setNewCarrito({
+      modelo: "Blanco",
+      codigo: "",
+      descripcion: "",
+      cantidadTotal: 1,
+      estado: "disponible",
     });
   };
 
@@ -542,7 +582,7 @@ export function ProductsPage() {
                 />
               </div>
               <button
-                onClick={() => alert("Función de agregar carrito próximamente")}
+                onClick={() => setShowAddCarrito(true)}
                 className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
               >
                 <Plus className="w-5 h-5" />
@@ -552,13 +592,7 @@ export function ProductsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {carritos
-              .filter((c) => 
-                c.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-              )
-              .map((carrito) => {
+            {filteredCarritos.map((carrito) => {
                 const getEstadoConfig = (estado: Carrito["estado"]) => {
                   switch (estado) {
                     case "disponible":
@@ -615,10 +649,12 @@ export function ProductsPage() {
               })}
           </div>
 
-          {carritos.length === 0 && (
+          {filteredCarritos.length === 0 && (
             <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <ShoppingCart className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">No hay carritos registrados</p>
+              <p className="text-gray-500 dark:text-gray-400">
+                {carritos.length === 0 ? "No hay carritos registrados" : "No se encontraron carritos"}
+              </p>
             </div>
           )}
         </>
@@ -833,6 +869,89 @@ export function ProductsPage() {
                 </button>
                 <button onClick={handleAddPaquete} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
                   Guardar Paquete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Carrito Modal ─────────────────────────────────── */}
+      {showAddCarrito && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
+            <button onClick={() => setShowAddCarrito(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Carrito</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Modelo *</label>
+                  <select
+                    value={newCarrito.modelo}
+                    onChange={(e) => setNewCarrito({ ...newCarrito, modelo: e.target.value as Carrito["modelo"] })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value="Blanco">Blanco</option>
+                    <option value="Clásico">Clásico</option>
+                    <option value="Delgado">Delgado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+                  <input
+                    type="text"
+                    value={newCarrito.codigo}
+                    onChange={(e) => setNewCarrito({ ...newCarrito, codigo: e.target.value })}
+                    placeholder="Ej: CRT-001"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
+                <textarea
+                  value={newCarrito.descripcion}
+                  onChange={(e) => setNewCarrito({ ...newCarrito, descripcion: e.target.value })}
+                  placeholder="Ej: Carrito para eventos corporativos"
+                  rows={2}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad Total *</label>
+                  <input
+                    type="number"
+                    value={newCarrito.cantidadTotal}
+                    onChange={(e) => setNewCarrito({ ...newCarrito, cantidadTotal: Number(e.target.value) })}
+                    min={1}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado inicial</label>
+                  <select
+                    value={newCarrito.estado}
+                    onChange={(e) => setNewCarrito({ ...newCarrito, estado: e.target.value as Carrito["estado"] })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value="disponible">Disponible</option>
+                    <option value="en-uso">En Uso</option>
+                    <option value="mantenimiento">Mantenimiento</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowAddCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleAddCarrito} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
+                  Guardar Carrito
                 </button>
               </div>
             </div>

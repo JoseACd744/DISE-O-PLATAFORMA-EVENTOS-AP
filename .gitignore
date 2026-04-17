@@ -1,3 +1,10 @@
 /.env
 node_modules
 dist
+/dist
+.firebase
+/firebase
+/firebase-debug.log
+/firebase-debug.log.*
+.DS_Store
+.idea
