@@ -196,7 +196,7 @@ export function ClientsPage() {
     }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]">
-        JuguetÃ³n
+        Juguetón
       </span>
     );
   };
@@ -218,7 +218,7 @@ export function ClientsPage() {
         <div>
           <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Cartera de Clientes</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Base de datos compartida â€” filtra por marca creadora
+            Base de datos compartida - filtra por marca creadora
           </p>
         </div>
         <button
@@ -237,7 +237,7 @@ export function ClientsPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por nombre, direcciÃ³n o ciudad..."
+              placeholder="Buscar por nombre, dirección o ciudad..."
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
@@ -314,11 +314,11 @@ export function ClientsPage() {
               <tr>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Cliente</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Contacto</th>
-                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">UbicaciÃ³n</th>
+                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Ubicación</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Creado por</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Canal</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Pedidos</th>
-                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Ãšltimo Pedido</th>
+                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Último Pedido</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
                 <th className="px-6 py-4 text-center text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
               </tr>
@@ -448,9 +448,9 @@ export function ClientsPage() {
             </button>
             <h2 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Cliente</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Se asignarÃ¡ automÃ¡ticamente a{" "}
+              Se asignará automáticamente a{" "}
               <span className={brand === "donofrio" ? "text-[#1F3C8B]" : "text-[#EF8022]"}>
-                {brand === "donofrio" ? "D'Onofrio" : "JuguetÃ³n"}
+                {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
               </span>
             </p>
             <div className="space-y-4">
@@ -498,7 +498,7 @@ export function ClientsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">TelÃ©fono *</label>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
                   <input
                     type="tel"
                     value={newClient.phone}
@@ -509,7 +509,7 @@ export function ClientsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DirecciÃ³n *</label>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección *</label>
                 <input
                   type="text"
                   value={newClient.address}
@@ -530,7 +530,7 @@ export function ClientsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisiciÃ³n</label>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
                   <select
                     value={newClient.canal}
                     onChange={(e) => setNewClient({ ...newClient, canal: e.target.value as Client["canal"] })}
@@ -628,7 +628,7 @@ export function ClientsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">TelÃ©fono *</label>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
                   <input
                     type="tel"
                     value={editingClient.phone}
@@ -638,7 +638,7 @@ export function ClientsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DirecciÃ³n *</label>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección *</label>
                 <input
                   type="text"
                   value={editingClient.address}
@@ -657,7 +657,7 @@ export function ClientsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisiciÃ³n</label>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
                   <select
                     value={editingClient.canal}
                     onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value as Client["canal"] })}
