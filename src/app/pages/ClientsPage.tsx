@@ -6,7 +6,9 @@ import { apiRequest } from "../lib/api";
 
 interface Client {
   id: string;
-  name: string;
+  nombre: string;
+  razonSocial: string;
+  dniRuc: string;
   email: string;
   phone: string;
   address: string;
@@ -33,7 +35,9 @@ export function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newClient, setNewClient] = useState({
-    name: "",
+    nombre: "",
+    razonSocial: "",
+    dniRuc: "",
     email: "",
     phone: "",
     address: "",
@@ -44,7 +48,9 @@ export function ClientsPage() {
 
   const filteredClients = clients.filter((client) => {
     const matchesSearch =
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.dniRuc.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.city.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesBrand = brandFilter === "todos" || client.creadoPor === brandFilter;
@@ -76,6 +82,8 @@ export function ClientsPage() {
       const data = await apiRequest<Array<{
         id: string;
         nombre: string;
+        razon_social: string | null;
+        dni_ruc: string | null;
         email: string | null;
         telefono: string | null;
         direccion: string | null;
@@ -90,7 +98,9 @@ export function ClientsPage() {
       setClients(
         data.map((c) => ({
           id: c.id,
-          name: c.nombre,
+          nombre: c.nombre,
+          razonSocial: c.razon_social || "",
+          dniRuc: c.dni_ruc || "",
           email: c.email || "",
           phone: c.telefono || "",
           address: c.direccion || "",
@@ -114,13 +124,15 @@ export function ClientsPage() {
   }, []);
 
   const handleAddClient = async () => {
-    if (!newClient.name || !newClient.phone || !newClient.address || !newClient.city) return;
+    if (!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city) return;
 
     try {
       await apiRequest("/clients", {
         method: "POST",
         body: JSON.stringify({
-          nombre: newClient.name,
+          nombre: newClient.nombre,
+          razon_social: newClient.razonSocial || null,
+          dni_ruc: newClient.dniRuc || null,
           email: newClient.email || null,
           telefono: newClient.phone,
           direccion: newClient.address,
@@ -132,7 +144,7 @@ export function ClientsPage() {
       });
 
       setShowAddModal(false);
-      setNewClient({ name: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active" });
+        setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active" });
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
@@ -146,7 +158,9 @@ export function ClientsPage() {
       await apiRequest(`/clients/${editingClient.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          nombre: editingClient.name,
+          nombre: editingClient.nombre,
+          razon_social: editingClient.razonSocial || null,
+          dni_ruc: editingClient.dniRuc || null,
           email: editingClient.email || null,
           telefono: editingClient.phone,
           direccion: editingClient.address,
@@ -321,7 +335,13 @@ export function ClientsPage() {
                 <tr key={client.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-gray-900 dark:text-white">{client.name}</p>
+                      <p className="text-sm text-gray-900 dark:text-white">{client.nombre}</p>
+                      {client.razonSocial ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{client.razonSocial}</p>
+                      ) : null}
+                      {client.dniRuc ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">DNI/RUC: {client.dniRuc}</p>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -435,14 +455,36 @@ export function ClientsPage() {
             </p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre / RazÃ³n Social *</label>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
                 <input
                   type="text"
-                  value={newClient.name}
-                  onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
-                  placeholder="Ej: Bodega San MartÃ­n"
+                  value={newClient.nombre}
+                  onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })}
+                  placeholder="Ej: Maria Lopez"
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razon Social (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClient.razonSocial}
+                    onChange={(e) => setNewClient({ ...newClient, razonSocial: e.target.value })}
+                    placeholder="Ej: Inversiones Lopez SAC"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClient.dniRuc}
+                    onChange={(e) => setNewClient({ ...newClient, dniRuc: e.target.value })}
+                    placeholder="Ej: 12345678 o 20123456789"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -547,13 +589,33 @@ export function ClientsPage() {
             <div className="mb-6">{getBrandBadge(editingClient.creadoPor)}</div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre / RazÃ³n Social *</label>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
                 <input
                   type="text"
-                  value={editingClient.name}
-                  onChange={(e) => setEditingClient({ ...editingClient, name: e.target.value })}
+                  value={editingClient.nombre}
+                  onChange={(e) => setEditingClient({ ...editingClient, nombre: e.target.value })}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razon Social (opcional)</label>
+                  <input
+                    type="text"
+                    value={editingClient.razonSocial}
+                    onChange={(e) => setEditingClient({ ...editingClient, razonSocial: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <input
+                    type="text"
+                    value={editingClient.dniRuc}
+                    onChange={(e) => setEditingClient({ ...editingClient, dniRuc: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

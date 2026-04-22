@@ -34,6 +34,8 @@ type EstadoPago = "pagado" | "parcial" | "pendiente";
 
 interface Ficha {
   id: number;
+  fecha_evento: string;
+  fecha_reserva: string;
   fecha: string;
   distrito: string;
   direccion: string;
@@ -49,6 +51,7 @@ interface Ficha {
   horasServicio?: number; // Horas de servicio de inflables
   comentarios?: string;
   personalIds?: number[];
+  cliente_id?: string | null;
   cliente_nombre: string;
   cliente_celular: string;
   contacto_nombre?: string;
@@ -62,7 +65,8 @@ interface Ficha {
 }
 
 interface FichaFormData {
-  fecha: string;
+  fecha_evento: string;
+  fecha_reserva: string;
   distrito: string;
   direccion: string;
   referencia: string;
@@ -76,6 +80,7 @@ interface FichaFormData {
   contacto_celular: string;
   cotizacion: number;
   descuento: number;
+  cliente_id: string;
   paquetes: FichaPaquete[];
   productosSueltos: FichaProductoSuelto[];
   carritoIds: number[];
@@ -84,7 +89,8 @@ interface FichaFormData {
 }
 
 const getInitialFormData = (): FichaFormData => ({
-  fecha: new Date().toISOString().slice(0, 10),
+  fecha_evento: new Date().toISOString().slice(0, 10),
+  fecha_reserva: new Date().toISOString().slice(0, 10),
   distrito: "",
   direccion: "",
   referencia: "",
@@ -98,12 +104,23 @@ const getInitialFormData = (): FichaFormData => ({
   contacto_celular: "",
   cotizacion: 0,
   descuento: 0,
+  cliente_id: "",
   paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
   productosSueltos: [],
   carritoIds: [],
   inflableIds: [],
   personalIds: [],
 });
+
+interface ExistingClient {
+  id: string;
+  nombre: string;
+  razon_social: string | null;
+  dni_ruc: string | null;
+  telefono: string | null;
+  creado_por: "donofrio" | "jugueton";
+  status: "active" | "inactive";
+}
 
 const DISTRITOS_LIMA = [
   "Ancón",
@@ -182,6 +199,33 @@ function getBrandMeta(brand: Ficha["brand"]) {
       };
 }
 
+function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
+  if (estado === "pagado") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        Pagado
+      </span>
+    );
+  }
+
+  if (estado === "parcial") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+        <CircleDashed className="w-3.5 h-3.5" />
+        Parcial
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+      <AlertCircle className="w-3.5 h-3.5" />
+      Pendiente
+    </span>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────
 
 export function FichasPage() {
@@ -196,11 +240,17 @@ export function FichasPage() {
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
   const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
+  const [clients, setClients] = useState<ExistingClient[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, productNames, carritos, inflables, personales } = useProducts();
+
+  const availableClients = useMemo(
+    () => clients.filter((c) => c.status === "active"),
+    [clients]
+  );
 
   const loadFichas = async () => {
     if (!brand) return;
@@ -214,7 +264,9 @@ export function FichasPage() {
 
       const mapped: Ficha[] = details.map((f) => ({
         id: f.id,
-        fecha: f.fecha,
+        fecha_evento: f.fecha_evento || f.fecha || "",
+        fecha_reserva: f.fecha_reserva || f.fecha || "",
+        fecha: f.fecha_evento || f.fecha || "",
         distrito: f.distrito || "",
         direccion: f.direccion || "",
         referencia: f.referencia || "",
@@ -235,6 +287,7 @@ export function FichasPage() {
         horasServicio: f.horas_servicio || undefined,
         comentarios: f.comentarios || "",
         personalIds: f.personalIds || [],
+        cliente_id: f.cliente_id || null,
         cliente_nombre: f.cliente_nombre,
         cliente_celular: f.cliente_celular || "",
         contacto_nombre: f.contacto_nombre || "",
@@ -260,8 +313,18 @@ export function FichasPage() {
     }
   };
 
+  const loadClients = async () => {
+    try {
+      const data = await apiRequest<ExistingClient[]>("/clients");
+      setClients(data || []);
+    } catch {
+      setClients([]);
+    }
+  };
+
   useEffect(() => {
     loadFichas();
+    loadClients();
   }, [brand]);
   // Filtrar paquetes solo de la marca actual (Donofrio tiene carritos, Jugueton no)
   const paquetesDisponibles = contextPaquetes
@@ -279,10 +342,10 @@ export function FichasPage() {
     const matchesBrand = ficha.brand === brand; // Solo mostrar fichas de la marca actual
     let matchesFecha = true;
     if (dateRange?.from && dateRange?.to) {
-      const d = new Date(ficha.fecha);
+      const d = new Date(ficha.fecha_evento || ficha.fecha);
       matchesFecha = d >= new Date(dateRange.from) && d <= new Date(dateRange.to);
-    } else if (dateRange?.from) matchesFecha = new Date(ficha.fecha) >= new Date(dateRange.from);
-    else if (dateRange?.to) matchesFecha = new Date(ficha.fecha) <= new Date(dateRange.to);
+    } else if (dateRange?.from) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) >= new Date(dateRange.from);
+    else if (dateRange?.to) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) <= new Date(dateRange.to);
     return matchesSearch && matchesDistrito && matchesFecha && matchesEstado && matchesBrand;
   });
 
@@ -456,9 +519,9 @@ export function FichasPage() {
 
     if (ficha.brand === "jugueton") {
       const numeroCotizacion = String(ficha.id).padStart(4, "0");
-      const eventDate = new Date(`${ficha.fecha}T00:00:00`);
+      const eventDate = new Date(`${ficha.fecha_evento || ficha.fecha}T00:00:00`);
       const fechaEventoTexto = Number.isNaN(eventDate.getTime())
-        ? ficha.fecha
+        ? (ficha.fecha_evento || ficha.fecha)
         : eventDate.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })
             .replace(/(^.|\s.)/g, (m) => m.toUpperCase());
 
@@ -1171,6 +1234,22 @@ export function FichasPage() {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const handleExistingClientChange = (clientId: string) => {
+    const selectedClient = availableClients.find((c) => c.id === clientId);
+    if (!selectedClient) {
+      setFormData((prev) => ({ ...prev, cliente_id: "" }));
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      cliente_id: selectedClient.id,
+      cliente_nombre: selectedClient.nombre || prev.cliente_nombre,
+      cliente_celular: selectedClient.telefono || prev.cliente_celular,
+      contacto_nombre: selectedClient.razon_social || prev.contacto_nombre,
+    }));
+  };
+
   const handleAddFormPaquete = () => {
     setFormData(prev => ({ ...prev, paquetes: [...prev.paquetes, { paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }] }));
   };
@@ -1249,7 +1328,9 @@ export function FichasPage() {
       await apiRequest("/fichas", {
         method: "POST",
         body: JSON.stringify({
-          fecha: formData.fecha,
+          fecha: formData.fecha_evento,
+          fecha_evento: formData.fecha_evento,
+          fecha_reserva: formData.fecha_reserva,
           distrito: formData.distrito,
           direccion: formData.direccion,
           referencia: formData.referencia,
@@ -1257,6 +1338,7 @@ export function FichasPage() {
           hora_recojo: formData.hora_recojo,
           comentarios: formData.comentarios,
           horas_servicio: brand === "jugueton" ? Number(formData.horasServicio) || 2 : null,
+          cliente_id: formData.cliente_id || null,
           cliente_nombre: formData.cliente_nombre,
           cliente_celular: formData.cliente_celular,
           contacto_nombre: formData.contacto_nombre,
@@ -1380,7 +1462,8 @@ export function FichasPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{ficha.fecha}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {ficha.fecha_evento || ficha.fecha}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {ficha.fecha_reserva}</span>
                     <EstadoPagoBadge estado={estado} />
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
@@ -1542,7 +1625,8 @@ export function FichasPage() {
               <div>
                 <h3 className="text-2xl text-gray-900 dark:text-white mb-2">Detalle del Evento</h3>
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">{selectedFicha.fecha}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {selectedFicha.fecha_evento || selectedFicha.fecha}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Reserva: {selectedFicha.fecha_reserva}</span></div>
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
@@ -1764,8 +1848,15 @@ export function FichasPage() {
               {/* Fecha */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Evento</h4>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha *</label>
-                  <input type="date" name="fecha" value={formData.fecha} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha del Evento *</label>
+                    <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha de Reserva *</label>
+                    <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                  </div>
                 </div>
               </div>
 
@@ -1868,6 +1959,23 @@ export function FichasPage() {
               {/* Cliente */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
+                  <select
+                    value={formData.cliente_id}
+                    onChange={(e) => handleExistingClientChange(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Seleccionar cliente (opcional)</option>
+                    {availableClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.nombre}
+                        {client.razon_social ? ` - ${client.razon_social}` : ""}
+                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
