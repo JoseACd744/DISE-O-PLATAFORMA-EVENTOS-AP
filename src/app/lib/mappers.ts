@@ -17,6 +17,7 @@ type ApiCategory = {
     presentacion: string;
     sabor: string;
     sku: string;
+    precio?: number | null;
   }>;
 };
 
@@ -25,8 +26,6 @@ type ApiPaquete = {
   nombre: string;
   descripcion: string | null;
   precio_unitario: number;
-  tipo: "BASICO" | "100 MINIS" | "PERSONALIZADO" | "VACILÓN";
-  brand: "donofrio" | "jugueton";
   contenido?: Array<{
     producto_sku: string;
     producto_nombre: string;
@@ -71,6 +70,7 @@ export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
       presentacion: product.presentacion,
       sabor: product.sabor,
       sku: product.sku,
+      precio: Number(product.precio || 0),
     })),
   }));
 }
@@ -89,8 +89,6 @@ export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
     nombre: paquete.nombre,
     descripcion: paquete.descripcion || "",
     precioUnitario: Number(paquete.precio_unitario || 0),
-    tipo: paquete.tipo,
-    brand: paquete.brand,
     contenido: (paquete.contenido || []).map((item) => ({
       productoSku: item.producto_sku,
       productoNombre: item.producto_nombre,

@@ -652,9 +652,8 @@ export function FichasPage() {
     loadFichas();
     loadClients();
   }, [brand]);
-  // Filtrar paquetes solo de la marca actual (Donofrio tiene carritos, Jugueton no)
+  // Catálogo de paquetes ahora global (sin separación por marca)
   const paquetesDisponibles = contextPaquetes
-    .filter(p => p.brand === brand)
     .map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, precio: p.precioUnitario }));
 
   const distritos = ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
@@ -686,16 +685,6 @@ export function FichasPage() {
     const pendientes = fichas.filter(f => getEstadoPago(f) === "pendiente").length;
     return { ventaTotal, descuentos, totalAbonado, saldoPendiente, pagadas, parciales, pendientes };
   }, [fichas]);
-
-  const getPaqueteColor = (tipo: string) => {
-    switch (tipo) {
-      case "BASICO": return "bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400";
-      case "PERSONALIZADO": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-      case "100 MINIS": return "bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20";
-      case "VACILÓN": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      default: return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
-    }
-  };
 
   const getUnidadesHelado = (ficha: Ficha) => {
     const unidadesPaquetes = ficha.paquetes.reduce((sum, fp) => {
@@ -770,7 +759,7 @@ export function FichasPage() {
       const subtotal = precioUnitario * p.cantidad;
       return {
         item: index + 1,
-        descripcion: `${p.paqueteNombre} (${p.paqueteTipo})`,
+        descripcion: p.paqueteNombre,
         cantidad: p.cantidad,
         precioUnitario,
         subtotal,
@@ -808,16 +797,6 @@ export function FichasPage() {
           </tr>
         `).join("")
       : `<tr><td colspan="5" style="text-align:center; color:#6B7280;">Sin conceptos registrados</td></tr>`;
-
-    const filasPaquetes = ficha.paquetes.length > 0
-      ? ficha.paquetes.map(p => `
-          <tr>
-            <td>${escapeHtml(p.paqueteNombre)}</td>
-            <td>${escapeHtml(p.paqueteTipo)}</td>
-            <td style="text-align:center;">${p.cantidad}</td>
-          </tr>
-        `).join("")
-      : `<tr><td colspan="3" style="text-align:center; color:#6B7280;">Sin paquetes</td></tr>`;
 
     const filasSueltos = ficha.productosSueltos.length > 0
       ? ficha.productosSueltos.map(p => `
@@ -1890,7 +1869,7 @@ export function FichasPage() {
               {/* Paquetes badges */}
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {ficha.paquetes.map((paq, idx) => (
-                  <span key={idx} className={`px-2.5 py-1 rounded-full text-xs ${getPaqueteColor(paq.paqueteTipo)}`}>
+                  <span key={idx} className="px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
                     {paq.cantidad > 1 && `${paq.cantidad}x `}{paq.paqueteNombre}
                   </span>
                 ))}
@@ -2192,10 +2171,9 @@ export function FichasPage() {
                   {selectedFicha.paquetes.map((paq, idx) => (
                     <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${getPaqueteColor(paq.paqueteTipo)}`}><Layers className="w-4 h-4" /></div>
+                        <div className="p-2 rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"><Layers className="w-4 h-4" /></div>
                         <div>
                           <p className="text-gray-900 dark:text-white">{paq.paqueteNombre}</p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${getPaqueteColor(paq.paqueteTipo)}`}>{paq.paqueteTipo}</span>
                         </div>
                       </div>
                       <span className="text-lg text-gray-900 dark:text-white">x{paq.cantidad}</span>
@@ -2358,7 +2336,7 @@ export function FichasPage() {
                           className={`${inputClass} text-sm`}>
                           <option value={0}>Seleccionar paquete...</option>
                           {paquetesDisponibles.map(p => (
-                            <option key={p.id} value={p.id}>{p.nombre} ({p.tipo}) {p.precio > 0 ? `- S/${p.precio}` : "- A cotizar"}</option>
+                            <option key={p.id} value={p.id}>{p.nombre} {p.precio > 0 ? `- S/${p.precio}` : "- A cotizar"}</option>
                           ))}
                         </select>
                       </div>

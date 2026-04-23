@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart } from "lucide-react";
 import { Pagination } from "../components/Pagination";
-import { useBrand } from "../contexts/BrandContext";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, Paquete, FlatProduct, Carrito } from "../contexts/ProductsContext";
-import { Eye as EyeIcon } from "lucide-react";
+import type { PaqueteItem, FlatProduct, Carrito } from "../contexts/ProductsContext";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -99,14 +97,10 @@ export function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { brand } = useBrand();
-  const isReadOnly = brand === "jugueton";
-
   // ← shared context instead of local state
   const {
     categories,
     allProducts,
-    presentations,
     addProduct,
     deleteProduct,
     deleteCategory,
@@ -127,6 +121,7 @@ export function ProductsPage() {
     producto: "",
     presentacion: "",
     sabor: "",
+    precio: 0,
   });
 
   // Package modal
@@ -134,7 +129,6 @@ export function ProductsPage() {
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
     descripcion: "",
-    tipo: "BASICO" as Paquete["tipo"],
     precioUnitario: 0,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
   });
@@ -159,10 +153,9 @@ export function ProductsPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Filter paquetes - solo mostrar paquetes de la marca actual
+  // Filter paquetes
   const filteredPaquetes = paquetes.filter(
     (p) =>
-      p.brand === brand &&
       (p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.descripcion.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -203,11 +196,12 @@ export function ProductsPage() {
       producto: newProduct.producto,
       presentacion: newProduct.presentacion,
       sabor: newProduct.sabor,
+      precio: Number(newProduct.precio || 0),
       sku,
     });
 
     setShowAddProduct(false);
-    setNewProduct({ categoria: "", nuevaCategoria: "", producto: "", presentacion: "", sabor: "" });
+    setNewProduct({ categoria: "", nuevaCategoria: "", producto: "", presentacion: "", sabor: "", precio: 0 });
   };
 
   // Add paquete via context
@@ -216,16 +210,13 @@ export function ProductsPage() {
     await addPaquete({
       nombre: newPaquete.nombre,
       descripcion: newPaquete.descripcion,
-      tipo: newPaquete.tipo,
       precioUnitario: newPaquete.precioUnitario,
       contenido: newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0),
-      brand: brand as "donofrio" | "jugueton",
     });
     setShowAddPaquete(false);
     setNewPaquete({
       nombre: "",
       descripcion: "",
-      tipo: "BASICO",
       precioUnitario: 0,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
@@ -252,21 +243,6 @@ export function ProductsPage() {
       cantidadTotal: 1,
       estado: "disponible",
     });
-  };
-
-  const getPaqueteColor = (tipo: string) => {
-    switch (tipo) {
-      case "BASICO":
-        return "bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400";
-      case "PERSONALIZADO":
-        return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400";
-      case "100 MINIS":
-        return "bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]";
-      case "VACILÓN":
-        return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
-      default:
-        return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300";
-    }
   };
 
   const getTotalHelados = (contenido: PaqueteItem[]) =>
@@ -297,17 +273,6 @@ export function ProductsPage() {
         </p>
       </div>
 
-      {/* Read-only banner for Juguetón */}
-      {isReadOnly && (
-        <div className="mb-6 flex items-center gap-3 bg-[#EF8022]/10 dark:bg-[#EF8022]/20 border border-[#EF8022]/30 rounded-xl px-5 py-3">
-          <EyeIcon className="w-5 h-5 text-[#EF8022] shrink-0" />
-          <p className="text-sm text-[#EF8022]">
-            Modo consulta &mdash; Estás viendo el catálogo de D'Onofrio desde Jugueton. No puedes
-            agregar ni eliminar productos.
-          </p>
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="flex gap-1 mb-6 md:mb-8 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full sm:w-fit overflow-x-auto">
         <button
@@ -332,19 +297,17 @@ export function ProductsPage() {
           <Layers className="w-4 h-4" />
           Paquetes
         </button>
-        {brand === "donofrio" && (
-          <button
-            onClick={() => { setActiveTab("carritos"); setCurrentPage(1); setSearchTerm(""); }}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
-              activeTab === "carritos"
-                ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            Carritos
-          </button>
-        )}
+        <button
+          onClick={() => { setActiveTab("carritos"); setCurrentPage(1); setSearchTerm(""); }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+            activeTab === "carritos"
+              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4" />
+          Carritos
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -374,28 +337,20 @@ export function ProductsPage() {
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Paquetes</span>
           </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{paquetes.filter(p => p.brand === brand).length}</p>
+          <p className="text-3xl text-gray-900 dark:text-white">{paquetes.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
             <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
-              {brand === "donofrio" ? (
-                <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              ) : (
-                <Search className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              )}
+              <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {brand === "donofrio" ? "Carritos" : "Presentaciones"}
-            </span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Carritos</span>
           </div>
-          <p className="text-3xl text-gray-900 dark:text-white">
-            {brand === "donofrio" ? carritos.length : presentations.length}
-          </p>
+          <p className="text-3xl text-gray-900 dark:text-white">{carritos.length}</p>
         </div>
       </div>
 
-      {!isReadOnly && activeTab === "productos" && categories.length > 0 && (
+      {activeTab === "productos" && categories.length > 0 && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -456,15 +411,13 @@ export function ProductsPage() {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                {!isReadOnly && (
-                  <button
-                    onClick={() => setShowAddProduct(true)}
-                    className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
-                  >
-                    <Plus className="w-5 h-5" />
-                    Nuevo Producto
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowAddProduct(true)}
+                  className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                >
+                  <Plus className="w-5 h-5" />
+                  Nuevo Producto
+                </button>
               </div>
             </div>
           </div>
@@ -478,8 +431,9 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Presentación</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Sabor</th>
+                    <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
-                    {!isReadOnly && <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
+                    <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -497,19 +451,20 @@ export function ProductsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm max-w-xs">{product.sabor}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm">
+                        {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
+                      </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
-                      {!isReadOnly && (
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProduct(product)}
-                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-                            title="Eliminar producto"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      )}
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteProduct(product)}
+                          className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                          title="Eliminar producto"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -551,15 +506,13 @@ export function ProductsPage() {
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
                 />
               </div>
-              {!isReadOnly && (
-                <button
-                  onClick={() => setShowAddPaquete(true)}
-                  className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
-                >
-                  <Plus className="w-5 h-5" />
-                  Nuevo Paquete
-                </button>
-              )}
+              <button
+                onClick={() => setShowAddPaquete(true)}
+                className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                <Plus className="w-5 h-5" />
+                Nuevo Paquete
+              </button>
             </div>
           </div>
 
@@ -569,18 +522,13 @@ export function ProductsPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="text-gray-900 dark:text-white mb-1">{paq.nombre}</h3>
-                    <span className={`text-xs px-2.5 py-1 rounded-full ${getPaqueteColor(paq.tipo)}`}>
-                      {paq.tipo}
-                    </span>
                   </div>
-                  {!isReadOnly && (
-                    <button
-                      onClick={() => deletePaquete(paq.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => deletePaquete(paq.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{paq.descripcion}</p>
@@ -631,8 +579,8 @@ export function ProductsPage() {
         </>
       )}
 
-      {/* ── CARRITOS TAB (solo Donofrio) ───────────────────────── */}
-      {activeTab === "carritos" && brand === "donofrio" && (
+      {/* ── CARRITOS TAB ───────────────────────────────────────── */}
+      {activeTab === "carritos" && (
         <>
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
@@ -767,7 +715,7 @@ export function ProductsPage() {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Presentación *</label>
                   <input
@@ -785,6 +733,18 @@ export function ProductsPage() {
                     value={newProduct.sabor}
                     onChange={(e) => setNewProduct({ ...newProduct, sabor: e.target.value })}
                     placeholder="Ej: Vainilla con chocolate"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
+                  <input
+                    type="number"
+                    value={newProduct.precio || ""}
+                    onChange={(e) => setNewProduct({ ...newProduct, precio: Number(e.target.value) })}
+                    placeholder="0"
+                    min={0}
+                    step="0.01"
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
@@ -837,20 +797,7 @@ export function ProductsPage() {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo</label>
-                  <select
-                    value={newPaquete.tipo}
-                    onChange={(e) => setNewPaquete({ ...newPaquete, tipo: e.target.value as Paquete["tipo"] })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  >
-                    <option value="BASICO">Básico</option>
-                    <option value="100 MINIS">100 Minis</option>
-                    <option value="VACILÓN">Vacilón</option>
-                    <option value="PERSONALIZADO">Personalizado</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
                   <input

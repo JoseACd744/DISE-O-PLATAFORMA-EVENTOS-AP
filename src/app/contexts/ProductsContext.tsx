@@ -1,6 +1,5 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import { apiRequest, getCurrentBrand } from "../lib/api";
-import { isAdminUser } from "../lib/auth";
+import { apiRequest } from "../lib/api";
 import {
   mapApiCarritos,
   mapApiCategories,
@@ -16,6 +15,7 @@ export interface Product {
   presentacion: string;
   sabor: string;
   sku: string;
+  precio: number;
 }
 
 export interface Category {
@@ -40,8 +40,6 @@ export interface Paquete {
   descripcion: string;
   contenido: PaqueteItem[];
   precioUnitario: number;
-  tipo: "BASICO" | "100 MINIS" | "PERSONALIZADO" | "VACILÓN";
-  brand: "donofrio" | "jugueton";
 }
 
 export interface Carrito {
@@ -111,13 +109,9 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [personales, setPersonales] = useState<Personal[]>([]);
 
   const reloadData = async () => {
-    const selectedBrand = getCurrentBrand();
-    const paquetesBrand = selectedBrand;
-    const productsBrand = selectedBrand;
-
     const [categoriesData, paquetesData, carritosData, inflablesData, personalData] = await Promise.all([
-      apiRequest<unknown[]>(`/products/categories?brand=${productsBrand}`),
-      apiRequest<unknown[]>(`/paquetes?brand=${paquetesBrand}`),
+      apiRequest<unknown[]>("/products/categories"),
+      apiRequest<unknown[]>("/paquetes"),
       apiRequest<unknown[]>("/carritos"),
       apiRequest<unknown[]>("/inflables"),
       apiRequest<unknown[]>("/personal"),
@@ -152,14 +146,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   }, [allProducts]);
 
   const addProduct = async (catName: string, product: Omit<Product, "id">) => {
-    const brand = getCurrentBrand();
-
     let category = categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
 
     if (!category) {
       const createdCategory = await apiRequest<{ id: number }>("/products/categories", {
         method: "POST",
-        body: JSON.stringify({ nombre: catName, brand }),
+        body: JSON.stringify({ nombre: catName }),
       });
       category = { id: createdCategory.id, categoria: catName, productos: [] };
     }
@@ -172,7 +164,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         presentacion: product.presentacion,
         sabor: product.sabor,
         sku: product.sku,
-        brand,
+        precio: Number(product.precio || 0),
       }),
     });
 
@@ -190,16 +182,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   };
 
   const addPaquete = async (paquete: Omit<Paquete, "id">) => {
-    const effectiveBrand = isAdminUser() ? paquete.brand : getCurrentBrand();
-
     await apiRequest("/paquetes", {
       method: "POST",
       body: JSON.stringify({
         nombre: paquete.nombre,
         descripcion: paquete.descripcion,
-        tipo: paquete.tipo,
         precio_unitario: paquete.precioUnitario,
-        brand: effectiveBrand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
       }),
     });
