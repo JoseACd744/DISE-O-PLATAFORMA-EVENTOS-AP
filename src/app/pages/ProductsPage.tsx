@@ -293,7 +293,7 @@ export function ProductsPage() {
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Catálogo de Productos</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Gestiona helados individuales y paquetes para eventos
+          Gestiona productos individuales y paquetes para eventos
         </p>
       </div>
 
@@ -319,7 +319,7 @@ export function ProductsPage() {
           }`}
         >
           <Package className="w-4 h-4" />
-          Helados Individuales
+          Productos Individuales
         </button>
         <button
           onClick={() => { setActiveTab("paquetes"); setCurrentPage(1); setSearchTerm(""); }}
@@ -330,7 +330,7 @@ export function ProductsPage() {
           }`}
         >
           <Layers className="w-4 h-4" />
-          Paquetes de Helados
+          Paquetes
         </button>
         {brand === "donofrio" && (
           <button
@@ -812,7 +812,7 @@ export function ProductsPage() {
             <button onClick={() => setShowAddPaquete(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Paquete de Helados</h3>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Paquete</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               Selecciona productos del catálogo para armar el paquete.
             </p>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText } from "lucide-react";
+import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "../components/DateRangePicker";
 import { useProducts } from "../contexts/ProductsContext";
@@ -23,6 +23,13 @@ interface FichaPaquete {
   paqueteNombre: string;
   paqueteTipo: string;
   cantidad: number;
+}
+
+interface FichaImagen {
+  abono_id: number;
+  url: string;
+  path: string;
+  fecha: string;
 }
 
 interface FichaProductoSuelto {
@@ -181,6 +188,31 @@ function getEstadoPago(f: Ficha): EstadoPago {
 }
 function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`; }
 
+function normalizeAssetUrl(value: string) {
+  if (!value) return "";
+  if (value.startsWith("/")) {
+    const apiOrigin = new URL(API_BASE_URL, window.location.origin).origin;
+    return `${apiOrigin}${value}`;
+  }
+  return value;
+}
+
+function extractStoragePathFromUrl(value: string) {
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  } catch {
+    // Si URL no es parseable, devolvemos vacío y se maneja fuera.
+  }
+
+  return "";
+}
+
 function getBrandMeta(brand: Ficha["brand"]) {
   return brand === "donofrio"
     ? {
@@ -242,11 +274,53 @@ function AbonoModal({
   const [medio, setMedio] = useState<Abono["medio"]>("Transferencia");
   const [comprobante, setComprobante] = useState<string>("");
   const [comprobanteName, setComprobanteName] = useState<string>("");
+  const [comprobantePath, setComprobantePath] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isCleaningUpload, setIsCleaningUpload] = useState(false);
   const [modalError, setModalError] = useState<string>("");
 
   const saldo = Math.max(0, getSaldo(ficha));
+
+  const resetUploadedComprobante = () => {
+    setComprobante("");
+    setComprobanteName("");
+    setComprobantePath("");
+  };
+
+  const cleanupUploadedComprobante = async (path: string) => {
+    if (!path) return true;
+    try {
+      await apiRequest<{ ok?: boolean }>("/upload", {
+        method: "DELETE",
+        body: JSON.stringify({ path }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleModalClose = async () => {
+    if (isSaving || isUploading || isCleaningUpload) return;
+
+    if (!comprobantePath) {
+      onClose();
+      return;
+    }
+
+    setIsCleaningUpload(true);
+    const cleaned = await cleanupUploadedComprobante(comprobantePath);
+    setIsCleaningUpload(false);
+
+    if (!cleaned) {
+      setModalError("No se pudo eliminar el archivo subido. Intenta nuevamente antes de cerrar.");
+      return;
+    }
+
+    resetUploadedComprobante();
+    onClose();
+  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -254,8 +328,16 @@ function AbonoModal({
 
     setIsUploading(true);
     setModalError("");
-    
+
     try {
+      if (comprobantePath) {
+        const cleaned = await cleanupUploadedComprobante(comprobantePath);
+        if (!cleaned) {
+          throw new Error("No se pudo eliminar el comprobante anterior. Intenta de nuevo antes de subir otro archivo.");
+        }
+        resetUploadedComprobante();
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("folder", "comprobantes");
@@ -281,8 +363,18 @@ function AbonoModal({
         data?.data?.url ||
         "";
 
+      const rawPath =
+        data?.path ||
+        data?.filePath ||
+        data?.data?.path ||
+        extractStoragePathFromUrl(rawUrl);
+
       if (!rawUrl) {
         throw new Error("La API respondió sin URL del archivo subido");
+      }
+
+      if (!rawPath) {
+        throw new Error("La API respondió sin path del archivo subido");
       }
 
       const normalizedUrl =
@@ -292,10 +384,10 @@ function AbonoModal({
 
       setComprobante(normalizedUrl);
       setComprobanteName(file.name);
+      setComprobantePath(rawPath);
     } catch (err) {
       setModalError(err instanceof Error ? err.message : "Error al subir el comprobante");
-      setComprobante("");
-      setComprobanteName("");
+      resetUploadedComprobante();
     } finally {
       setIsUploading(false);
     }
@@ -318,9 +410,22 @@ function AbonoModal({
         comprobantePreview: comprobante || undefined,
         medio,
       });
+      setComprobantePath("");
       onClose();
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al guardar el abono");
+      let cleanupFailed = false;
+      if (comprobantePath) {
+        setIsCleaningUpload(true);
+        const cleaned = await cleanupUploadedComprobante(comprobantePath);
+        setIsCleaningUpload(false);
+        cleanupFailed = !cleaned;
+        if (cleaned) {
+          resetUploadedComprobante();
+        }
+      }
+
+      const baseError = err instanceof Error ? err.message : "Error al guardar el abono";
+      setModalError(cleanupFailed ? `${baseError}. Además, no se pudo eliminar el archivo subido.` : baseError);
     } finally {
       setIsSaving(false);
     }
@@ -334,7 +439,7 @@ function AbonoModal({
             <h3 className="text-2xl text-gray-900 dark:text-white">Registrar Abono</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{ficha.cliente_nombre}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
+          <button onClick={() => void handleModalClose()} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -408,13 +513,13 @@ function AbonoModal({
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Comprobante</label>
             <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
-              isUploading ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
+              isUploading || isCleaningUpload ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
             }`}>
               <Upload className="w-4 h-4" />
-              <span>{isUploading ? "Subiendo..." : comprobanteName || "Subir imagen del comprobante"}</span>
-              <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading} className="hidden" />
+              <span>{isUploading ? "Subiendo..." : isCleaningUpload ? "Limpiando archivo..." : comprobanteName || "Subir imagen del comprobante"}</span>
+              <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading || isCleaningUpload} className="hidden" />
             </label>
-            {comprobante && comprobante.startsWith("http") && (
+            {comprobante && (
               <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
               </div>
@@ -424,14 +529,14 @@ function AbonoModal({
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || isCleaningUpload}
               className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
             >
               {isSaving ? "Guardando..." : "Guardar abono"}
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => void handleModalClose()}
               className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
             >
               Cancelar
@@ -454,6 +559,10 @@ export function FichasPage() {
   const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [fichaImagenes, setFichaImagenes] = useState<FichaImagen[]>([]);
+  const [loadingFichaImagenes, setLoadingFichaImagenes] = useState(false);
+  const [fichaImagenesError, setFichaImagenesError] = useState("");
+  const [previewComprobanteUrl, setPreviewComprobanteUrl] = useState<string | null>(null);
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
   const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
@@ -1535,10 +1644,46 @@ export function FichasPage() {
             medio: a.medio,
           })),
         } : prev);
+        await loadFichaImagenes(fichaId);
       }
     } catch (err) {
       throw err instanceof Error ? err : new Error("Error al guardar el abono");
     }
+  };
+
+  const loadFichaImagenes = async (fichaId: number) => {
+    setLoadingFichaImagenes(true);
+    setFichaImagenesError("");
+    try {
+      const data = await apiRequest<FichaImagen[]>(`/fichas/${fichaId}/imagenes`);
+      const mapped = (data || []).map((item) => ({
+        ...item,
+        url: normalizeAssetUrl(item.url),
+      }));
+      setFichaImagenes(mapped);
+    } catch (err) {
+      setFichaImagenes([]);
+      setFichaImagenesError(err instanceof Error ? err.message : "No se pudieron cargar las imágenes");
+    } finally {
+      setLoadingFichaImagenes(false);
+    }
+  };
+
+  const openFichaDetail = (ficha: Ficha) => {
+    setSelectedFicha(ficha);
+    setShowDetailModal(true);
+    setPreviewComprobanteUrl(null);
+    setFichaImagenes([]);
+    setFichaImagenesError("");
+    void loadFichaImagenes(ficha.id);
+  };
+
+  const closeFichaDetail = () => {
+    setShowDetailModal(false);
+    setSelectedFicha(null);
+    setFichaImagenes([]);
+    setFichaImagenesError("");
+    setPreviewComprobanteUrl(null);
   };
 
   const handleDeleteFicha = async (ficha: Ficha) => {
@@ -1548,8 +1693,7 @@ export function FichasPage() {
     try {
       await apiRequest(`/fichas/${ficha.id}`, { method: "DELETE" });
       if (selectedFicha?.id === ficha.id) {
-        setShowDetailModal(false);
-        setSelectedFicha(null);
+        closeFichaDetail();
       }
       if (abonoTargetFicha?.id === ficha.id) {
         setShowAbonoModal(false);
@@ -1729,7 +1873,7 @@ export function FichasPage() {
                     title="Registrar abono">
                     <CreditCard className="w-5 h-5" />
                   </button>
-                  <button onClick={() => { setSelectedFicha(ficha); setShowDetailModal(true); }}
+                  <button onClick={() => openFichaDetail(ficha)}
                     className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
                   </button>
@@ -1878,7 +2022,7 @@ export function FichasPage() {
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
+              <button onClick={closeFichaDetail} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-6">
@@ -1964,6 +2108,74 @@ export function FichasPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Imágenes / comprobantes */}
+              <div>
+                <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" /> Comprobantes de la Ficha
+                </h4>
+
+                {loadingFichaImagenes && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <div key={idx} className="h-28 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                    ))}
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && fichaImagenesError && (
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+                    {fichaImagenesError}
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && !fichaImagenesError && fichaImagenes.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Esta ficha no tiene imágenes de comprobantes registradas.
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && !fichaImagenesError && fichaImagenes.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {fichaImagenes.map((img) => (
+                      <div key={`${img.abono_id}-${img.url}`} className="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden bg-white dark:bg-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewComprobanteUrl(img.url)}
+                          className="w-full"
+                        >
+                          <img
+                            src={img.url}
+                            alt={`Comprobante abono ${img.abono_id}`}
+                            className="h-28 w-full object-cover bg-black/5"
+                          />
+                        </button>
+                        <div className="p-2">
+                          <p className="text-xs text-gray-600 dark:text-gray-300 truncate">Abono #{img.abono_id}</p>
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{img.fecha}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <a
+                              href={img.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Ver
+                            </a>
+                            <a
+                              href={img.url}
+                              download={img.path || `comprobante-${img.abono_id}`}
+                              className="inline-flex items-center gap-1 text-[11px] text-[#EF8022] hover:underline"
+                            >
+                              <Download className="w-3 h-3" /> Descargar
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2080,12 +2292,32 @@ export function FichasPage() {
               >
                 <Trash2 className="w-4 h-4" /> Eliminar
               </button>
-              <button onClick={() => setShowDetailModal(false)}
+              <button onClick={closeFichaDetail}
                 className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">
                 Cerrar
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {previewComprobanteUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[60] p-4 flex items-center justify-center"
+          onClick={() => setPreviewComprobanteUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewComprobanteUrl(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={previewComprobanteUrl}
+            alt="Vista ampliada de comprobante"
+            className="max-h-[90vh] max-w-[90vw] object-contain"
+          />
         </div>
       )}
 
