@@ -16,6 +16,19 @@ export interface Product {
   sabor: string;
   sku: string;
   precio: number;
+  stockActual: number;
+  stockMinimo: number;
+}
+
+export interface ProductStockMovement {
+  id: number;
+  productId: number;
+  tipo: "entrada" | "salida" | "ajuste";
+  cantidad: number;
+  motivo: string;
+  stockAnterior: number;
+  stockNuevo: number;
+  createdAt: string;
 }
 
 export interface Category {
@@ -59,6 +72,14 @@ export interface Inflable {
   precioAlquiler: number;
   dimensiones: string;
   edadMinima: string;
+  imagenUrl: string;
+  imagenes: Array<{ id: number | null; url: string }>;
+}
+
+export interface InflableImage {
+  id: number;
+  inflableId: number;
+  imageUrl: string;
 }
 
 export interface Personal {
@@ -75,6 +96,9 @@ interface ProductsContextType {
   presentations: string[];
   addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
+  updateProductStock: (id: number, payload: { stockActual: number; stockMinimo?: number; motivo?: string }) => Promise<void>;
+  addProductStockMovement: (id: number, payload: { tipo: "entrada" | "salida"; cantidad: number; motivo: string }) => Promise<void>;
+  getProductStockMovements: (id: number) => Promise<ProductStockMovement[]>;
   deleteCategory: (id: number) => Promise<void>;
 
   paquetes: Paquete[];
@@ -88,6 +112,9 @@ interface ProductsContextType {
 
   inflables: Inflable[];
   addInflable: (inflable: Omit<Inflable, "id">) => Promise<void>;
+  getInflableImages: (inflableId: number) => Promise<InflableImage[]>;
+  addInflableImage: (inflableId: number, imageUrl: string) => Promise<void>;
+  deleteInflableImage: (inflableId: number, imageId: number) => Promise<void>;
   deleteInflable: (id: number) => Promise<void>;
 
   personales: Personal[];
@@ -176,6 +203,60 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
+  const updateProductStock = async (
+    id: number,
+    payload: { stockActual: number; stockMinimo?: number; motivo?: string }
+  ) => {
+    await apiRequest(`/products/${id}/stock`, {
+      method: "PUT",
+      body: JSON.stringify({
+        stock_actual: payload.stockActual,
+        ...(payload.stockMinimo !== undefined ? { stock_minimo: payload.stockMinimo } : {}),
+        ...(payload.motivo ? { motivo: payload.motivo } : {}),
+      }),
+    });
+    await reloadData();
+  };
+
+  const addProductStockMovement = async (
+    id: number,
+    payload: { tipo: "entrada" | "salida"; cantidad: number; motivo: string }
+  ) => {
+    await apiRequest(`/products/${id}/stock/movements`, {
+      method: "POST",
+      body: JSON.stringify({
+        tipo: payload.tipo,
+        cantidad: payload.cantidad,
+        motivo: payload.motivo,
+      }),
+    });
+    await reloadData();
+  };
+
+  const getProductStockMovements = async (id: number): Promise<ProductStockMovement[]> => {
+    const movements = await apiRequest<Array<{
+      id: number;
+      product_id: number;
+      tipo: "entrada" | "salida" | "ajuste";
+      cantidad: number;
+      motivo?: string | null;
+      stock_anterior?: number | null;
+      stock_nuevo?: number | null;
+      created_at?: string | null;
+    }>>(`/products/${id}/stock/movements`);
+
+    return movements.map((movement) => ({
+      id: movement.id,
+      productId: movement.product_id,
+      tipo: movement.tipo,
+      cantidad: Number(movement.cantidad || 0),
+      motivo: movement.motivo || "Sin motivo",
+      stockAnterior: Number(movement.stock_anterior || 0),
+      stockNuevo: Number(movement.stock_nuevo || 0),
+      createdAt: movement.created_at || "",
+    }));
+  };
+
   const deleteCategory = async (id: number) => {
     await apiRequest(`/products/categories/${id}`, { method: "DELETE" });
     await reloadData();
@@ -238,8 +319,37 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         precio_alquiler: inflable.precioAlquiler,
         dimensiones: inflable.dimensiones,
         edad_minima: inflable.edadMinima,
+        imagen_url: inflable.imagenUrl,
+        imagenes: inflable.imagenes.map((image) => image.url),
       }),
     });
+    await reloadData();
+  };
+
+  const getInflableImages = async (inflableId: number): Promise<InflableImage[]> => {
+    const images = await apiRequest<Array<{
+      id: number;
+      inflable_id: number;
+      image_url: string;
+    }>>(`/inflables/${inflableId}/images`);
+
+    return images.map((image) => ({
+      id: image.id,
+      inflableId: image.inflable_id,
+      imageUrl: image.image_url,
+    }));
+  };
+
+  const addInflableImage = async (inflableId: number, imageUrl: string) => {
+    await apiRequest(`/inflables/${inflableId}/images`, {
+      method: "POST",
+      body: JSON.stringify({ image_url: imageUrl }),
+    });
+    await reloadData();
+  };
+
+  const deleteInflableImage = async (inflableId: number, imageId: number) => {
+    await apiRequest(`/inflables/${inflableId}/images/${imageId}`, { method: "DELETE" });
     await reloadData();
   };
 
@@ -282,6 +392,9 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         presentations,
         addProduct,
         deleteProduct,
+        updateProductStock,
+        addProductStockMovement,
+        getProductStockMovements,
         deleteCategory,
         paquetes,
         addPaquete,
@@ -292,6 +405,9 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         deleteCarrito,
         inflables,
         addInflable,
+        getInflableImages,
+        addInflableImage,
+        deleteInflableImage,
         deleteInflable,
         personales,
         addPersonal,

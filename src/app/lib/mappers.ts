@@ -18,6 +18,8 @@ type ApiCategory = {
     sabor: string;
     sku: string;
     precio?: number | null;
+    stock_actual?: number | null;
+    stock_minimo?: number | null;
   }>;
 };
 
@@ -50,6 +52,8 @@ type ApiInflable = {
   precio_alquiler: number;
   dimensiones: string | null;
   edad_minima: string | null;
+  imagen_url?: string | null;
+  imagenes?: Array<string | { id?: number; image_url?: string; url?: string }> | null;
 };
 
 type ApiPersonal = {
@@ -71,6 +75,8 @@ export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
       sabor: product.sabor,
       sku: product.sku,
       precio: Number(product.precio || 0),
+      stockActual: Number(product.stock_actual || 0),
+      stockMinimo: Number(product.stock_minimo || 0),
     })),
   }));
 }
@@ -117,6 +123,20 @@ export function mapApiInflables(apiInflables: ApiInflable[]): Inflable[] {
     precioAlquiler: Number(inflable.precio_alquiler || 0),
     dimensiones: inflable.dimensiones || "",
     edadMinima: inflable.edad_minima || "",
+    imagenUrl: inflable.imagen_url || "",
+    imagenes: Array.isArray(inflable.imagenes)
+      ? inflable.imagenes
+          .map((image) => {
+            if (typeof image === "string") {
+              return { id: null, url: image };
+            }
+
+            const url = image.image_url || image.url || "";
+            if (!url) return null;
+            return { id: typeof image.id === "number" ? image.id : null, url };
+          })
+          .filter((image): image is { id: number | null; url: string } => Boolean(image))
+      : (inflable.imagen_url ? [{ id: null, url: inflable.imagen_url }] : []),
   }));
 }
 

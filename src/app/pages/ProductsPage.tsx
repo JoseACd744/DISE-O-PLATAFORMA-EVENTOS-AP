@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart } from "lucide-react";
+import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, Wind, History } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, FlatProduct, Carrito } from "../contexts/ProductsContext";
@@ -92,7 +92,7 @@ function ProductSelector({
 // ── Main component ───────────────────────────────────────────────
 
 export function ProductsPage() {
-  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos">("productos");
+  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "inflables">("productos");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,6 +103,9 @@ export function ProductsPage() {
     allProducts,
     addProduct,
     deleteProduct,
+    updateProductStock,
+    addProductStockMovement,
+    getProductStockMovements,
     deleteCategory,
     paquetes,
     addPaquete,
@@ -111,6 +114,12 @@ export function ProductsPage() {
     addCarrito,
     updateCarritoEstado,
     deleteCarrito,
+    inflables,
+    addInflable,
+    getInflableImages,
+    addInflableImage,
+    deleteInflableImage,
+    deleteInflable,
   } = useProducts();
 
   // Product modal
@@ -122,6 +131,8 @@ export function ProductsPage() {
     presentacion: "",
     sabor: "",
     precio: 0,
+    stockActual: 0,
+    stockMinimo: 0,
   });
 
   // Package modal
@@ -141,6 +152,18 @@ export function ProductsPage() {
     descripcion: "",
     cantidadTotal: 1,
     estado: "disponible" as Carrito["estado"],
+  });
+
+  const [showAddInflable, setShowAddInflable] = useState(false);
+  const [newInflable, setNewInflable] = useState({
+    nombre: "",
+    descripcion: "",
+    cantidadTotal: 1,
+    precioAlquiler: 0,
+    dimensiones: "",
+    edadMinima: "",
+    imagenUrl: "",
+    imagenesText: "",
   });
 
   // Filter products
@@ -173,6 +196,12 @@ export function ProductsPage() {
       c.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredInflables = inflables.filter(
+    (inflable) =>
+      inflable.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      inflable.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     setCurrentPage(1);
@@ -197,11 +226,22 @@ export function ProductsPage() {
       presentacion: newProduct.presentacion,
       sabor: newProduct.sabor,
       precio: Number(newProduct.precio || 0),
+      stockActual: Number(newProduct.stockActual || 0),
+      stockMinimo: Number(newProduct.stockMinimo || 0),
       sku,
     });
 
     setShowAddProduct(false);
-    setNewProduct({ categoria: "", nuevaCategoria: "", producto: "", presentacion: "", sabor: "", precio: 0 });
+    setNewProduct({
+      categoria: "",
+      nuevaCategoria: "",
+      producto: "",
+      presentacion: "",
+      sabor: "",
+      precio: 0,
+      stockActual: 0,
+      stockMinimo: 0,
+    });
   };
 
   // Add paquete via context
@@ -264,12 +304,145 @@ export function ProductsPage() {
     await deleteCategory(categoryId);
   };
 
+  const handleStockAdjustment = async (product: FlatProduct) => {
+    const stockActualText = window.prompt(`Nuevo stock actual para ${product.producto}:`, String(product.stockActual));
+    if (stockActualText === null) return;
+    const stockActual = Number(stockActualText);
+    if (!Number.isFinite(stockActual) || stockActual < 0) {
+      window.alert("El stock actual debe ser un numero mayor o igual a 0.");
+      return;
+    }
+
+    const stockMinimoText = window.prompt("Stock minimo:", String(product.stockMinimo));
+    if (stockMinimoText === null) return;
+    const stockMinimo = Number(stockMinimoText);
+    if (!Number.isFinite(stockMinimo) || stockMinimo < 0) {
+      window.alert("El stock minimo debe ser un numero mayor o igual a 0.");
+      return;
+    }
+
+    const motivo = window.prompt("Motivo del ajuste (opcional):", "Conteo fisico") || "";
+
+    await updateProductStock(product.id, { stockActual, stockMinimo, motivo });
+  };
+
+  const handleStockMovement = async (product: FlatProduct, tipo: "entrada" | "salida") => {
+    const cantidadText = window.prompt(
+      `Cantidad de ${tipo === "entrada" ? "entrada" : "salida"} para ${product.producto}:`,
+      "1"
+    );
+    if (cantidadText === null) return;
+    const cantidad = Number(cantidadText);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      window.alert("La cantidad debe ser un numero mayor a 0.");
+      return;
+    }
+
+    const motivo = window.prompt("Motivo:", tipo === "entrada" ? "Compra proveedor" : "Venta") || "";
+    if (!motivo.trim()) {
+      window.alert("El motivo es obligatorio.");
+      return;
+    }
+
+    try {
+      await addProductStockMovement(product.id, { tipo, cantidad, motivo: motivo.trim() });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No se pudo registrar el movimiento de stock.");
+    }
+  };
+
+  const handleShowStockMovements = async (product: FlatProduct) => {
+    try {
+      const movements = await getProductStockMovements(product.id);
+      if (movements.length === 0) {
+        window.alert(`Sin movimientos para ${product.producto}.`);
+        return;
+      }
+
+      const lines = movements
+        .slice(0, 10)
+        .map((movement) => {
+          const dateText = movement.createdAt ? new Date(movement.createdAt).toLocaleString("es-PE") : "-";
+          return `${dateText} | ${movement.tipo.toUpperCase()} | ${movement.cantidad} | ${movement.stockAnterior} -> ${movement.stockNuevo} | ${movement.motivo}`;
+        })
+        .join("\n");
+
+      window.alert(`Ultimos movimientos de ${product.producto}:\n\n${lines}`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No se pudo cargar el historial de stock.");
+    }
+  };
+
+  const handleAddInflable = async () => {
+    if (!newInflable.nombre.trim() || !newInflable.descripcion.trim()) return;
+
+    const imageList = newInflable.imagenesText
+      .split("\n")
+      .map((image) => image.trim())
+      .filter(Boolean);
+
+    const mergedImages = [...new Set([newInflable.imagenUrl.trim(), ...imageList].filter(Boolean))];
+
+    await addInflable({
+      nombre: newInflable.nombre.trim(),
+      descripcion: newInflable.descripcion.trim(),
+      cantidadTotal: Number(newInflable.cantidadTotal || 0),
+      precioAlquiler: Number(newInflable.precioAlquiler || 0),
+      dimensiones: newInflable.dimensiones.trim(),
+      edadMinima: newInflable.edadMinima.trim(),
+      imagenUrl: newInflable.imagenUrl.trim(),
+      imagenes: mergedImages.map((url) => ({ id: null, url })),
+    });
+
+    setShowAddInflable(false);
+    setNewInflable({
+      nombre: "",
+      descripcion: "",
+      cantidadTotal: 1,
+      precioAlquiler: 0,
+      dimensiones: "",
+      edadMinima: "",
+      imagenUrl: "",
+      imagenesText: "",
+    });
+  };
+
+  const handleAddImageToInflable = async (inflableId: number) => {
+    const imageUrl = window.prompt("URL de la nueva imagen:");
+    if (!imageUrl || !imageUrl.trim()) return;
+    await addInflableImage(inflableId, imageUrl.trim());
+  };
+
+  const handleDeleteImageFromInflable = async (inflableId: number) => {
+    const images = await getInflableImages(inflableId);
+    if (images.length === 0) {
+      window.alert("Este inflable no tiene imagenes registradas.");
+      return;
+    }
+
+    const helpText = images
+      .slice(0, 10)
+      .map((image) => `ID ${image.id}: ${image.imageUrl}`)
+      .join("\n");
+
+    const imageIdText = window.prompt(`Selecciona el ID de imagen a eliminar:\n\n${helpText}`);
+    if (imageIdText === null) return;
+
+    const imageId = Number(imageIdText);
+    if (!Number.isFinite(imageId)) {
+      window.alert("Debes ingresar un ID valido.");
+      return;
+    }
+
+    await deleteInflableImage(inflableId, imageId);
+  };
+
   return (
     <div className="p-4 sm:p-6 md:p-8">
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Catálogo de Productos</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Gestiona productos individuales y paquetes para eventos
+          Gestiona productos, stock, paquetes, carritos e inflables para eventos
         </p>
       </div>
 
@@ -308,10 +481,21 @@ export function ProductsPage() {
           <ShoppingCart className="w-4 h-4" />
           Carritos
         </button>
+        <button
+          onClick={() => { setActiveTab("inflables"); setCurrentPage(1); setSearchTerm(""); }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+            activeTab === "inflables"
+              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          <Wind className="w-4 h-4" />
+          Inflables
+        </button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
             <div className="bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 p-2 rounded-lg">
@@ -320,6 +504,9 @@ export function ProductsPage() {
             <span className="text-sm text-gray-600 dark:text-gray-400">Total Productos</span>
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{allProducts.length}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            Bajo minimo: {allProducts.filter((product) => product.stockActual <= product.stockMinimo).length}
+          </p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
@@ -347,6 +534,15 @@ export function ProductsPage() {
             <span className="text-sm text-gray-600 dark:text-gray-400">Carritos</span>
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{carritos.length}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-cyan-100 dark:bg-cyan-900/30 p-2 rounded-lg">
+              <Wind className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+            </div>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Inflables</span>
+          </div>
+          <p className="text-3xl text-gray-900 dark:text-white">{inflables.length}</p>
         </div>
       </div>
 
@@ -432,6 +628,7 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Presentación</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Sabor</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
+                    <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Stock</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
                     <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                   </tr>
@@ -454,16 +651,61 @@ export function ProductsPage() {
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm">
                         {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
                       </td>
+                      <td className="px-6 py-4 text-sm">
+                        <div className="flex flex-col gap-1">
+                          <span className={`${product.stockActual <= product.stockMinimo ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                            {product.stockActual} und.
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            Min: {product.stockMinimo}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProduct(product)}
-                          className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-                          title="Eliminar producto"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleStockMovement(product, "entrada")}
+                            className="rounded-lg px-2.5 py-1.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                            title="Registrar entrada"
+                          >
+                            + Entrada
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStockMovement(product, "salida")}
+                            className="rounded-lg px-2.5 py-1.5 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+                            title="Registrar salida"
+                          >
+                            - Salida
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStockAdjustment(product)}
+                            className="rounded-lg px-2.5 py-1.5 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
+                            title="Ajustar stock"
+                          >
+                            Ajustar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleShowStockMovements(product)}
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
+                            title="Ver movimientos"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                            Historial
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(product)}
+                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                            title="Eliminar producto"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -673,6 +915,111 @@ export function ProductsPage() {
         </>
       )}
 
+      {/* ── INFLABLES TAB ─────────────────────────────────────── */}
+      {activeTab === "inflables" && (
+        <>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="flex-1 w-full lg:max-w-md relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar inflable por nombre o descripcion..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={() => setShowAddInflable(true)}
+                className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                <Plus className="w-5 h-5" />
+                Nuevo Inflable
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredInflables.map((inflable) => (
+              <div key={inflable.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg transition-shadow">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-gray-900 dark:text-white">{inflable.nombre}</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{inflable.dimensiones || "Sin dimensiones"}</p>
+                  </div>
+                  <button
+                    onClick={() => deleteInflable(inflable.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    title="Eliminar inflable"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{inflable.descripcion}</p>
+
+                <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                  <div className="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Cantidad</p>
+                    <p className="text-gray-900 dark:text-white">{inflable.cantidadTotal}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Precio/Dia</p>
+                    <p className="text-[#EF8022]">S/ {inflable.precioAlquiler}</p>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Galeria ({inflable.imagenes.length})</p>
+                  {inflable.imagenes.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {inflable.imagenes.slice(0, 4).map((image, index) => (
+                        <a
+                          key={`${inflable.id}-${image.id ?? index}`}
+                          href={image.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs px-2 py-1 rounded bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 hover:underline"
+                        >
+                          Imagen {index + 1}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">Sin imagenes registradas</p>
+                  )}
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAddImageToInflable(inflable.id)}
+                    className="text-xs px-2.5 py-1.5 rounded bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300"
+                  >
+                    + Imagen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteImageFromInflable(inflable.id)}
+                    className="text-xs px-2.5 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
+                  >
+                    Eliminar Imagen
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredInflables.length === 0 && (
+            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              <Wind className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">No se encontraron inflables</p>
+            </div>
+          )}
+        </>
+      )}
+
       {/* ── Add Product Modal ──────────────────────────────────── */}
       {showAddProduct && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -745,6 +1092,28 @@ export function ProductsPage() {
                     placeholder="0"
                     min={0}
                     step="0.01"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Inicial</label>
+                  <input
+                    type="number"
+                    value={newProduct.stockActual}
+                    onChange={(e) => setNewProduct({ ...newProduct, stockActual: Number(e.target.value) })}
+                    min={0}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Minimo</label>
+                  <input
+                    type="number"
+                    value={newProduct.stockMinimo}
+                    onChange={(e) => setNewProduct({ ...newProduct, stockMinimo: Number(e.target.value) })}
+                    min={0}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
@@ -964,6 +1333,117 @@ export function ProductsPage() {
                 </button>
                 <button onClick={handleAddCarrito} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
                   Guardar Carrito
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Inflable Modal ────────────────────────────────── */}
+      {showAddInflable && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setShowAddInflable(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Inflable</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={newInflable.nombre}
+                  onChange={(e) => setNewInflable({ ...newInflable, nombre: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripcion *</label>
+                <textarea
+                  value={newInflable.descripcion}
+                  onChange={(e) => setNewInflable({ ...newInflable, descripcion: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad Total *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newInflable.cantidadTotal}
+                    onChange={(e) => setNewInflable({ ...newInflable, cantidadTotal: Number(e.target.value) })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio Alquiler (S/)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newInflable.precioAlquiler || ""}
+                    onChange={(e) => setNewInflable({ ...newInflable, precioAlquiler: Number(e.target.value) })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label>
+                  <input
+                    type="text"
+                    value={newInflable.dimensiones}
+                    onChange={(e) => setNewInflable({ ...newInflable, dimensiones: e.target.value })}
+                    placeholder="Ej: 6m x 4m"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Edad Minima</label>
+                  <input
+                    type="text"
+                    value={newInflable.edadMinima}
+                    onChange={(e) => setNewInflable({ ...newInflable, edadMinima: e.target.value })}
+                    placeholder="Ej: 3+"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Imagen Principal URL</label>
+                <input
+                  type="url"
+                  value={newInflable.imagenUrl}
+                  onChange={(e) => setNewInflable({ ...newInflable, imagenUrl: e.target.value })}
+                  placeholder="https://.../principal.jpg"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Galeria de Imagenes (una URL por linea)</label>
+                <textarea
+                  value={newInflable.imagenesText}
+                  onChange={(e) => setNewInflable({ ...newInflable, imagenesText: e.target.value })}
+                  rows={4}
+                  placeholder={"https://.../principal.jpg\nhttps://.../detalle1.jpg"}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowAddInflable(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleAddInflable} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
+                  Guardar Inflable
                 </button>
               </div>
             </div>
