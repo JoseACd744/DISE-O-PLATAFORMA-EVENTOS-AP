@@ -76,6 +76,8 @@ interface ProductsContextType {
   allProducts: FlatProduct[];
   presentations: string[];
   addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
+  deleteProduct: (id: number) => Promise<void>;
+  deleteCategory: (id: number) => Promise<void>;
 
   paquetes: Paquete[];
   addPaquete: (paquete: Omit<Paquete, "id">) => Promise<void>;
@@ -174,6 +176,16 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       }),
     });
 
+    await reloadData();
+  };
+
+  const deleteProduct = async (id: number) => {
+    await apiRequest(`/products/${id}`, { method: "DELETE" });
+    await reloadData();
+  };
+
+  const deleteCategory = async (id: number) => {
+    await apiRequest(`/products/categories/${id}`, { method: "DELETE" });
     await reloadData();
   };
 
@@ -281,6 +293,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         allProducts,
         presentations,
         addProduct,
+        deleteProduct,
+        deleteCategory,
         paquetes,
         addPaquete,
         deletePaquete,

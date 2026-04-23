@@ -1,7 +1,6 @@
 /.env
 node_modules
 dist
-/dist
 .firebase
 /firebase
 /firebase-debug.log

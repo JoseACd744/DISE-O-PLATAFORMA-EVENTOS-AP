@@ -4,7 +4,7 @@ import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "../components/DateRangePicker";
 import { useProducts } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
-import { apiRequest } from "../lib/api";
+import { apiRequest, API_BASE_URL } from "../lib/api";
 
 // ── Financial types ──────────────────────────────────────────────
 
@@ -223,6 +223,223 @@ function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
       <AlertCircle className="w-3.5 h-3.5" />
       Pendiente
     </span>
+  );
+}
+
+
+function AbonoModal({
+  ficha,
+  onClose,
+  onSave,
+}: {
+  ficha: Ficha;
+  onClose: () => void;
+  onSave: (fichaId: number, abono: Abono) => Promise<void>;
+}) {
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [monto, setMonto] = useState<string>("");
+  const [numeroOperacion, setNumeroOperacion] = useState("");
+  const [medio, setMedio] = useState<Abono["medio"]>("Transferencia");
+  const [comprobante, setComprobante] = useState<string>("");
+  const [comprobanteName, setComprobanteName] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [modalError, setModalError] = useState<string>("");
+
+  const saldo = Math.max(0, getSaldo(ficha));
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setModalError("");
+    
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "comprobantes");
+
+      const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        const isJson = contentType.includes("application/json");
+        const errorData = isJson ? await response.json() : { error: `HTTP ${response.status}` };
+        throw new Error((errorData as any).error || "Error al subir el archivo");
+      }
+
+      const data = await response.json();
+      const rawUrl =
+        data?.url ||
+        data?.fileUrl ||
+        data?.secure_url ||
+        data?.location ||
+        data?.data?.url ||
+        "";
+
+      if (!rawUrl) {
+        throw new Error("La API respondió sin URL del archivo subido");
+      }
+
+      const normalizedUrl =
+        typeof rawUrl === "string" && rawUrl.startsWith("/")
+          ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
+          : rawUrl;
+
+      setComprobante(normalizedUrl);
+      setComprobanteName(file.name);
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Error al subir el comprobante");
+      setComprobante("");
+      setComprobanteName("");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const montoNumerico = Number(monto);
+    if (!montoNumerico || montoNumerico <= 0) return;
+
+    setModalError("");
+    setIsSaving(true);
+    try {
+      await onSave(ficha.id, {
+        id: Date.now(),
+        fecha,
+        monto: montoNumerico,
+        numeroOperacion: numeroOperacion.trim(),
+        comprobante: comprobante || undefined,
+        comprobantePreview: comprobante || undefined,
+        medio,
+      });
+      onClose();
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : "Error al guardar el abono");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h3 className="text-2xl text-gray-900 dark:text-white">Registrar Abono</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{ficha.cliente_nombre}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="mb-5 rounded-lg bg-gray-50 dark:bg-gray-700/50 p-4 grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a pagar</p>
+            <p className="text-lg text-gray-900 dark:text-white">{formatMoney(getTotal(ficha))}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo pendiente</p>
+            <p className={`text-lg ${saldo > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(saldo)}</p>
+          </div>
+        </div>
+
+        {modalError && (
+          <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+            <p className="text-sm text-red-700 dark:text-red-400">{modalError}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Fecha</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(event) => setFecha(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Monto</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={monto}
+              onChange={(event) => setMonto(event.target.value)}
+              placeholder="0.00"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
+            <select
+              value={medio}
+              onChange={(event) => setMedio(event.target.value as Abono["medio"])}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            >
+              <option value="Transferencia">Transferencia</option>
+              <option value="Yape">Yape</option>
+              <option value="Plin">Plin</option>
+              <option value="Efectivo">Efectivo</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Número de operación</label>
+            <input
+              type="text"
+              value={numeroOperacion}
+              onChange={(event) => setNumeroOperacion(event.target.value)}
+              placeholder="Opcional"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Comprobante</label>
+            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
+              isUploading ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
+            }`}>
+              <Upload className="w-4 h-4" />
+              <span>{isUploading ? "Subiendo..." : comprobanteName || "Subir imagen del comprobante"}</span>
+              <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading} className="hidden" />
+            </label>
+            {comprobante && comprobante.startsWith("http") && (
+              <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
+            >
+              {isSaving ? "Guardando..." : "Guardar abono"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -549,13 +766,6 @@ export function FichasPage() {
         });
       }
 
-      filasJugueton.push({
-        producto: "Movilidad",
-        descripcion: `Entrega y recojo (${escapeHtml(ficha.distrito)})`,
-        cantidad: 1,
-        precio: 0,
-      });
-
       const bloqueStaff = [
         personalDetalle.length > 0 ? `Personal de staff: ${personalDetalle.join(", ")}` : "Personal de staff: 1 PERSONAL",
         `Duracion del servicio: ${ficha.horasServicio ?? 2} horas`,
@@ -566,6 +776,13 @@ export function FichasPage() {
       filasJugueton.push({
         producto: "OTROS",
         descripcion: bloqueStaff,
+        cantidad: 1,
+        precio: 0,
+      });
+
+      filasJugueton.push({
+        producto: "Movilidad",
+        descripcion: `Entrega y recojo (${escapeHtml(ficha.distrito)})`,
         cantidad: 1,
         precio: 0,
       });
@@ -877,7 +1094,7 @@ export function FichasPage() {
       return;
     }
 
-    const filasDonofrio = [
+      const filasDonofrio = [
       ...lineasPaquetes.map((l) => ({
         cantidad: l.cantidad,
         descripcion: l.descripcion,
@@ -1292,31 +1509,55 @@ export function FichasPage() {
   };
 
   const handleAddAbono = async (fichaId: number, abono: Abono) => {
-    await apiRequest(`/fichas/${fichaId}/abonos`, {
-      method: "POST",
-      body: JSON.stringify({
-        fecha: abono.fecha,
-        monto: abono.monto,
-        numero_operacion: abono.numeroOperacion || null,
-        comprobante_url: abono.comprobante || null,
-        medio: abono.medio,
-      }),
-    });
+    try {
+      await apiRequest(`/fichas/${fichaId}/abonos`, {
+        method: "POST",
+        body: JSON.stringify({
+          fecha: abono.fecha,
+          monto: abono.monto,
+          numero_operacion: abono.numeroOperacion || null,
+          comprobante_url: abono.comprobante || null,
+          medio: abono.medio,
+        }),
+      });
 
-    await loadFichas();
-    if (selectedFicha && selectedFicha.id === fichaId) {
-      const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
-      setSelectedFicha((prev) => prev ? {
-        ...prev,
-        abonos: (refreshed.abonos || []).map((a: any) => ({
-          id: a.id,
-          fecha: a.fecha,
-          monto: Number(a.monto || 0),
-          numeroOperacion: a.numero_operacion || "",
-          comprobante: a.comprobante_url || "",
-          medio: a.medio,
-        })),
-      } : prev);
+      await loadFichas();
+      if (selectedFicha && selectedFicha.id === fichaId) {
+        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
+        setSelectedFicha((prev) => prev ? {
+          ...prev,
+          abonos: (refreshed.abonos || []).map((a: any) => ({
+            id: a.id,
+            fecha: a.fecha,
+            monto: Number(a.monto || 0),
+            numeroOperacion: a.numero_operacion || "",
+            comprobante: a.comprobante_url || "",
+            medio: a.medio,
+          })),
+        } : prev);
+      }
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Error al guardar el abono");
+    }
+  };
+
+  const handleDeleteFicha = async (ficha: Ficha) => {
+    const confirmed = window.confirm(`¿Eliminar la ficha #${ficha.id} de ${ficha.cliente_nombre}? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    try {
+      await apiRequest(`/fichas/${ficha.id}`, { method: "DELETE" });
+      if (selectedFicha?.id === ficha.id) {
+        setShowDetailModal(false);
+        setSelectedFicha(null);
+      }
+      if (abonoTargetFicha?.id === ficha.id) {
+        setShowAbonoModal(false);
+        setAbonoTargetFicha(null);
+      }
+      await loadFichas();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar la ficha");
     }
   };
 
@@ -1491,6 +1732,13 @@ export function FichasPage() {
                   <button onClick={() => { setSelectedFicha(ficha); setShowDetailModal(true); }}
                     className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFicha(ficha)}
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    title="Eliminar ficha"
+                  >
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -1826,6 +2074,12 @@ export function FichasPage() {
                 className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm">
                 <CreditCard className="w-4 h-4" /> Registrar Abono
               </button>
+              <button
+                onClick={() => handleDeleteFicha(selectedFicha)}
+                className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
+              >
+                <Trash2 className="w-4 h-4" /> Eliminar
+              </button>
               <button onClick={() => setShowDetailModal(false)}
                 className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">
                 Cerrar
@@ -1898,14 +2152,14 @@ export function FichasPage() {
                 ) : (
                   <div className="space-y-2">
                     {formData.productosSueltos.map((prod, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
+                      <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto] md:items-center">
                         <select value={prod.productoNombre}
                           onChange={e => {
                             const items = [...formData.productosSueltos];
                             items[idx] = { ...items[idx], productoNombre: e.target.value };
                             setFormData(prev => ({ ...prev, productosSueltos: items }));
                           }}
-                          className={`${inputClass} flex-1 text-sm`}>
+                          className={`${inputClass} min-w-0 text-sm`}>
                           <option value="">Seleccionar producto...</option>
                           {productNames.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
@@ -1915,8 +2169,8 @@ export function FichasPage() {
                             items[idx] = { ...items[idx], cantidad: Number(e.target.value) };
                             setFormData(prev => ({ ...prev, productosSueltos: items }));
                           }}
-                          placeholder="Cant." min={0} className={`${inputClass} w-20 text-sm`} />
-                        <button type="button" onClick={() => handleRemoveProductoSuelto(idx)} className="p-2 text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                          placeholder="Cant." min={0} className={`${inputClass} w-full text-sm`} />
+                        <button type="button" onClick={() => handleRemoveProductoSuelto(idx)} className="justify-self-start md:justify-self-center p-2 text-red-400 hover:text-red-600 md:mt-0 mt-1"><X className="w-4 h-4" /></button>
                       </div>
                     ))}
                   </div>

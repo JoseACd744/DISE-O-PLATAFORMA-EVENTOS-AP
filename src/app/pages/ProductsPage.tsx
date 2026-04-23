@@ -108,6 +108,8 @@ export function ProductsPage() {
     allProducts,
     presentations,
     addProduct,
+    deleteProduct,
+    deleteCategory,
     paquetes,
     addPaquete,
     deletePaquete,
@@ -270,6 +272,22 @@ export function ProductsPage() {
   const getTotalHelados = (contenido: PaqueteItem[]) =>
     contenido.reduce((s, i) => s + i.cantidad, 0);
 
+  const handleDeleteProduct = async (product: FlatProduct) => {
+    const confirmed = window.confirm(`¿Eliminar el producto ${product.producto} (${product.presentacion})? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    await deleteProduct(product.id);
+  };
+
+  const handleDeleteCategory = async (categoryId: number, categoryName: string, productCount: number) => {
+    const confirmed = window.confirm(
+      `¿Eliminar la categoría ${categoryName}?${productCount > 0 ? ` También se eliminarán sus ${productCount} productos.` : ""}`
+    );
+    if (!confirmed) return;
+
+    await deleteCategory(categoryId);
+  };
+
   return (
     <div className="p-4 sm:p-6 md:p-8">
       <div className="mb-6 md:mb-8">
@@ -377,6 +395,40 @@ export function ProductsPage() {
         </div>
       </div>
 
+      {!isReadOnly && activeTab === "productos" && categories.length > 0 && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg text-gray-900 dark:text-white">Categorías registradas</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Puedes eliminar una categoría desde aquí.</p>
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{categories.length} categorías</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => {
+              const productCount = category.productos.length;
+              return (
+                <div
+                  key={category.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-700/50"
+                >
+                  <span className="text-gray-900 dark:text-white">{category.categoria}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{productCount} prod.</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCategory(category.id, category.categoria, productCount)}
+                    className="rounded-full p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                    title="Eliminar categoría"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── PRODUCTOS TAB ──────────────────────────────────────── */}
       {activeTab === "productos" && (
         <>
@@ -427,6 +479,7 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Presentación</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Sabor</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
+                    {!isReadOnly && <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -445,6 +498,18 @@ export function ProductsPage() {
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm max-w-xs">{product.sabor}</td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
+                      {!isReadOnly && (
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(product)}
+                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                            title="Eliminar producto"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
