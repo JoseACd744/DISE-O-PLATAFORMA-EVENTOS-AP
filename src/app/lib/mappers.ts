@@ -57,8 +57,16 @@ type ApiInflable = {
 
 type ApiPersonal = {
   id: number;
-  nombre: string;
-  celular: string | null;
+  // New fields
+  nombre_completo?: string | null;
+  dni?: string | null;
+  fecha_nacimiento?: string | null;
+  numero_telefono?: string | null;
+  licencia?: string | null;
+  foto_url?: string | null;
+  // Legacy fields
+  nombre?: string | null;
+  celular?: string | null;
   rol: "chofer" | "apoyo";
   estado: "disponible" | "en-ruta" | "descanso";
 };
@@ -141,9 +149,16 @@ export function mapApiInflables(apiInflables: ApiInflable[]): Inflable[] {
 export function mapApiPersonal(apiPersonal: ApiPersonal[]): Personal[] {
   return apiPersonal.map((persona) => ({
     id: persona.id,
-    nombre: persona.nombre,
-    celular: persona.celular || "",
+    nombre_completo: persona.nombre_completo || persona.nombre || "",
+    dni: persona.dni || "",
+    fecha_nacimiento: persona.fecha_nacimiento || "",
+    numero_telefono: persona.numero_telefono || persona.celular || "",
     rol: persona.rol,
     estado: persona.estado,
+    ...(persona.licencia ? { licencia: persona.licencia } : {}),
+    ...(persona.foto_url ? { foto_url: persona.foto_url } : {}),
+    // Preserve legacy fields if present
+    ...(persona.nombre ? { nombre: persona.nombre } : {}),
+    ...(persona.celular ? { celular: persona.celular } : {}),
   }));
 }

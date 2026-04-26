@@ -706,7 +706,7 @@ export function FichasPage() {
 
   const getNombresPersonal = (ficha: Ficha) => {
     const ids = ficha.personalIds ?? [];
-    return ids.map(id => personales.find(p => p.id === id)?.nombre).filter(Boolean) as string[];
+    return ids.map(id => { const p = personales.find(x => x.id === id); return p ? (p.nombre_completo || p.nombre) : undefined; }).filter(Boolean) as string[];
   };
 
   const escapeHtml = (value: string) =>
@@ -2538,7 +2538,7 @@ export function FichasPage() {
                             className="w-4 h-4 accent-[#EF8022]"
                           />
                           <div className="min-w-0">
-                            <p className="text-sm text-gray-900 dark:text-white truncate">{personal.nombre}</p>
+                            <p className="text-sm text-gray-900 dark:text-white truncate">{personal.nombre_completo || personal.nombre}</p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">{personal.rol} · {personal.estado}</p>
                           </div>
                         </label>

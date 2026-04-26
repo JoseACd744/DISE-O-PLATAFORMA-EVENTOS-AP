@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History } from "lucide-react";
+import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, FlatProduct, Carrito, ProductStockMovement } from "../contexts/ProductsContext";
+import type { PaqueteItem, FlatProduct, Carrito, ProductStockMovement, Personal } from "../contexts/ProductsContext";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -92,7 +92,7 @@ function ProductSelector({
 // ── Main component ───────────────────────────────────────────────
 
 export function ProductsPage() {
-  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos">("productos");
+  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos" | "personal">("productos");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
@@ -114,6 +114,10 @@ export function ProductsPage() {
     addCarrito,
     updateCarritoEstado,
     deleteCarrito,
+    personales,
+    addPersonal,
+    updatePersonal,
+    deletePersonal,
   } = useProducts();
 
   // Product modal
@@ -146,6 +150,110 @@ export function ProductsPage() {
     cantidadTotal: 1,
     estado: "disponible" as Carrito["estado"],
   });
+
+  // Personal modal
+  const emptyPersonalForm = {
+    nombre_completo: "",
+    dni: "",
+    fecha_nacimiento: "",
+    numero_telefono: "",
+    rol: "apoyo" as Personal["rol"],
+    estado: "disponible" as Personal["estado"],
+    licencia: "",
+    foto_url: "",
+  };
+  const [showPersonalModal, setShowPersonalModal] = useState(false);
+  const [editingPersonal, setEditingPersonal] = useState<Personal | null>(null);
+  const [personalForm, setPersonalForm] = useState(emptyPersonalForm);
+  const [personalFormError, setPersonalFormError] = useState("");
+  const [personalFormSubmitting, setPersonalFormSubmitting] = useState(false);
+  const [personalSearch, setPersonalSearch] = useState("");
+
+  const validatePhone = (phone: string): boolean => {
+    const stripped = phone.replace(/[\s\-]/g, "");
+    return /^(\+\d{1,4})?\d{9}$/.test(stripped);
+  };
+
+  const validatePersonalForm = (form: typeof personalForm): string => {
+    if (form.nombre_completo.trim().length < 3) return "El nombre completo debe tener al menos 3 caracteres.";
+    if (!/^\d{8}$/.test(form.dni)) return "El DNI debe ser exactamente 8 dígitos numéricos.";
+    if (!form.fecha_nacimiento) return "La fecha de nacimiento es requerida.";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.fecha_nacimiento)) return "La fecha debe estar en formato YYYY-MM-DD.";
+    if (new Date(form.fecha_nacimiento) > new Date()) return "La fecha de nacimiento no puede ser futura.";
+    if (!validatePhone(form.numero_telefono)) return "Teléfono inválido. Ej: +51987654321, 987654321, 987-654-321.";
+    return "";
+  };
+
+  const openAddPersonal = () => {
+    setEditingPersonal(null);
+    setPersonalForm(emptyPersonalForm);
+    setPersonalFormError("");
+    setShowPersonalModal(true);
+  };
+
+  const openEditPersonal = (p: Personal) => {
+    setEditingPersonal(p);
+    setPersonalForm({
+      nombre_completo: p.nombre_completo,
+      dni: p.dni,
+      fecha_nacimiento: p.fecha_nacimiento,
+      numero_telefono: p.numero_telefono,
+      rol: p.rol,
+      estado: p.estado,
+      licencia: p.licencia ?? "",
+      foto_url: p.foto_url ?? "",
+    });
+    setPersonalFormError("");
+    setShowPersonalModal(true);
+  };
+
+  const handleSubmitPersonal = async () => {
+    const error = validatePersonalForm(personalForm);
+    if (error) { setPersonalFormError(error); return; }
+    setPersonalFormSubmitting(true);
+    setPersonalFormError("");
+    try {
+      const payload = {
+        nombre_completo: personalForm.nombre_completo.trim(),
+        dni: personalForm.dni.trim(),
+        fecha_nacimiento: personalForm.fecha_nacimiento,
+        numero_telefono: personalForm.numero_telefono.trim(),
+        rol: personalForm.rol,
+        estado: personalForm.estado,
+        ...(personalForm.licencia.trim() ? { licencia: personalForm.licencia.trim() } : {}),
+        ...(personalForm.foto_url.trim() ? { foto_url: personalForm.foto_url.trim() } : {}),
+      };
+      if (editingPersonal) {
+        await updatePersonal(editingPersonal.id, payload);
+      } else {
+        await addPersonal(payload);
+      }
+      setShowPersonalModal(false);
+      setPersonalForm(emptyPersonalForm);
+      setEditingPersonal(null);
+    } catch (err) {
+      setPersonalFormError(err instanceof Error ? err.message : "No se pudo guardar. Verifica los datos.");
+    } finally {
+      setPersonalFormSubmitting(false);
+    }
+  };
+
+  const handleDeletePersonal = async (p: Personal) => {
+    if (!window.confirm(`¿Eliminar a ${p.nombre_completo}? Esta acción no se puede deshacer.`)) return;
+    await deletePersonal(p.id);
+  };
+
+  const filteredPersonales = personales.filter((p) =>
+    p.nombre_completo.toLowerCase().includes(personalSearch.toLowerCase()) ||
+    p.dni.includes(personalSearch) ||
+    p.rol.includes(personalSearch)
+  );
+
+  const estadoPersonalColor: Record<Personal["estado"], string> = {
+    disponible: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    "en-ruta": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    descanso: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
+  };
 
   const [selectedStockProduct, setSelectedStockProduct] = useState<FlatProduct | null>(null);
   const [showStockMovementModal, setShowStockMovementModal] = useState(false);
@@ -462,6 +570,17 @@ export function ProductsPage() {
           <Layers className="w-4 h-4" />
           Recursos
         </button>
+        <button
+          onClick={() => { setActiveTab("personal"); setCurrentPage(1); setSearchTerm(""); }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+            activeTab === "personal"
+              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          Personal
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -504,6 +623,18 @@ export function ProductsPage() {
             <span className="text-sm text-gray-600 dark:text-gray-400">Carritos</span>
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{carritos.length}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
+              <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Personal</span>
+          </div>
+          <p className="text-3xl text-gray-900 dark:text-white">{personales.length}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            Disponibles: {personales.filter((p) => p.estado === "disponible").length}
+          </p>
         </div>
 
       </div>
@@ -953,6 +1084,220 @@ export function ProductsPage() {
 
           </div>
         </>
+      )}
+
+      {/* ── PERSONAL TAB ──────────────────────────────────────── */}
+      {activeTab === "personal" && (
+        <>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg text-gray-900 dark:text-white">Personal de Staff</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Choferes y personal de apoyo para eventos.</p>
+              </div>
+              <button
+                onClick={openAddPersonal}
+                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo Personal
+              </button>
+            </div>
+
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, DNI o rol..."
+                value={personalSearch}
+                onChange={(e) => setPersonalSearch(e.target.value)}
+                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+              />
+            </div>
+
+            {filteredPersonales.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">{personalSearch ? "Sin resultados para la búsqueda." : "Aún no hay personal registrado."}</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Nombre / DNI</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Teléfono</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Rol</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                      <th className="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {filteredPersonales.map((p) => (
+                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="px-4 py-3">
+                          <p className="text-sm text-gray-900 dark:text-white">{p.nombre_completo}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">DNI: {p.dni || "—"}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{p.numero_telefono || "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${p.rol === "chofer" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"}`}>
+                            {p.rol}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${estadoPersonalColor[p.estado]}`}>
+                            {p.estado}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditPersonal(p)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePersonal(p)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Personal Modal (Add / Edit) ────────────────────────── */}
+      {showPersonalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setShowPersonalModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">
+              {editingPersonal ? "Editar Personal" : "Nuevo Personal"}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre completo *</label>
+                <input
+                  type="text"
+                  value={personalForm.nombre_completo}
+                  onChange={(e) => setPersonalForm({ ...personalForm, nombre_completo: e.target.value })}
+                  placeholder="Ej: Juan Pérez García"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI * (8 dígitos)</label>
+                  <input
+                    type="text"
+                    value={personalForm.dni}
+                    onChange={(e) => setPersonalForm({ ...personalForm, dni: e.target.value.replace(/\D/g, "").slice(0, 8) })}
+                    placeholder="12345678"
+                    maxLength={8}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
+                  <input
+                    type="date"
+                    value={personalForm.fecha_nacimiento}
+                    onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
+                    max={new Date().toISOString().split("T")[0]}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Número de teléfono *</label>
+                <input
+                  type="text"
+                  value={personalForm.numero_telefono}
+                  onChange={(e) => setPersonalForm({ ...personalForm, numero_telefono: e.target.value })}
+                  placeholder="Ej: +51987654321 · 987654321 · 987-654-321"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Rol</label>
+                  <select
+                    value={personalForm.rol}
+                    onChange={(e) => setPersonalForm({ ...personalForm, rol: e.target.value as Personal["rol"] })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value="apoyo">Apoyo</option>
+                    <option value="chofer">Chofer</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <select
+                    value={personalForm.estado}
+                    onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value="disponible">Disponible</option>
+                    <option value="en-ruta">En ruta</option>
+                    <option value="descanso">Descanso</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">N° Licencia <span className="text-gray-400">(opcional)</span></label>
+                <input
+                  type="text"
+                  value={personalForm.licencia}
+                  onChange={(e) => setPersonalForm({ ...personalForm, licencia: e.target.value })}
+                  placeholder="Ej: Q123456789"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+
+              {personalFormError && (
+                <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{personalFormError}</p>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowPersonalModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  disabled={personalFormSubmitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSubmitPersonal}
+                  disabled={personalFormSubmitting}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
+                >
+                  {personalFormSubmitting ? "Guardando..." : editingPersonal ? "Actualizar" : "Guardar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Stock Movement Modal (+ Entrada / - Salida) ─────── */}

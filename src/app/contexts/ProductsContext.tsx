@@ -89,10 +89,17 @@ export interface InflableImage {
 
 export interface Personal {
   id: number;
-  nombre: string;
-  celular: string;
+  nombre_completo: string;
+  dni: string;
+  fecha_nacimiento: string;
+  numero_telefono: string;
   rol: "chofer" | "apoyo";
   estado: "disponible" | "en-ruta" | "descanso";
+  licencia?: string;
+  foto_url?: string;
+  // Legacy fields from older API responses
+  nombre?: string;
+  celular?: string;
 }
 
 interface ProductsContextType {
@@ -123,7 +130,8 @@ interface ProductsContextType {
   deleteInflable: (id: number) => Promise<void>;
 
   personales: Personal[];
-  addPersonal: (personal: Omit<Personal, "id">) => Promise<void>;
+  addPersonal: (personal: Omit<Personal, "id" | "nombre" | "celular">) => Promise<void>;
+  updatePersonal: (id: number, data: Partial<Omit<Personal, "id" | "nombre" | "celular">>) => Promise<void>;
   updatePersonalEstado: (id: number, estado: Personal["estado"]) => Promise<void>;
   deletePersonal: (id: number) => Promise<void>;
 
@@ -362,14 +370,35 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
-  const addPersonal = async (personal: Omit<Personal, "id">) => {
+  const addPersonal = async (personal: Omit<Personal, "id" | "nombre" | "celular">) => {
     await apiRequest("/personal", {
       method: "POST",
       body: JSON.stringify({
-        nombre: personal.nombre,
-        celular: personal.celular,
+        nombre_completo: personal.nombre_completo,
+        dni: personal.dni,
+        fecha_nacimiento: personal.fecha_nacimiento,
+        numero_telefono: personal.numero_telefono,
         rol: personal.rol,
         estado: personal.estado,
+        ...(personal.licencia ? { licencia: personal.licencia } : {}),
+        ...(personal.foto_url ? { foto_url: personal.foto_url } : {}),
+      }),
+    });
+    await reloadData();
+  };
+
+  const updatePersonal = async (id: number, data: Partial<Omit<Personal, "id" | "nombre" | "celular">>) => {
+    await apiRequest(`/personal/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...(data.nombre_completo !== undefined ? { nombre_completo: data.nombre_completo } : {}),
+        ...(data.dni !== undefined ? { dni: data.dni } : {}),
+        ...(data.fecha_nacimiento !== undefined ? { fecha_nacimiento: data.fecha_nacimiento } : {}),
+        ...(data.numero_telefono !== undefined ? { numero_telefono: data.numero_telefono } : {}),
+        ...(data.rol !== undefined ? { rol: data.rol } : {}),
+        ...(data.estado !== undefined ? { estado: data.estado } : {}),
+        ...(data.licencia !== undefined ? { licencia: data.licencia } : {}),
+        ...(data.foto_url !== undefined ? { foto_url: data.foto_url } : {}),
       }),
     });
     await reloadData();
@@ -415,6 +444,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         deleteInflable,
         personales,
         addPersonal,
+        updatePersonal,
         updatePersonalEstado,
         deletePersonal,
         productNames,
