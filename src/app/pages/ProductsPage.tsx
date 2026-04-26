@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, Wind, History } from "lucide-react";
+import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, FlatProduct, Carrito } from "../contexts/ProductsContext";
+import type { PaqueteItem, FlatProduct, Carrito, ProductStockMovement } from "../contexts/ProductsContext";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -92,7 +92,7 @@ function ProductSelector({
 // ── Main component ───────────────────────────────────────────────
 
 export function ProductsPage() {
-  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "inflables">("productos");
+  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos">("productos");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
@@ -114,12 +114,6 @@ export function ProductsPage() {
     addCarrito,
     updateCarritoEstado,
     deleteCarrito,
-    inflables,
-    addInflable,
-    getInflableImages,
-    addInflableImage,
-    deleteInflableImage,
-    deleteInflable,
   } = useProducts();
 
   // Product modal
@@ -139,7 +133,6 @@ export function ProductsPage() {
   const [showAddPaquete, setShowAddPaquete] = useState(false);
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
-    descripcion: "",
     precioUnitario: 0,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
   });
@@ -154,17 +147,31 @@ export function ProductsPage() {
     estado: "disponible" as Carrito["estado"],
   });
 
-  const [showAddInflable, setShowAddInflable] = useState(false);
-  const [newInflable, setNewInflable] = useState({
-    nombre: "",
-    descripcion: "",
-    cantidadTotal: 1,
-    precioAlquiler: 0,
-    dimensiones: "",
-    edadMinima: "",
-    imagenUrl: "",
-    imagenesText: "",
+  const [selectedStockProduct, setSelectedStockProduct] = useState<FlatProduct | null>(null);
+  const [showStockMovementModal, setShowStockMovementModal] = useState(false);
+  const [stockMovementType, setStockMovementType] = useState<"entrada" | "salida">("entrada");
+  const [stockMovementForm, setStockMovementForm] = useState({
+    cantidad: 1,
+    motivo: "",
+    submitting: false,
+    error: "",
   });
+
+  const [showStockAdjustmentModal, setShowStockAdjustmentModal] = useState(false);
+  const [stockAdjustmentForm, setStockAdjustmentForm] = useState({
+    stockActual: 0,
+    stockMinimo: 0,
+    motivo: "",
+    submitting: false,
+    error: "",
+  });
+
+  const [showStockHistoryModal, setShowStockHistoryModal] = useState(false);
+  const [stockHistoryState, setStockHistoryState] = useState<{
+    loading: boolean;
+    error: string;
+    movements: ProductStockMovement[];
+  }>({ loading: false, error: "", movements: [] });
 
   // Filter products
   const filteredProducts = allProducts.filter((product) => {
@@ -179,8 +186,7 @@ export function ProductsPage() {
   // Filter paquetes
   const filteredPaquetes = paquetes.filter(
     (p) =>
-      (p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.descripcion.toLowerCase().includes(searchTerm.toLowerCase()))
+      p.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Pagination
@@ -194,12 +200,6 @@ export function ProductsPage() {
       c.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredInflables = inflables.filter(
-    (inflable) =>
-      inflable.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inflable.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSearchChange = (value: string) => {
@@ -246,17 +246,15 @@ export function ProductsPage() {
 
   // Add paquete via context
   const handleAddPaquete = async () => {
-    if (!newPaquete.nombre || !newPaquete.descripcion) return;
+    if (!newPaquete.nombre) return;
     await addPaquete({
       nombre: newPaquete.nombre,
-      descripcion: newPaquete.descripcion,
       precioUnitario: newPaquete.precioUnitario,
       contenido: newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0),
     });
     setShowAddPaquete(false);
     setNewPaquete({
       nombre: "",
-      descripcion: "",
       precioUnitario: 0,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
@@ -304,145 +302,117 @@ export function ProductsPage() {
     await deleteCategory(categoryId);
   };
 
-  const handleStockAdjustment = async (product: FlatProduct) => {
-    const stockActualText = window.prompt(`Nuevo stock actual para ${product.producto}:`, String(product.stockActual));
-    if (stockActualText === null) return;
-    const stockActual = Number(stockActualText);
-    if (!Number.isFinite(stockActual) || stockActual < 0) {
-      window.alert("El stock actual debe ser un numero mayor o igual a 0.");
-      return;
-    }
-
-    const stockMinimoText = window.prompt("Stock minimo:", String(product.stockMinimo));
-    if (stockMinimoText === null) return;
-    const stockMinimo = Number(stockMinimoText);
-    if (!Number.isFinite(stockMinimo) || stockMinimo < 0) {
-      window.alert("El stock minimo debe ser un numero mayor o igual a 0.");
-      return;
-    }
-
-    const motivo = window.prompt("Motivo del ajuste (opcional):", "Conteo fisico") || "";
-
-    await updateProductStock(product.id, { stockActual, stockMinimo, motivo });
+  const handleStockAdjustment = (product: FlatProduct) => {
+    setSelectedStockProduct(product);
+    setStockAdjustmentForm({
+      stockActual: product.stockActual,
+      stockMinimo: product.stockMinimo,
+      motivo: "Conteo fisico",
+      submitting: false,
+      error: "",
+    });
+    setShowStockAdjustmentModal(true);
   };
 
-  const handleStockMovement = async (product: FlatProduct, tipo: "entrada" | "salida") => {
-    const cantidadText = window.prompt(
-      `Cantidad de ${tipo === "entrada" ? "entrada" : "salida"} para ${product.producto}:`,
-      "1"
-    );
-    if (cantidadText === null) return;
-    const cantidad = Number(cantidadText);
-    if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      window.alert("La cantidad debe ser un numero mayor a 0.");
-      return;
-    }
-
-    const motivo = window.prompt("Motivo:", tipo === "entrada" ? "Compra proveedor" : "Venta") || "";
-    if (!motivo.trim()) {
-      window.alert("El motivo es obligatorio.");
-      return;
-    }
-
-    try {
-      await addProductStockMovement(product.id, { tipo, cantidad, motivo: motivo.trim() });
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "No se pudo registrar el movimiento de stock.");
-    }
+  const handleStockMovement = (product: FlatProduct, tipo: "entrada" | "salida") => {
+    setSelectedStockProduct(product);
+    setStockMovementType(tipo);
+    setStockMovementForm({
+      cantidad: 1,
+      motivo: tipo === "entrada" ? "Compra proveedor" : "Venta",
+      submitting: false,
+      error: "",
+    });
+    setShowStockMovementModal(true);
   };
 
   const handleShowStockMovements = async (product: FlatProduct) => {
+    setSelectedStockProduct(product);
+    setShowStockHistoryModal(true);
+    setStockHistoryState({ loading: true, error: "", movements: [] });
+
     try {
       const movements = await getProductStockMovements(product.id);
-      if (movements.length === 0) {
-        window.alert(`Sin movimientos para ${product.producto}.`);
-        return;
-      }
-
-      const lines = movements
-        .slice(0, 10)
-        .map((movement) => {
-          const dateText = movement.createdAt ? new Date(movement.createdAt).toLocaleString("es-PE") : "-";
-          return `${dateText} | ${movement.tipo.toUpperCase()} | ${movement.cantidad} | ${movement.stockAnterior} -> ${movement.stockNuevo} | ${movement.motivo}`;
-        })
-        .join("\n");
-
-      window.alert(`Ultimos movimientos de ${product.producto}:\n\n${lines}`);
+      setStockHistoryState({ loading: false, error: "", movements });
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "No se pudo cargar el historial de stock.");
+      setStockHistoryState({
+        loading: false,
+        error: error instanceof Error ? error.message : "No se pudo cargar el historial de stock.",
+        movements: [],
+      });
     }
   };
 
-  const handleAddInflable = async () => {
-    if (!newInflable.nombre.trim() || !newInflable.descripcion.trim()) return;
+  const submitStockMovement = async () => {
+    if (!selectedStockProduct) return;
 
-    const imageList = newInflable.imagenesText
-      .split("\n")
-      .map((image) => image.trim())
-      .filter(Boolean);
-
-    const mergedImages = [...new Set([newInflable.imagenUrl.trim(), ...imageList].filter(Boolean))];
-
-    await addInflable({
-      nombre: newInflable.nombre.trim(),
-      descripcion: newInflable.descripcion.trim(),
-      cantidadTotal: Number(newInflable.cantidadTotal || 0),
-      precioAlquiler: Number(newInflable.precioAlquiler || 0),
-      dimensiones: newInflable.dimensiones.trim(),
-      edadMinima: newInflable.edadMinima.trim(),
-      imagenUrl: newInflable.imagenUrl.trim(),
-      imagenes: mergedImages.map((url) => ({ id: null, url })),
-    });
-
-    setShowAddInflable(false);
-    setNewInflable({
-      nombre: "",
-      descripcion: "",
-      cantidadTotal: 1,
-      precioAlquiler: 0,
-      dimensiones: "",
-      edadMinima: "",
-      imagenUrl: "",
-      imagenesText: "",
-    });
-  };
-
-  const handleAddImageToInflable = async (inflableId: number) => {
-    const imageUrl = window.prompt("URL de la nueva imagen:");
-    if (!imageUrl || !imageUrl.trim()) return;
-    await addInflableImage(inflableId, imageUrl.trim());
-  };
-
-  const handleDeleteImageFromInflable = async (inflableId: number) => {
-    const images = await getInflableImages(inflableId);
-    if (images.length === 0) {
-      window.alert("Este inflable no tiene imagenes registradas.");
+    if (!Number.isFinite(stockMovementForm.cantidad) || stockMovementForm.cantidad <= 0) {
+      setStockMovementForm((prev) => ({ ...prev, error: "La cantidad debe ser mayor a 0." }));
+      return;
+    }
+    if (!stockMovementForm.motivo.trim()) {
+      setStockMovementForm((prev) => ({ ...prev, error: "El motivo es obligatorio." }));
       return;
     }
 
-    const helpText = images
-      .slice(0, 10)
-      .map((image) => `ID ${image.id}: ${image.imageUrl}`)
-      .join("\n");
+    setStockMovementForm((prev) => ({ ...prev, submitting: true, error: "" }));
+    try {
+      await addProductStockMovement(selectedStockProduct.id, {
+        tipo: stockMovementType,
+        cantidad: stockMovementForm.cantidad,
+        motivo: stockMovementForm.motivo.trim(),
+      });
+      setShowStockMovementModal(false);
+    } catch (error) {
+      setStockMovementForm((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error instanceof Error ? error.message : "No se pudo registrar el movimiento.",
+      }));
+      return;
+    }
+    setStockMovementForm((prev) => ({ ...prev, submitting: false }));
+  };
 
-    const imageIdText = window.prompt(`Selecciona el ID de imagen a eliminar:\n\n${helpText}`);
-    if (imageIdText === null) return;
+  const submitStockAdjustment = async () => {
+    if (!selectedStockProduct) return;
 
-    const imageId = Number(imageIdText);
-    if (!Number.isFinite(imageId)) {
-      window.alert("Debes ingresar un ID valido.");
+    if (!Number.isFinite(stockAdjustmentForm.stockActual) || stockAdjustmentForm.stockActual < 0) {
+      setStockAdjustmentForm((prev) => ({ ...prev, error: "El stock actual debe ser mayor o igual a 0." }));
+      return;
+    }
+    if (!Number.isFinite(stockAdjustmentForm.stockMinimo) || stockAdjustmentForm.stockMinimo < 0) {
+      setStockAdjustmentForm((prev) => ({ ...prev, error: "El stock minimo debe ser mayor o igual a 0." }));
       return;
     }
 
-    await deleteInflableImage(inflableId, imageId);
+    setStockAdjustmentForm((prev) => ({ ...prev, submitting: true, error: "" }));
+    try {
+      await updateProductStock(selectedStockProduct.id, {
+        stockActual: stockAdjustmentForm.stockActual,
+        stockMinimo: stockAdjustmentForm.stockMinimo,
+        motivo: stockAdjustmentForm.motivo.trim(),
+      });
+      setShowStockAdjustmentModal(false);
+    } catch (error) {
+      setStockAdjustmentForm((prev) => ({
+        ...prev,
+        submitting: false,
+        error: error instanceof Error ? error.message : "No se pudo ajustar el stock.",
+      }));
+      return;
+    }
+    setStockAdjustmentForm((prev) => ({ ...prev, submitting: false }));
   };
+
+
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Catálogo de Productos</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Gestiona productos, stock, paquetes, carritos e inflables para eventos
+          Gestiona productos, stock, paquetes y carritos para eventos
         </p>
       </div>
 
@@ -482,15 +452,15 @@ export function ProductsPage() {
           Carritos
         </button>
         <button
-          onClick={() => { setActiveTab("inflables"); setCurrentPage(1); setSearchTerm(""); }}
+          onClick={() => { setActiveTab("recursos"); setCurrentPage(1); setSearchTerm(""); }}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
-            activeTab === "inflables"
+            activeTab === "recursos"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           }`}
         >
-          <Wind className="w-4 h-4" />
-          Inflables
+          <Layers className="w-4 h-4" />
+          Recursos
         </button>
       </div>
 
@@ -535,15 +505,7 @@ export function ProductsPage() {
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{carritos.length}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-cyan-100 dark:bg-cyan-900/30 p-2 rounded-lg">
-              <Wind className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Inflables</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{inflables.length}</p>
-        </div>
+
       </div>
 
       {activeTab === "productos" && categories.length > 0 && (
@@ -773,8 +735,6 @@ export function ProductsPage() {
                   </button>
                 </div>
 
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{paq.descripcion}</p>
-
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
                     Contenido {paq.contenido.length > 0 && `(${paq.contenido.length} productos)`}
@@ -915,109 +875,273 @@ export function ProductsPage() {
         </>
       )}
 
-      {/* ── INFLABLES TAB ─────────────────────────────────────── */}
-      {activeTab === "inflables" && (
+
+
+      {/* ── RECURSOS TAB ──────────────────────────────────────── */}
+      {activeTab === "recursos" && (
         <>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex-1 w-full lg:max-w-md relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <div className="grid grid-cols-1 gap-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg text-gray-900 dark:text-white">Inventario de Productos</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Gestiona stock actual, minimo y movimientos.</p>
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{allProducts.length} productos</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Categoria</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Stock</th>
+                      <th className="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {allProducts.slice(0, 25).map((product) => (
+                      <tr key={`recurso-stock-${product.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{product.producto}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{product.categoria}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`${product.stockActual <= product.stockMinimo ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                            {product.stockActual} / min {product.stockMinimo}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleStockMovement(product, "entrada")}
+                              className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                            >
+                              + Entrada
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStockMovement(product, "salida")}
+                              className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+                            >
+                              - Salida
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStockAdjustment(product)}
+                              className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
+                            >
+                              Ajustar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleShowStockMovements(product)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
+                            >
+                              <History className="h-3 w-3" />
+                              Historial
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+
+          </div>
+        </>
+      )}
+
+      {/* ── Stock Movement Modal (+ Entrada / - Salida) ─────── */}
+      {showStockMovementModal && selectedStockProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={() => setShowStockMovementModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">
+              {stockMovementType === "entrada" ? "+ Entrada" : "- Salida"} de Stock
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
                 <input
-                  type="text"
-                  placeholder="Buscar inflable por nombre o descripcion..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                  type="number"
+                  min={1}
+                  value={stockMovementForm.cantidad}
+                  onChange={(e) => setStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
               </div>
-              <button
-                onClick={() => setShowAddInflable(true)}
-                className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-5 h-5" />
-                Nuevo Inflable
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredInflables.map((inflable) => (
-              <div key={inflable.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <h3 className="text-gray-900 dark:text-white">{inflable.nombre}</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{inflable.dimensiones || "Sin dimensiones"}</p>
-                  </div>
-                  <button
-                    onClick={() => deleteInflable(inflable.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                    title="Eliminar inflable"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{inflable.descripcion}</p>
-
-                <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-                  <div className="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Cantidad</p>
-                    <p className="text-gray-900 dark:text-white">{inflable.cantidadTotal}</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Precio/Dia</p>
-                    <p className="text-[#EF8022]">S/ {inflable.precioAlquiler}</p>
-                  </div>
-                </div>
-
-                <div className="mb-2">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Galeria ({inflable.imagenes.length})</p>
-                  {inflable.imagenes.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {inflable.imagenes.slice(0, 4).map((image, index) => (
-                        <a
-                          key={`${inflable.id}-${image.id ?? index}`}
-                          href={image.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs px-2 py-1 rounded bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 hover:underline"
-                        >
-                          Imagen {index + 1}
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-400">Sin imagenes registradas</p>
-                  )}
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAddImageToInflable(inflable.id)}
-                    className="text-xs px-2.5 py-1.5 rounded bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300"
-                  >
-                    + Imagen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteImageFromInflable(inflable.id)}
-                    className="text-xs px-2.5 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
-                  >
-                    Eliminar Imagen
-                  </button>
-                </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo *</label>
+                <input
+                  type="text"
+                  value={stockMovementForm.motivo}
+                  onChange={(e) => setStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
               </div>
-            ))}
-          </div>
-
-          {filteredInflables.length === 0 && (
-            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-              <Wind className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">No se encontraron inflables</p>
+              {stockMovementForm.error && (
+                <p className="text-sm text-red-500">{stockMovementForm.error}</p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowStockMovementModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={submitStockMovement}
+                  disabled={stockMovementForm.submitting}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
+                >
+                  {stockMovementForm.submitting ? "Guardando..." : "Guardar"}
+                </button>
+              </div>
             </div>
-          )}
-        </>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stock Adjustment Modal ───────────────────────────── */}
+      {showStockAdjustmentModal && selectedStockProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
+            <button
+              onClick={() => setShowStockAdjustmentModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Ajustar Stock</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Actual *</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={stockAdjustmentForm.stockActual}
+                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Minimo *</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={stockAdjustmentForm.stockMinimo}
+                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
+                <input
+                  type="text"
+                  value={stockAdjustmentForm.motivo}
+                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                />
+              </div>
+              {stockAdjustmentForm.error && (
+                <p className="text-sm text-red-500">{stockAdjustmentForm.error}</p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowStockAdjustmentModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={submitStockAdjustment}
+                  disabled={stockAdjustmentForm.submitting}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
+                >
+                  {stockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stock History Modal ──────────────────────────────── */}
+      {showStockHistoryModal && selectedStockProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setShowStockHistoryModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Historial de Movimientos</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
+
+            {stockHistoryState.loading && <p className="text-sm text-gray-500 dark:text-gray-400">Cargando historial...</p>}
+            {!stockHistoryState.loading && stockHistoryState.error && (
+              <p className="text-sm text-red-500">{stockHistoryState.error}</p>
+            )}
+            {!stockHistoryState.loading && !stockHistoryState.error && stockHistoryState.movements.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Sin movimientos registrados.</p>
+            )}
+
+            {!stockHistoryState.loading && !stockHistoryState.error && stockHistoryState.movements.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300 uppercase">Fecha</th>
+                      <th className="px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300 uppercase">Tipo</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-600 dark:text-gray-300 uppercase">Cantidad</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-600 dark:text-gray-300 uppercase">Anterior</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-600 dark:text-gray-300 uppercase">Nuevo</th>
+                      <th className="px-3 py-2 text-left text-xs text-gray-600 dark:text-gray-300 uppercase">Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {stockHistoryState.movements.map((movement) => (
+                      <tr key={movement.id}>
+                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                          {movement.createdAt ? new Date(movement.createdAt).toLocaleString("es-PE") : "-"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            movement.tipo === "entrada"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : movement.tipo === "salida"
+                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                          }`}>
+                            {movement.tipo}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">{movement.cantidad}</td>
+                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{movement.stockAnterior}</td>
+                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{movement.stockNuevo}</td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{movement.motivo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Add Product Modal ──────────────────────────────────── */}
@@ -1154,16 +1278,6 @@ export function ProductsPage() {
                   onChange={(e) => setNewPaquete({ ...newPaquete, nombre: e.target.value })}
                   placeholder="Ej: Paquete Premium"
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
-                <textarea
-                  value={newPaquete.descripcion}
-                  onChange={(e) => setNewPaquete({ ...newPaquete, descripcion: e.target.value })}
-                  placeholder="Ej: 120 helados variados con carrito"
-                  rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
                 />
               </div>
               <div className="grid grid-cols-1 gap-4">
@@ -1340,116 +1454,6 @@ export function ProductsPage() {
         </div>
       )}
 
-      {/* ── Add Inflable Modal ────────────────────────────────── */}
-      {showAddInflable && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowAddInflable(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Inflable</h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
-                <input
-                  type="text"
-                  value={newInflable.nombre}
-                  onChange={(e) => setNewInflable({ ...newInflable, nombre: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripcion *</label>
-                <textarea
-                  value={newInflable.descripcion}
-                  onChange={(e) => setNewInflable({ ...newInflable, descripcion: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad Total *</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={newInflable.cantidadTotal}
-                    onChange={(e) => setNewInflable({ ...newInflable, cantidadTotal: Number(e.target.value) })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio Alquiler (S/)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={newInflable.precioAlquiler || ""}
-                    onChange={(e) => setNewInflable({ ...newInflable, precioAlquiler: Number(e.target.value) })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label>
-                  <input
-                    type="text"
-                    value={newInflable.dimensiones}
-                    onChange={(e) => setNewInflable({ ...newInflable, dimensiones: e.target.value })}
-                    placeholder="Ej: 6m x 4m"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Edad Minima</label>
-                  <input
-                    type="text"
-                    value={newInflable.edadMinima}
-                    onChange={(e) => setNewInflable({ ...newInflable, edadMinima: e.target.value })}
-                    placeholder="Ej: 3+"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Imagen Principal URL</label>
-                <input
-                  type="url"
-                  value={newInflable.imagenUrl}
-                  onChange={(e) => setNewInflable({ ...newInflable, imagenUrl: e.target.value })}
-                  placeholder="https://.../principal.jpg"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Galeria de Imagenes (una URL por linea)</label>
-                <textarea
-                  value={newInflable.imagenesText}
-                  onChange={(e) => setNewInflable({ ...newInflable, imagenesText: e.target.value })}
-                  rows={4}
-                  placeholder={"https://.../principal.jpg\nhttps://.../detalle1.jpg"}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddInflable(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleAddInflable} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  Guardar Inflable
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -26,7 +26,6 @@ type ApiCategory = {
 type ApiPaquete = {
   id: number;
   nombre: string;
-  descripcion: string | null;
   precio_unitario: number;
   contenido?: Array<{
     producto_sku: string;
@@ -93,7 +92,6 @@ export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
   return apiPaquetes.map((paquete) => ({
     id: paquete.id,
     nombre: paquete.nombre,
-    descripcion: paquete.descripcion || "",
     precioUnitario: Number(paquete.precio_unitario || 0),
     contenido: (paquete.contenido || []).map((item) => ({
       productoSku: item.producto_sku,

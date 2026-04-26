@@ -1,40 +1,4 @@
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Package, TrendingUp, Clock, MapPin } from "lucide-react";
-
-const deliveryData = [
-  { mes: "Ene", entregas: 245 },
-  { mes: "Feb", entregas: 289 },
-  { mes: "Mar", entregas: 312 },
-  { mes: "Abr", entregas: 298 },
-  { mes: "May", entregas: 334 },
-  { mes: "Jun", entregas: 367 },
-];
-
-const statusData = [
-  { name: "Entregados", value: 856, color: "#16a34a" },
-  { name: "En Ruta", value: 124, color: "#2563eb" },
-  { name: "Pendientes", value: 89, color: "#f59e0b" },
-  { name: "Cancelados", value: 31, color: "#dc2626" },
-];
-
-const weeklyData = [
-  { dia: "Lun", entregas: 52, promedio: 45 },
-  { dia: "Mar", entregas: 48, promedio: 45 },
-  { dia: "Mie", entregas: 61, promedio: 45 },
-  { dia: "Jue", entregas: 55, promedio: 45 },
-  { dia: "Vie", entregas: 68, promedio: 45 },
-  { dia: "Sab", entregas: 43, promedio: 45 },
-  { dia: "Dom", entregas: 28, promedio: 45 },
-];
-
-const chartAxisColor = "#9ca3af";
-const tooltipContentStyle = {
-  backgroundColor: "#111827",
-  border: "1px solid #374151",
-  borderRadius: "8px",
-};
-const tooltipLabelStyle = { color: "#f9fafb", fontWeight: 600 };
-const tooltipItemStyle = { color: "#f3f4f6" };
 
 export function DashboardPage() {
   return (
@@ -100,56 +64,16 @@ export function DashboardPage() {
         {/* Monthly Deliveries */}
         <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <h3 className="text-lg text-gray-900 dark:text-white mb-6">Entregas Mensuales</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={deliveryData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis dataKey="mes" stroke={chartAxisColor} />
-              <YAxis stroke={chartAxisColor} />
-              <Tooltip
-                contentStyle={tooltipContentStyle}
-                labelStyle={tooltipLabelStyle}
-                itemStyle={tooltipItemStyle}
-              />
-              <Bar dataKey="entregas" fill="#1F3C8B" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="h-[300px] flex items-center justify-center text-gray-400 dark:text-gray-500">
+            <p>Datos en desarrollo</p>
+          </div>
         </div>
 
         {/* Status Distribution */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <h3 className="text-lg text-gray-900 dark:text-white mb-6">Estado de Pedidos</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={statusData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={5}
-                dataKey="value"
-              >
-                {statusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={tooltipContentStyle}
-                labelStyle={tooltipLabelStyle}
-                itemStyle={tooltipItemStyle}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-4 space-y-2">
-            {statusData.map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">{item.name}</span>
-                </div>
-                <span className="text-sm text-gray-900 dark:text-white">{item.value}</span>
-              </div>
-            ))}
+          <div className="h-[300px] flex items-center justify-center text-gray-400 dark:text-gray-500">
+            <p>Datos en desarrollo</p>
           </div>
         </div>
       </div>
@@ -157,20 +81,9 @@ export function DashboardPage() {
       {/* Weekly Performance */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
         <h3 className="text-lg text-gray-900 dark:text-white mb-6">Rendimiento Semanal</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={weeklyData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-            <XAxis dataKey="dia" stroke={chartAxisColor} />
-            <YAxis stroke={chartAxisColor} />
-            <Tooltip
-              contentStyle={tooltipContentStyle}
-              labelStyle={tooltipLabelStyle}
-              itemStyle={tooltipItemStyle}
-            />
-            <Line type="monotone" dataKey="entregas" stroke="#EF8022" strokeWidth={3} dot={{ fill: "#1F3C8B", r: 5 }} />
-            <Line type="monotone" dataKey="promedio" stroke="#9ca3af" strokeWidth={2} strokeDasharray="5 5" />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="h-[300px] flex items-center justify-center text-gray-400 dark:text-gray-500">
+          <p>Datos en desarrollo</p>
+        </div>
       </div>
     </div>
   );

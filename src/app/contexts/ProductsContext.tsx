@@ -50,7 +50,12 @@ export interface PaqueteItem {
 export interface Paquete {
   id: number;
   nombre: string;
-  descripcion: string;
+  contenido: PaqueteItem[];
+  precioUnitario: number;
+}
+
+export interface PaqueteInput {
+  nombre: string;
   contenido: PaqueteItem[];
   precioUnitario: number;
 }
@@ -102,7 +107,7 @@ interface ProductsContextType {
   deleteCategory: (id: number) => Promise<void>;
 
   paquetes: Paquete[];
-  addPaquete: (paquete: Omit<Paquete, "id">) => Promise<void>;
+  addPaquete: (paquete: PaqueteInput) => Promise<void>;
   deletePaquete: (id: number) => Promise<void>;
 
   carritos: Carrito[];
@@ -262,12 +267,11 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
-  const addPaquete = async (paquete: Omit<Paquete, "id">) => {
+  const addPaquete = async (paquete: PaqueteInput) => {
     await apiRequest("/paquetes", {
       method: "POST",
       body: JSON.stringify({
         nombre: paquete.nombre,
-        descripcion: paquete.descripcion,
         precio_unitario: paquete.precioUnitario,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
       }),

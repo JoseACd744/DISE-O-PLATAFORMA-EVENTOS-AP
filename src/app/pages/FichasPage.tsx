@@ -45,6 +45,7 @@ interface Ficha {
   fecha_reserva: string;
   fecha: string;
   distrito: string;
+  transporte?: "traslado" | "delivery";
   direccion: string;
   referencia?: string;
   hora_entrega: string;
@@ -55,7 +56,6 @@ interface Ficha {
   carritoIds?: number[]; // IDs de carritos del catálogo
   // Campos específicos de Jugueton (inflables)
   inflableIds?: number[]; // IDs de inflables seleccionados
-  horasServicio?: number; // Horas de servicio de inflables
   comentarios?: string;
   personalIds?: number[];
   cliente_id?: string | null;
@@ -75,12 +75,12 @@ interface FichaFormData {
   fecha_evento: string;
   fecha_reserva: string;
   distrito: string;
+  transporte: "traslado" | "delivery";
   direccion: string;
   referencia: string;
   hora_entrega: string;
   hora_recojo: string;
   comentarios: string;
-  horasServicio: number;
   cliente_nombre: string;
   cliente_celular: string;
   contacto_nombre: string;
@@ -99,12 +99,12 @@ const getInitialFormData = (): FichaFormData => ({
   fecha_evento: new Date().toISOString().slice(0, 10),
   fecha_reserva: new Date().toISOString().slice(0, 10),
   distrito: "",
+  transporte: "traslado",
   direccion: "",
   referencia: "",
   hora_entrega: "",
   hora_recojo: "",
   comentarios: "",
-  horasServicio: 2,
   cliente_nombre: "",
   cliente_celular: "",
   contacto_nombre: "",
@@ -173,6 +173,13 @@ const DISTRITOS_LIMA = [
   "Surquillo",
   "Villa El Salvador",
   "Villa María del Triunfo",
+  "Callao",
+  "Bellavista",
+  "Carmen de la Legua-Reynoso",
+  "La Perla",
+  "La Punta",
+  "Mi Perú",
+  "Ventanilla",
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -594,6 +601,7 @@ export function FichasPage() {
         fecha_reserva: f.fecha_reserva || f.fecha || "",
         fecha: f.fecha_evento || f.fecha || "",
         distrito: f.distrito || "",
+        transporte: (f.transporte || f.tipo_transporte || "traslado") as "traslado" | "delivery",
         direccion: f.direccion || "",
         referencia: f.referencia || "",
         hora_entrega: f.hora_entrega || "",
@@ -610,7 +618,6 @@ export function FichasPage() {
         })),
         carritoIds: f.carritoIds || [],
         inflableIds: f.inflableIds || [],
-        horasServicio: f.horas_servicio || undefined,
         comentarios: f.comentarios || "",
         personalIds: f.personalIds || [],
         cliente_id: f.cliente_id || null,
@@ -856,7 +863,6 @@ export function FichasPage() {
 
       const bloqueStaff = [
         personalDetalle.length > 0 ? `Personal de staff: ${personalDetalle.join(", ")}` : "Personal de staff: 1 PERSONAL",
-        `Duracion del servicio: ${ficha.horasServicio ?? 2} horas`,
         "Incluye instalacion y desmontaje",
         ficha.comentarios ? `Observacion: ${ficha.comentarios}` : "Precio incluye IGB",
       ].join("<br/>");
@@ -869,8 +875,8 @@ export function FichasPage() {
       });
 
       filasJugueton.push({
-        producto: "Movilidad",
-        descripcion: `Entrega y recojo (${escapeHtml(ficha.distrito)})`,
+        producto: "Transporte",
+        descripcion: `${ficha.transporte === "delivery" ? "Delivery" : "Traslado"} (${escapeHtml(ficha.distrito)})`,
         cantidad: 1,
         precio: 0,
       });
@@ -1217,7 +1223,7 @@ export function FichasPage() {
         : []),
       {
         cantidad: 1,
-        descripcion: `Movilidad a ${ficha.distrito}`,
+        descripcion: `${ficha.transporte === "delivery" ? "Delivery" : "Traslado"} a ${ficha.distrito}`,
         pu: 70,
         total: 70,
         destacado: true,
@@ -1696,12 +1702,12 @@ export function FichasPage() {
           fecha_evento: formData.fecha_evento,
           fecha_reserva: formData.fecha_reserva,
           distrito: formData.distrito,
+          transporte: formData.transporte,
           direccion: formData.direccion,
           referencia: formData.referencia,
           hora_entrega: formData.hora_entrega,
           hora_recojo: formData.hora_recojo,
           comentarios: formData.comentarios,
-          horas_servicio: brand === "jugueton" ? Number(formData.horasServicio) || 2 : null,
           cliente_id: formData.cliente_id || null,
           cliente_nombre: formData.cliente_nombre,
           cliente_celular: formData.cliente_celular,
@@ -2208,6 +2214,10 @@ export function FichasPage() {
                 <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_entrega}</p></div>
                 <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_recojo}</p></div>
               </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Transporte</p>
+                <p className="text-gray-900 dark:text-white">{selectedFicha.transporte === "delivery" ? "Delivery" : "Traslado"}</p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 flex items-center gap-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Registrado por:</span>
@@ -2243,7 +2253,6 @@ export function FichasPage() {
                         })}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Horas</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.horasServicio}h</p></div>
                   </>
                 )}
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2"><div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Personal Asignado</span></div><div className="flex flex-wrap gap-1.5">{getNombresPersonal(selectedFicha).length > 0 ? getNombresPersonal(selectedFicha).map(nombre => <span key={nombre} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">{nombre}</span>) : <span className="text-xs text-gray-400">Sin personal asignado</span>}</div></div>
@@ -2459,6 +2468,13 @@ export function FichasPage() {
                     </select>
                   </div>
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Transporte *</label>
+                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
+                      <option value="traslado">Traslado</option>
+                      <option value="delivery">Delivery</option>
+                    </select>
+                  </div>
                   <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
                 </div>
               </div>
@@ -2508,7 +2524,6 @@ export function FichasPage() {
                           ))}
                         </div>
                       </div>
-                      <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Horas de Servicio *</label><input type="number" name="horasServicio" value={formData.horasServicio || 2} onChange={handleInputChange} required min="1" step="0.5" className={inputClass} /></div>
                     </>
                   )}
                   <div>
