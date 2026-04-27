@@ -152,6 +152,7 @@ interface ProductsContextType {
   categories: Category[];
   allProducts: FlatProduct[];
   addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
+  updateProduct: (id: number, catName: string, product: Omit<Product, "id">) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
   updateProductStock: (id: number, payload: { stockActual: number; stockMinimo?: number; motivo?: string }) => Promise<void>;
   addProductStockMovement: (id: number, payload: { tipo: "entrada" | "salida"; cantidad: number; motivo: string }) => Promise<void>;
@@ -249,6 +250,34 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         precio: Number(product.precio || 0),
         stock_actual: Number(product.stockActual || 0),
         stock_minimo: Number(product.stockMinimo || 0),
+      }),
+    });
+
+    await reloadData();
+  };
+
+  const updateProduct = async (id: number, catName: string, product: Omit<Product, "id">) => {
+    let category = categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
+
+    if (!category) {
+      const createdCategory = await apiRequest<{ id: number }>("/products/categories", {
+        method: "POST",
+        body: JSON.stringify({ nombre: catName }),
+      });
+      category = { id: createdCategory.id, categoria: catName, productos: [] };
+    }
+
+    await apiRequest(`/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        id,
+        categoria_id: category.id,
+        producto: product.producto,
+        precio: Number(product.precio || 0),
+        sku: product.sku,
+        stock_actual: Number(product.stockActual || 0),
+        stock_minimo: Number(product.stockMinimo || 0),
+        stock_reservado: 0,
       }),
     });
 
@@ -480,6 +509,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         categories,
         allProducts,
         addProduct,
+        updateProduct,
         deleteProduct,
         updateProductStock,
         addProductStockMovement,

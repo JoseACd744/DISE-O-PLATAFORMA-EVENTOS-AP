@@ -98,6 +98,7 @@ export function ProductsPage() {
     categories,
     allProducts,
     addProduct,
+    updateProduct,
     deleteProduct,
     updateProductStock,
     addProductStockMovement,
@@ -118,6 +119,7 @@ export function ProductsPage() {
 
   // Product modal
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<FlatProduct | null>(null);
   const [newProduct, setNewProduct] = useState({
     categoria: "",
     nuevaCategoria: "",
@@ -132,6 +134,8 @@ export function ProductsPage() {
   const [showAddPaquete, setShowAddPaquete] = useState(false);
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
+    precioUnitario: 0,
+    precioEditadoManualmente: false,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
   });
 
@@ -153,7 +157,6 @@ export function ProductsPage() {
     numero_telefono: "",
     rol: "apoyo" as Personal["rol"],
     estado: "disponible" as Personal["estado"],
-    licencia: "",
     foto_url: "",
   };
   const [showPersonalModal, setShowPersonalModal] = useState(false);
@@ -181,14 +184,6 @@ export function ProductsPage() {
     if (form.nombre_completo.trim().length < 3) return "El nombre completo debe tener al menos 3 caracteres.";
     if (!/^\d{8}$/.test(form.dni)) return "El DNI debe ser exactamente 8 dígitos numéricos.";
 
-    if (form.rol === "chofer") {
-      if (!validatePhone(form.numero_telefono, "chofer")) {
-        return "Teléfono inválido para chofer. Debe tener de 7 a 15 dígitos y puede usar +, espacios o guiones.";
-      }
-      if (!form.licencia.trim()) return "La licencia es obligatoria para chofer.";
-      return "";
-    }
-
     if (!form.fecha_nacimiento) return "La fecha de nacimiento es requerida.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.fecha_nacimiento)) return "La fecha debe estar en formato YYYY-MM-DD.";
     if (new Date(form.fecha_nacimiento) > new Date()) return "La fecha de nacimiento no puede ser futura.";
@@ -204,15 +199,19 @@ export function ProductsPage() {
   };
 
   const openEditPersonal = (p: Personal) => {
+    if (p.rol === "chofer") {
+      setPersonalFormError("Los choferes se editan en la página de Logística.");
+      return;
+    }
+
     setEditingPersonal(p);
     setPersonalForm({
       nombre_completo: p.nombre_completo,
       dni: p.dni,
       fecha_nacimiento: p.fecha_nacimiento,
       numero_telefono: p.numero_telefono,
-      rol: p.rol,
+      rol: "apoyo",
       estado: p.estado,
-      licencia: p.licencia ?? "",
       foto_url: p.foto_url ?? "",
     });
     setPersonalFormError("");
@@ -220,8 +219,8 @@ export function ProductsPage() {
   };
 
   const handleSubmitPersonal = async () => {
-    if (!editingPersonal && personalForm.rol === "chofer") {
-      setPersonalFormError("Los choferes solo se crean desde la página de rutas.");
+    if (editingPersonal?.rol === "chofer") {
+      setPersonalFormError("Los choferes se editan en la página de Logística.");
       return;
     }
 
@@ -230,23 +229,15 @@ export function ProductsPage() {
     setPersonalFormSubmitting(true);
     setPersonalFormError("");
     try {
-      const payload = personalForm.rol === "chofer"
-        ? {
-            nombre_completo: personalForm.nombre_completo.trim(),
-            dni: personalForm.dni.trim(),
-            numero_telefono: personalForm.numero_telefono.trim(),
-            licencia: personalForm.licencia.trim(),
-          }
-        : {
-            nombre_completo: personalForm.nombre_completo.trim(),
-            dni: personalForm.dni.trim(),
-            fecha_nacimiento: personalForm.fecha_nacimiento,
-            numero_telefono: personalForm.numero_telefono.trim(),
-            rol: "apoyo" as const,
-            estado: personalForm.estado,
-            ...(personalForm.licencia.trim() ? { licencia: personalForm.licencia.trim() } : {}),
-            ...(personalForm.foto_url.trim() ? { foto_url: personalForm.foto_url.trim() } : {}),
-          };
+      const payload = {
+        nombre_completo: personalForm.nombre_completo.trim(),
+        dni: personalForm.dni.trim(),
+        fecha_nacimiento: personalForm.fecha_nacimiento,
+        numero_telefono: personalForm.numero_telefono.trim(),
+        rol: "apoyo" as const,
+        estado: personalForm.estado,
+        ...(personalForm.foto_url.trim() ? { foto_url: personalForm.foto_url.trim() } : {}),
+      };
 
       if (editingPersonal) {
         await updatePersonal(editingPersonal.id, payload, editingPersonal.rol);
@@ -346,21 +337,46 @@ export function ProductsPage() {
 
   const categoryNames = ["Todas", ...categories.map((cat) => cat.categoria)];
 
-  // Add product via context
-  const handleAddProduct = async () => {
+  const getPrecioPaqueteCalculado = (items: PaqueteItem[]) => {
+    return items.reduce((total, item) => {
+      if (!item.productoSku || item.cantidad <= 0) return total;
+      const producto = allProducts.find((p) => p.sku === item.productoSku);
+      const precioProducto = Number(producto?.precio || 0);
+      return total + (precioProducto * item.cantidad);
+    }, 0);
+  };
+
+  const updatePaqueteItems = (items: PaqueteItem[]) => {
+    const precioCalculado = Number(getPrecioPaqueteCalculado(items).toFixed(2));
+    setNewPaquete((prev) => ({
+      ...prev,
+      contenidoItems: items,
+      ...(prev.precioEditadoManualmente ? {} : { precioUnitario: precioCalculado }),
+    }));
+  };
+
+  // Add/Update product via context
+  const handleSaveProduct = async () => {
     if (!newProduct.producto || !newProduct.sku) return;
     const catName = newProduct.nuevaCategoria || newProduct.categoria;
     if (!catName) return;
 
-    await addProduct(catName, {
+    const payload = {
       producto: newProduct.producto,
       sku: newProduct.sku,
       precio: Number(newProduct.precio || 0),
       stockActual: Number(newProduct.stockActual || 0),
       stockMinimo: Number(newProduct.stockMinimo || 0),
-    });
+    };
+
+    if (editingProduct) {
+      await updateProduct(editingProduct.id, catName, payload);
+    } else {
+      await addProduct(catName, payload);
+    }
 
     setShowAddProduct(false);
+    setEditingProduct(null);
     setNewProduct({
       categoria: "",
       nuevaCategoria: "",
@@ -376,30 +392,38 @@ export function ProductsPage() {
   const handleAddPaquete = async () => {
     if (!newPaquete.nombre) return;
     const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
-    const precioTotalCalculado = contenidoValido.reduce((total, item) => {
-      const producto = allProducts.find((p) => p.sku === item.productoSku);
-      const precioProducto = Number(producto?.precio || 0);
-      return total + (precioProducto * item.cantidad);
-    }, 0);
+    const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
 
     await addPaquete({
       nombre: newPaquete.nombre,
-      precioUnitario: Number(precioTotalCalculado.toFixed(2)),
+      precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
       contenido: contenidoValido,
     });
     setShowAddPaquete(false);
     setNewPaquete({
       nombre: "",
+      precioUnitario: 0,
+      precioEditadoManualmente: false,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
   };
 
   const contenidoPaqueteValido = newPaquete.contenidoItems.filter((item) => item.productoSku && item.cantidad > 0);
-  const precioTotalPaquete = contenidoPaqueteValido.reduce((total, item) => {
-    const producto = allProducts.find((p) => p.sku === item.productoSku);
-    const precioProducto = Number(producto?.precio || 0);
-    return total + (precioProducto * item.cantidad);
-  }, 0);
+  const precioTotalPaquete = getPrecioPaqueteCalculado(contenidoPaqueteValido);
+
+  const handleEditProduct = (product: FlatProduct) => {
+    setEditingProduct(product);
+    setNewProduct({
+      categoria: product.categoria,
+      nuevaCategoria: "",
+      producto: product.producto,
+      sku: product.sku,
+      precio: product.precio,
+      stockActual: product.stockActual,
+      stockMinimo: product.stockMinimo,
+    });
+    setShowAddProduct(true);
+  };
 
   const handleAddCarrito = async () => {
     const codigo = newCarrito.codigo.trim();
@@ -734,7 +758,19 @@ export function ProductsPage() {
                   ))}
                 </select>
                 <button
-                  onClick={() => setShowAddProduct(true)}
+                  onClick={() => {
+                    setEditingProduct(null);
+                    setNewProduct({
+                      categoria: "",
+                      nuevaCategoria: "",
+                      producto: "",
+                      sku: "",
+                      precio: 0,
+                      stockActual: 0,
+                      stockMinimo: 0,
+                    });
+                    setShowAddProduct(true);
+                  }}
                   className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
                 >
                   <Plus className="w-5 h-5" />
@@ -752,7 +788,6 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Categoría</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
-                    <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Stock</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
                     <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                   </tr>
@@ -769,51 +804,16 @@ export function ProductsPage() {
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm">
                         {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
                       </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex flex-col gap-1">
-                          <span className={`${product.stockActual <= product.stockMinimo ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                            {product.stockActual} und.
-                          </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            Min: {product.stockMinimo}
-                          </span>
-                        </div>
-                      </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           <button
                             type="button"
-                            onClick={() => handleStockMovement(product, "entrada")}
-                            className="rounded-lg px-2.5 py-1.5 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
-                            title="Registrar entrada"
+                            onClick={() => handleEditProduct(product)}
+                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:text-[#EF8022] hover:bg-[#EF8022]/10"
+                            title="Editar producto"
                           >
-                            + Entrada
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStockMovement(product, "salida")}
-                            className="rounded-lg px-2.5 py-1.5 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
-                            title="Registrar salida"
-                          >
-                            - Salida
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStockAdjustment(product)}
-                            className="rounded-lg px-2.5 py-1.5 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
-                            title="Ajustar stock"
-                          >
-                            Ajustar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleShowStockMovements(product)}
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
-                            title="Ver movimientos"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                            Historial
+                            <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
@@ -1181,8 +1181,9 @@ export function ProductsPage() {
                             <button
                               type="button"
                               onClick={() => openEditPersonal(p)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors"
-                              title="Editar"
+                              disabled={p.rol === "chofer"}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title={p.rol === "chofer" ? "Editar en Logística" : "Editar"}
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
@@ -1241,22 +1242,16 @@ export function ProductsPage() {
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
-                {personalForm.rol === "apoyo" ? (
-                  <div>
-                    <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
-                    <input
-                      type="date"
-                      value={personalForm.fecha_nacimiento}
-                      onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
-                      max={new Date().toISOString().split("T")[0]}
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-end">
-                    <p className="text-xs text-amber-600 dark:text-amber-400">Para chofer no se envía fecha de nacimiento.</p>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
+                  <input
+                    type="date"
+                    value={personalForm.fecha_nacimiento}
+                    onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
+                    max={new Date().toISOString().split("T")[0]}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1286,37 +1281,17 @@ export function ProductsPage() {
                     )}
                   </select>
                 </div>
-                {personalForm.rol === "apoyo" ? (
-                  <div>
-                    <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
-                    <select
-                      value={personalForm.estado}
-                      onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                    >
-                      <option value="disponible">Disponible</option>
-                      <option value="en-ruta">En ruta</option>
-                      <option value="descanso">Descanso</option>
-                    </select>
-                  </div>
-                ) : (
-                  <div className="flex items-end">
-                    <p className="text-xs text-amber-600 dark:text-amber-400">Para chofer no se envía estado.</p>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
-                  N° Licencia {personalForm.rol === "chofer" ? "*" : <span className="text-gray-400">(opcional)</span>}
-                </label>
-                <input
-                  type="text"
-                  value={personalForm.licencia}
-                  onChange={(e) => setPersonalForm({ ...personalForm, licencia: e.target.value })}
-                  placeholder="Ej: Q123456789"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <select
+                    value={personalForm.estado}
+                    onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value="disponible">Disponible</option>
+                    <option value="descanso">Descanso</option>
+                  </select>
+                </div>
               </div>
 
               {personalFormError && (
@@ -1540,7 +1515,7 @@ export function ProductsPage() {
             <button onClick={() => setShowAddProduct(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Producto</h3>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">{editingProduct ? "Editar Producto" : "Nuevo Producto"}</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Categoría existente</label>
@@ -1625,8 +1600,8 @@ export function ProductsPage() {
                 <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleAddProduct} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  Guardar Producto
+                <button onClick={handleSaveProduct} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
+                  {editingProduct ? "Actualizar Producto" : "Guardar Producto"}
                 </button>
               </div>
             </div>
@@ -1662,6 +1637,31 @@ export function ProductsPage() {
                   <span className="text-lg text-[#EF8022]">S/ {precioTotalPaquete.toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Se calcula con la suma de (precio del producto x cantidad).</p>
+                <div className="mt-3">
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio final editable (S/)</label>
+                  <input
+                    type="number"
+                    value={newPaquete.precioUnitario}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setNewPaquete((prev) => ({
+                        ...prev,
+                        precioUnitario: Number.isFinite(value) ? value : 0,
+                        precioEditadoManualmente: true,
+                      }));
+                    }}
+                    min={0}
+                    step="0.01"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewPaquete((prev) => ({ ...prev, precioUnitario: Number(precioTotalPaquete.toFixed(2)), precioEditadoManualmente: false }))}
+                    className="mt-2 text-xs text-[#EF8022] hover:underline"
+                  >
+                    Usar valor autocalculado
+                  </button>
+                </div>
               </div>
 
               {/* Contenido con selector de catálogo */}
@@ -1683,7 +1683,7 @@ export function ProductsPage() {
                         onSelect={(sku, nombre) => {
                           const items = [...newPaquete.contenidoItems];
                           items[idx] = { ...items[idx], productoSku: sku, productoNombre: nombre };
-                          setNewPaquete({ ...newPaquete, contenidoItems: items });
+                          updatePaqueteItems(items);
                         }}
                       />
                       <input
@@ -1692,7 +1692,7 @@ export function ProductsPage() {
                         onChange={(e) => {
                           const items = [...newPaquete.contenidoItems];
                           items[idx] = { ...items[idx], cantidad: Number(e.target.value) };
-                          setNewPaquete({ ...newPaquete, contenidoItems: items });
+                          updatePaqueteItems(items);
                         }}
                         placeholder="Cant."
                         min={0}
@@ -1704,10 +1704,7 @@ export function ProductsPage() {
                       {newPaquete.contenidoItems.length > 1 && (
                         <button
                           onClick={() => {
-                            setNewPaquete({
-                              ...newPaquete,
-                              contenidoItems: newPaquete.contenidoItems.filter((_, i) => i !== idx),
-                            });
+                            updatePaqueteItems(newPaquete.contenidoItems.filter((_, i) => i !== idx));
                           }}
                           className="p-2 text-red-400 hover:text-red-600"
                         >
@@ -1719,10 +1716,7 @@ export function ProductsPage() {
                 </div>
                 <button
                   onClick={() =>
-                    setNewPaquete({
-                      ...newPaquete,
-                      contenidoItems: [...newPaquete.contenidoItems, { productoSku: "", productoNombre: "", cantidad: 0 }],
-                    })
+                    updatePaqueteItems([...newPaquete.contenidoItems, { productoSku: "", productoNombre: "", cantidad: 0 }])
                   }
                   className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"
                 >
