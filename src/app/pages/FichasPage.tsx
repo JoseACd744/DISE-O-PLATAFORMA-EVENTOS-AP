@@ -123,7 +123,7 @@ const getInitialFormData = (): FichaFormData => ({
   cliente_id: "",
   paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
   productosSueltos: [],
-  carritoIds: [],
+  carritoIds: [0],
   inflableIds: [],
   personalIds: [0],
   recursos: [{ recursoId: 0, cantidad: 1 }],
@@ -1620,11 +1620,19 @@ export function FichasPage() {
     setFormData(prev => ({ ...prev, productosSueltos: prev.productosSueltos.filter((_, i) => i !== idx) }));
   };
 
-  const handleToggleCarrito = (carritoId: number) => {
-    setFormData(prev => {
-      const ids = prev.carritoIds;
-      return { ...prev, carritoIds: ids.includes(carritoId) ? ids.filter(id => id !== carritoId) : [...ids, carritoId] };
-    });
+  const handleAddCarritoRow = () => {
+    setFormData((prev) => ({ ...prev, carritoIds: [...prev.carritoIds, 0] }));
+  };
+
+  const handleRemoveCarritoRow = (idx: number) => {
+    setFormData((prev) => ({ ...prev, carritoIds: prev.carritoIds.filter((_, i) => i !== idx) }));
+  };
+
+  const handleCarritoChange = (idx: number, carritoId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      carritoIds: prev.carritoIds.map((value, i) => (i === idx ? carritoId : value)),
+    }));
   };
 
   const handleToggleInflable = (inflableId: number) => {
@@ -1772,7 +1780,7 @@ export function FichasPage() {
           brand,
           paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
           productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
-          carritoIds: formData.carritoIds,
+          carritoIds: formData.carritoIds.filter((carritoId) => carritoId > 0),
           inflableIds: brand === "jugueton" ? formData.inflableIds : [],
           personalIds: formData.personalIds.filter((personalId) => personalId > 0),
           recursos: formData.recursos.filter((recurso) => recurso.recursoId > 0),
@@ -2560,18 +2568,53 @@ export function FichasPage() {
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Recursos</h4>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Carritos</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {carritos.map(carrito => (
-                        <label key={carrito.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${formData.carritoIds.includes(carrito.id) ? 'border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'} ${carrito.estado === 'mantenimiento' ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          <input type="checkbox" checked={formData.carritoIds.includes(carrito.id)} onChange={() => carrito.estado !== 'mantenimiento' && handleToggleCarrito(carrito.id)} className="w-4 h-4 accent-[#EF8022]" disabled={carrito.estado === 'mantenimiento'} />
-                          <div className="min-w-0">
-                            <p className="text-sm text-gray-900 dark:text-white truncate">{carrito.codigo} — {carrito.modelo}</p>
-                            <p className={`text-xs ${carrito.estado === 'disponible' ? 'text-green-500' : carrito.estado === 'en-uso' ? 'text-orange-500' : 'text-red-500'}`}>{carrito.estado}</p>
-                          </div>
-                        </label>
-                      ))}
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className="block text-sm text-gray-600 dark:text-gray-400">Carritos</label>
+                      <button type="button" onClick={handleAddCarritoRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar carrito</button>
                     </div>
+                    {carritos.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay carritos registrados.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.carritoIds.map((carritoId, idx) => {
+                          const selectedIds = formData.carritoIds.filter((_, i) => i !== idx).filter((id) => id > 0);
+                          const availableCarritos = carritos.filter((carrito) => carrito.id === carritoId || !selectedIds.includes(carrito.id));
+                          const selectedCarrito = carritos.find((carrito) => carrito.id === carritoId);
+
+                          return (
+                            <div key={`${carritoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select
+                                value={carritoId}
+                                onChange={(e) => handleCarritoChange(idx, Number(e.target.value))}
+                                className={`${inputClass} min-w-0 text-sm`}
+                              >
+                                <option value={0}>Seleccionar carrito...</option>
+                                {availableCarritos
+                                  .filter((carrito) => carrito.estado !== 'mantenimiento' || carrito.id === carritoId)
+                                  .map((carrito) => (
+                                    <option key={carrito.id} value={carrito.id}>
+                                      {carrito.codigo} — {carrito.modelo} · {carrito.estado}
+                                    </option>
+                                  ))}
+                              </select>
+                              <div className="flex items-center justify-between gap-2 md:justify-end">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">
+                                  {selectedCarrito ? `${selectedCarrito.codigo} — ${selectedCarrito.modelo}` : "Sin seleccionar"}
+                                </span>
+                                {formData.carritoIds.length > 1 ? (
+                                  <button type="button" onClick={() => handleRemoveCarritoRow(idx)} className="p-2 text-red-400 hover:text-red-600">
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <span className="hidden md:block" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.carritoIds.filter((carritoId) => carritoId > 0).length}</p>
                   </div>
                   {brand === "jugueton" && (
                     <div>
