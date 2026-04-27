@@ -6,6 +6,7 @@ import type {
   Carrito,
   Inflable,
   Personal,
+  Recurso,
 } from "../contexts/ProductsContext";
 
 type ApiCategory = {
@@ -16,9 +17,17 @@ type ApiCategory = {
     producto: string;
     sku: string;
     precio?: number | null;
-    stock_actual?: number | null;
-    stock_minimo?: number | null;
   }>;
+};
+
+type ApiRecurso = {
+  id: number;
+  recurso: string;
+  sku: string;
+  precio?: number | null;
+  brand: "donofrio" | "jugueton";
+  stock_actual?: number | null;
+  stock_minimo?: number | null;
 };
 
 type ApiPaquete = {
@@ -78,9 +87,19 @@ export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
       producto: product.producto,
       sku: product.sku,
       precio: Number(product.precio || 0),
-      stockActual: Number(product.stock_actual || 0),
-      stockMinimo: Number(product.stock_minimo || 0),
     })),
+  }));
+}
+
+export function mapApiRecursos(apiRecursos: ApiRecurso[]): Recurso[] {
+  return apiRecursos.map((r) => ({
+    id: r.id,
+    recurso: r.recurso,
+    sku: r.sku,
+    precio: Number(r.precio || 0),
+    brand: r.brand,
+    stockActual: Number(r.stock_actual || 0),
+    stockMinimo: Number(r.stock_minimo || 0),
   }));
 }
 

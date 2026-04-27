@@ -6,6 +6,7 @@ import {
   mapApiInflables,
   mapApiPaquetes,
   mapApiPersonal,
+  mapApiRecursos,
   mapPaqueteItemToApi,
 } from "../lib/mappers";
 
@@ -14,13 +15,21 @@ export interface Product {
   producto: string;
   sku: string;
   precio: number;
+}
+
+export interface Recurso {
+  id: number;
+  recurso: string;
+  sku: string;
+  precio: number;
+  brand: "donofrio" | "jugueton";
   stockActual: number;
   stockMinimo: number;
 }
 
-export interface ProductStockMovement {
+export interface RecursoStockMovement {
   id: number;
-  productId: number;
+  recursoId: number;
   tipo: "entrada" | "salida" | "ajuste";
   cantidad: number;
   motivo: string;
@@ -154,10 +163,13 @@ interface ProductsContextType {
   addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (id: number, catName: string, product: Omit<Product, "id">) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
-  updateProductStock: (id: number, payload: { stockActual: number; stockMinimo?: number; motivo?: string }) => Promise<void>;
-  addProductStockMovement: (id: number, payload: { tipo: "entrada" | "salida"; cantidad: number; motivo: string }) => Promise<void>;
-  getProductStockMovements: (id: number) => Promise<ProductStockMovement[]>;
   deleteCategory: (id: number) => Promise<void>;
+
+  recursos: Recurso[];
+  addRecurso: (recurso: Omit<Recurso, "id">) => Promise<void>;
+  updateRecursoStock: (id: number, payload: { stockActual: number; stockMinimo?: number; motivo?: string }) => Promise<void>;
+  getRecursoStockMovements: (id: number) => Promise<RecursoStockMovement[]>;
+  deleteRecurso: (id: number) => Promise<void>;
 
   paquetes: Paquete[];
   addPaquete: (paquete: PaqueteInput) => Promise<void>;
@@ -198,14 +210,16 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [carritos, setCarritos] = useState<Carrito[]>([]);
   const [inflables, setInflables] = useState<Inflable[]>([]);
   const [personales, setPersonales] = useState<Personal[]>([]);
+  const [recursos, setRecursos] = useState<Recurso[]>([]);
 
   const reloadData = async () => {
-    const [categoriesData, paquetesData, carritosData, inflablesData, personalData] = await Promise.all([
+    const [categoriesData, paquetesData, carritosData, inflablesData, personalData, recursosData] = await Promise.all([
       apiRequest<unknown[]>("/products/categories"),
       apiRequest<unknown[]>("/paquetes"),
       apiRequest<unknown[]>("/carritos"),
       apiRequest<unknown[]>("/inflables"),
       apiRequest<unknown[]>("/personal"),
+      apiRequest<unknown[]>("/recursos"),
     ]);
 
     setCategories(mapApiCategories(categoriesData as never));
@@ -213,6 +227,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     setCarritos(mapApiCarritos(carritosData as never));
     setInflables(mapApiInflables(inflablesData as never));
     setPersonales(mapApiPersonal(personalData as never));
+    setRecursos(mapApiRecursos(recursosData as never));
   };
 
   useEffect(() => {
@@ -249,8 +264,6 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         producto: product.producto,
         sku: product.sku,
         precio: Number(product.precio || 0),
-        stock_actual: Number(product.stockActual || 0),
-        stock_minimo: Number(product.stockMinimo || 0),
       }),
     });
 
@@ -276,9 +289,6 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         producto: product.producto,
         precio: Number(product.precio || 0),
         sku: product.sku,
-        stock_actual: Number(product.stockActual || 0),
-        stock_minimo: Number(product.stockMinimo || 0),
-        stock_reservado: 0,
       }),
     });
 
@@ -290,11 +300,26 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
-  const updateProductStock = async (
+  const addRecurso = async (recurso: Omit<Recurso, "id">) => {
+    await apiRequest("/recursos", {
+      method: "POST",
+      body: JSON.stringify({
+        recurso: recurso.recurso,
+        sku: recurso.sku,
+        precio: Number(recurso.precio || 0),
+        brand: recurso.brand,
+        stock_actual: Number(recurso.stockActual || 0),
+        stock_minimo: Number(recurso.stockMinimo || 0),
+      }),
+    });
+    await reloadData();
+  };
+
+  const updateRecursoStock = async (
     id: number,
     payload: { stockActual: number; stockMinimo?: number; motivo?: string }
   ) => {
-    await apiRequest(`/products/${id}/stock`, {
+    await apiRequest(`/recursos/${id}/stock`, {
       method: "PUT",
       body: JSON.stringify({
         stock_actual: payload.stockActual,
@@ -305,43 +330,33 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
-  const addProductStockMovement = async (
-    id: number,
-    payload: { tipo: "entrada" | "salida"; cantidad: number; motivo: string }
-  ) => {
-    await apiRequest(`/products/${id}/stock/movements`, {
-      method: "POST",
-      body: JSON.stringify({
-        tipo: payload.tipo,
-        cantidad: payload.cantidad,
-        motivo: payload.motivo,
-      }),
-    });
-    await reloadData();
-  };
-
-  const getProductStockMovements = async (id: number): Promise<ProductStockMovement[]> => {
+  const getRecursoStockMovements = async (id: number): Promise<RecursoStockMovement[]> => {
     const movements = await apiRequest<Array<{
       id: number;
-      product_id: number;
+      recurso_id: number;
       tipo: "entrada" | "salida" | "ajuste";
       cantidad: number;
       motivo?: string | null;
       stock_anterior?: number | null;
       stock_nuevo?: number | null;
       created_at?: string | null;
-    }>>(`/products/${id}/stock/movements`);
+    }>>(`/recursos/${id}/stock/movements`);
 
-    return movements.map((movement) => ({
-      id: movement.id,
-      productId: movement.product_id,
-      tipo: movement.tipo,
-      cantidad: Number(movement.cantidad || 0),
-      motivo: movement.motivo || "Sin motivo",
-      stockAnterior: Number(movement.stock_anterior || 0),
-      stockNuevo: Number(movement.stock_nuevo || 0),
-      createdAt: movement.created_at || "",
+    return movements.map((m) => ({
+      id: m.id,
+      recursoId: m.recurso_id,
+      tipo: m.tipo,
+      cantidad: Number(m.cantidad || 0),
+      motivo: m.motivo || "Sin motivo",
+      stockAnterior: Number(m.stock_anterior || 0),
+      stockNuevo: Number(m.stock_nuevo || 0),
+      createdAt: m.created_at || "",
     }));
+  };
+
+  const deleteRecurso = async (id: number) => {
+    await apiRequest(`/recursos/${id}`, { method: "DELETE" });
+    await reloadData();
   };
 
   const deleteCategory = async (id: number) => {
@@ -525,10 +540,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         addProduct,
         updateProduct,
         deleteProduct,
-        updateProductStock,
-        addProductStockMovement,
-        getProductStockMovements,
         deleteCategory,
+        recursos,
+        addRecurso,
+        updateRecursoStock,
+        getRecursoStockMovements,
+        deleteRecurso,
         paquetes,
         addPaquete,
         updatePaquete,
