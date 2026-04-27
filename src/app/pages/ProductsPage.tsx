@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, Paquete, FlatProduct, Carrito, ProductStockMovement, Personal } from "../contexts/ProductsContext";
+import type { PaqueteItem, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -100,10 +100,12 @@ export function ProductsPage() {
     addProduct,
     updateProduct,
     deleteProduct,
-    updateProductStock,
-    addProductStockMovement,
-    getProductStockMovements,
     deleteCategory,
+    recursos,
+    addRecurso,
+    updateRecursoStock,
+    getRecursoStockMovements,
+    deleteRecurso,
     paquetes,
     addPaquete,
     updatePaquete,
@@ -127,8 +129,6 @@ export function ProductsPage() {
     producto: "",
     sku: "",
     precio: 0,
-    stockActual: 0,
-    stockMinimo: 0,
   });
 
   // Package modal
@@ -274,30 +274,43 @@ export function ProductsPage() {
     descanso: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
 
-  const [selectedStockProduct, setSelectedStockProduct] = useState<FlatProduct | null>(null);
-  const [showStockMovementModal, setShowStockMovementModal] = useState(false);
-  const [stockMovementType, setStockMovementType] = useState<"entrada" | "salida">("entrada");
-  const [stockMovementForm, setStockMovementForm] = useState({
+  // Recurso modal state
+  const emptyRecursoForm = {
+    recurso: "",
+    sku: "",
+    precio: 0,
+    brand: "donofrio" as Recurso["brand"],
+    stockActual: 0,
+    stockMinimo: 0,
+  };
+  const [showRecursoModal, setShowRecursoModal] = useState(false);
+  const [recursoForm, setRecursoForm] = useState(emptyRecursoForm);
+  const [recursoFormError, setRecursoFormError] = useState("");
+  const [recursoFormSubmitting, setRecursoFormSubmitting] = useState(false);
+
+  // Recurso stock state
+  const [selectedRecurso, setSelectedRecurso] = useState<Recurso | null>(null);
+  const [showRecursoStockMovementModal, setShowRecursoStockMovementModal] = useState(false);
+  const [recursoStockMovementType, setRecursoStockMovementType] = useState<"entrada" | "salida">("entrada");
+  const [recursoStockMovementForm, setRecursoStockMovementForm] = useState({
     cantidad: 1,
     motivo: "",
     submitting: false,
     error: "",
   });
-
-  const [showStockAdjustmentModal, setShowStockAdjustmentModal] = useState(false);
-  const [stockAdjustmentForm, setStockAdjustmentForm] = useState({
+  const [showRecursoStockAdjustmentModal, setShowRecursoStockAdjustmentModal] = useState(false);
+  const [recursoStockAdjustmentForm, setRecursoStockAdjustmentForm] = useState({
     stockActual: 0,
     stockMinimo: 0,
     motivo: "",
     submitting: false,
     error: "",
   });
-
-  const [showStockHistoryModal, setShowStockHistoryModal] = useState(false);
-  const [stockHistoryState, setStockHistoryState] = useState<{
+  const [showRecursoStockHistoryModal, setShowRecursoStockHistoryModal] = useState(false);
+  const [recursoStockHistoryState, setRecursoStockHistoryState] = useState<{
     loading: boolean;
     error: string;
-    movements: ProductStockMovement[];
+    movements: RecursoStockMovement[];
   }>({ loading: false, error: "", movements: [] });
 
   // Filter products
@@ -368,8 +381,6 @@ export function ProductsPage() {
       producto: newProduct.producto,
       sku: newProduct.sku,
       precio: Number(newProduct.precio || 0),
-      stockActual: Number(newProduct.stockActual || 0),
-      stockMinimo: Number(newProduct.stockMinimo || 0),
     };
 
     if (editingProduct) {
@@ -386,8 +397,6 @@ export function ProductsPage() {
       producto: "",
       sku: "",
       precio: 0,
-      stockActual: 0,
-      stockMinimo: 0,
     });
   };
 
@@ -451,8 +460,6 @@ export function ProductsPage() {
       producto: product.producto,
       sku: product.sku,
       precio: product.precio,
-      stockActual: product.stockActual,
-      stockMinimo: product.stockMinimo,
     });
     setShowAddProduct(true);
   };
@@ -499,107 +506,133 @@ export function ProductsPage() {
     await deleteCategory(categoryId);
   };
 
-  const handleStockAdjustment = (product: FlatProduct) => {
-    setSelectedStockProduct(product);
-    setStockAdjustmentForm({
-      stockActual: product.stockActual,
-      stockMinimo: product.stockMinimo,
+  const handleRecursoStockAdjustment = (recurso: Recurso) => {
+    setSelectedRecurso(recurso);
+    setRecursoStockAdjustmentForm({
+      stockActual: recurso.stockActual,
+      stockMinimo: recurso.stockMinimo,
       motivo: "Conteo fisico",
       submitting: false,
       error: "",
     });
-    setShowStockAdjustmentModal(true);
+    setShowRecursoStockAdjustmentModal(true);
   };
 
-  const handleStockMovement = (product: FlatProduct, tipo: "entrada" | "salida") => {
-    setSelectedStockProduct(product);
-    setStockMovementType(tipo);
-    setStockMovementForm({
+  const handleRecursoStockMovement = (recurso: Recurso, tipo: "entrada" | "salida") => {
+    setSelectedRecurso(recurso);
+    setRecursoStockMovementType(tipo);
+    setRecursoStockMovementForm({
       cantidad: 1,
-      motivo: tipo === "entrada" ? "Compra proveedor" : "Venta",
+      motivo: tipo === "entrada" ? "Reposición" : "Uso en evento",
       submitting: false,
       error: "",
     });
-    setShowStockMovementModal(true);
+    setShowRecursoStockMovementModal(true);
   };
 
-  const handleShowStockMovements = async (product: FlatProduct) => {
-    setSelectedStockProduct(product);
-    setShowStockHistoryModal(true);
-    setStockHistoryState({ loading: true, error: "", movements: [] });
-
+  const handleShowRecursoStockMovements = async (recurso: Recurso) => {
+    setSelectedRecurso(recurso);
+    setShowRecursoStockHistoryModal(true);
+    setRecursoStockHistoryState({ loading: true, error: "", movements: [] });
     try {
-      const movements = await getProductStockMovements(product.id);
-      setStockHistoryState({ loading: false, error: "", movements });
+      const movements = await getRecursoStockMovements(recurso.id);
+      setRecursoStockHistoryState({ loading: false, error: "", movements });
     } catch (error) {
-      setStockHistoryState({
+      setRecursoStockHistoryState({
         loading: false,
-        error: error instanceof Error ? error.message : "No se pudo cargar el historial de stock.",
+        error: error instanceof Error ? error.message : "No se pudo cargar el historial.",
         movements: [],
       });
     }
   };
 
-  const submitStockMovement = async () => {
-    if (!selectedStockProduct) return;
-
-    if (!Number.isFinite(stockMovementForm.cantidad) || stockMovementForm.cantidad <= 0) {
-      setStockMovementForm((prev) => ({ ...prev, error: "La cantidad debe ser mayor a 0." }));
+  const submitRecursoStockMovement = async () => {
+    if (!selectedRecurso) return;
+    if (!Number.isFinite(recursoStockMovementForm.cantidad) || recursoStockMovementForm.cantidad <= 0) {
+      setRecursoStockMovementForm((prev) => ({ ...prev, error: "La cantidad debe ser mayor a 0." }));
       return;
     }
-    if (!stockMovementForm.motivo.trim()) {
-      setStockMovementForm((prev) => ({ ...prev, error: "El motivo es obligatorio." }));
+    if (!recursoStockMovementForm.motivo.trim()) {
+      setRecursoStockMovementForm((prev) => ({ ...prev, error: "El motivo es obligatorio." }));
       return;
     }
-
-    setStockMovementForm((prev) => ({ ...prev, submitting: true, error: "" }));
+    setRecursoStockMovementForm((prev) => ({ ...prev, submitting: true, error: "" }));
     try {
-      await addProductStockMovement(selectedStockProduct.id, {
-        tipo: stockMovementType,
-        cantidad: stockMovementForm.cantidad,
-        motivo: stockMovementForm.motivo.trim(),
+      await updateRecursoStock(selectedRecurso.id, {
+        stockActual: recursoStockMovementType === "entrada"
+          ? selectedRecurso.stockActual + recursoStockMovementForm.cantidad
+          : Math.max(0, selectedRecurso.stockActual - recursoStockMovementForm.cantidad),
+        motivo: recursoStockMovementForm.motivo.trim(),
       });
-      setShowStockMovementModal(false);
+      setShowRecursoStockMovementModal(false);
     } catch (error) {
-      setStockMovementForm((prev) => ({
+      setRecursoStockMovementForm((prev) => ({
         ...prev,
         submitting: false,
         error: error instanceof Error ? error.message : "No se pudo registrar el movimiento.",
       }));
       return;
     }
-    setStockMovementForm((prev) => ({ ...prev, submitting: false }));
+    setRecursoStockMovementForm((prev) => ({ ...prev, submitting: false }));
   };
 
-  const submitStockAdjustment = async () => {
-    if (!selectedStockProduct) return;
-
-    if (!Number.isFinite(stockAdjustmentForm.stockActual) || stockAdjustmentForm.stockActual < 0) {
-      setStockAdjustmentForm((prev) => ({ ...prev, error: "El stock actual debe ser mayor o igual a 0." }));
+  const submitRecursoStockAdjustment = async () => {
+    if (!selectedRecurso) return;
+    if (!Number.isFinite(recursoStockAdjustmentForm.stockActual) || recursoStockAdjustmentForm.stockActual < 0) {
+      setRecursoStockAdjustmentForm((prev) => ({ ...prev, error: "El stock actual debe ser mayor o igual a 0." }));
       return;
     }
-    if (!Number.isFinite(stockAdjustmentForm.stockMinimo) || stockAdjustmentForm.stockMinimo < 0) {
-      setStockAdjustmentForm((prev) => ({ ...prev, error: "El stock minimo debe ser mayor o igual a 0." }));
+    if (!Number.isFinite(recursoStockAdjustmentForm.stockMinimo) || recursoStockAdjustmentForm.stockMinimo < 0) {
+      setRecursoStockAdjustmentForm((prev) => ({ ...prev, error: "El stock mínimo debe ser mayor o igual a 0." }));
       return;
     }
-
-    setStockAdjustmentForm((prev) => ({ ...prev, submitting: true, error: "" }));
+    setRecursoStockAdjustmentForm((prev) => ({ ...prev, submitting: true, error: "" }));
     try {
-      await updateProductStock(selectedStockProduct.id, {
-        stockActual: stockAdjustmentForm.stockActual,
-        stockMinimo: stockAdjustmentForm.stockMinimo,
-        motivo: stockAdjustmentForm.motivo.trim(),
+      await updateRecursoStock(selectedRecurso.id, {
+        stockActual: recursoStockAdjustmentForm.stockActual,
+        stockMinimo: recursoStockAdjustmentForm.stockMinimo,
+        motivo: recursoStockAdjustmentForm.motivo.trim(),
       });
-      setShowStockAdjustmentModal(false);
+      setShowRecursoStockAdjustmentModal(false);
     } catch (error) {
-      setStockAdjustmentForm((prev) => ({
+      setRecursoStockAdjustmentForm((prev) => ({
         ...prev,
         submitting: false,
         error: error instanceof Error ? error.message : "No se pudo ajustar el stock.",
       }));
       return;
     }
-    setStockAdjustmentForm((prev) => ({ ...prev, submitting: false }));
+    setRecursoStockAdjustmentForm((prev) => ({ ...prev, submitting: false }));
+  };
+
+  const handleSaveRecurso = async () => {
+    if (!recursoForm.recurso.trim() || !recursoForm.sku.trim()) {
+      setRecursoFormError("El nombre y SKU son obligatorios.");
+      return;
+    }
+    setRecursoFormError("");
+    setRecursoFormSubmitting(true);
+    try {
+      await addRecurso({
+        recurso: recursoForm.recurso.trim(),
+        sku: recursoForm.sku.trim(),
+        precio: Number(recursoForm.precio || 0),
+        brand: recursoForm.brand,
+        stockActual: Number(recursoForm.stockActual || 0),
+        stockMinimo: Number(recursoForm.stockMinimo || 0),
+      });
+      setShowRecursoModal(false);
+      setRecursoForm(emptyRecursoForm);
+    } catch (err) {
+      setRecursoFormError(err instanceof Error ? err.message : "No se pudo guardar el recurso.");
+    } finally {
+      setRecursoFormSubmitting(false);
+    }
+  };
+
+  const handleDeleteRecurso = async (r: Recurso) => {
+    if (!window.confirm(`¿Eliminar el recurso "${r.recurso}"? Esta acción no se puede deshacer.`)) return;
+    await deleteRecurso(r.id);
   };
 
 
@@ -1076,67 +1109,61 @@ export function ProductsPage() {
       {/* ── RECURSOS TAB ──────────────────────────────────────── */}
       {activeTab === "recursos" && (
         <>
-          <div className="grid grid-cols-1 gap-6">
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg text-gray-900 dark:text-white">Inventario de Productos</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Gestiona stock actual, minimo y movimientos.</p>
-                </div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{allProducts.length} productos</span>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg text-gray-900 dark:text-white">Recursos</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Sillas, mesas y otros recursos con control de stock.</p>
               </div>
+              <button
+                onClick={() => { setRecursoForm(emptyRecursoForm); setRecursoFormError(""); setShowRecursoModal(true); }}
+                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+              >
+                <Plus className="w-4 h-4" /> Nuevo Recurso
+              </button>
+            </div>
 
+            {recursos.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Aún no hay recursos registrados.</p>
+              </div>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
-                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Categoria</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Recurso</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Marca</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Stock</th>
                       <th className="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {allProducts.slice(0, 25).map((product) => (
-                      <tr key={`recurso-stock-${product.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{product.producto}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{product.categoria}</td>
+                    {recursos.map((r) => (
+                      <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{r.recurso}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{r.sku}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">S/ {r.precio.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm">
-                          <span className={`${product.stockActual <= product.stockMinimo ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                            {product.stockActual} / min {product.stockMinimo}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${r.brand === "donofrio" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"}`}>
+                            {r.brand}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={r.stockActual <= r.stockMinimo ? "text-red-500" : "text-green-600 dark:text-green-400"}>
+                            {r.stockActual} / min {r.stockMinimo}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => handleStockMovement(product, "entrada")}
-                              className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
-                            >
-                              + Entrada
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStockMovement(product, "salida")}
-                              className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
-                            >
-                              - Salida
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleStockAdjustment(product)}
-                              className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
-                            >
-                              Ajustar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleShowStockMovements(product)}
-                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"
-                            >
-                              <History className="h-3 w-3" />
-                              Historial
-                            </button>
+                            <button type="button" onClick={() => handleRecursoStockMovement(r, "entrada")} className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400">+ Entrada</button>
+                            <button type="button" onClick={() => handleRecursoStockMovement(r, "salida")} className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">- Salida</button>
+                            <button type="button" onClick={() => handleRecursoStockAdjustment(r)} className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400">Ajustar</button>
+                            <button type="button" onClick={() => handleShowRecursoStockMovements(r)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"><History className="h-3 w-3" />Historial</button>
+                            <button type="button" onClick={() => handleDeleteRecurso(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </td>
                       </tr>
@@ -1144,9 +1171,7 @@ export function ProductsPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
-
-
+            )}
           </div>
         </>
       )}
@@ -1359,152 +1384,73 @@ export function ProductsPage() {
         </div>
       )}
 
-      {/* ── Stock Movement Modal (+ Entrada / - Salida) ─────── */}
-      {showStockMovementModal && selectedStockProduct && (
+      {/* ── Recurso Stock Movement Modal ────────────────────── */}
+      {showRecursoStockMovementModal && selectedRecurso && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
-            <button
-              onClick={() => setShowStockMovementModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">
-              {stockMovementType === "entrada" ? "+ Entrada" : "- Salida"} de Stock
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
-
+            <button onClick={() => setShowRecursoStockMovementModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">{recursoStockMovementType === "entrada" ? "+ Entrada" : "- Salida"} de Stock</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={stockMovementForm.cantidad}
-                  onChange={(e) => setStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <input type="number" min={1} value={recursoStockMovementForm.cantidad} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo *</label>
-                <input
-                  type="text"
-                  value={stockMovementForm.motivo}
-                  onChange={(e) => setStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
               </div>
-              {stockMovementForm.error && (
-                <p className="text-sm text-red-500">{stockMovementForm.error}</p>
-              )}
+              {recursoStockMovementForm.error && <p className="text-sm text-red-500">{recursoStockMovementForm.error}</p>}
               <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowStockMovementModal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={submitStockMovement}
-                  disabled={stockMovementForm.submitting}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
-                >
-                  {stockMovementForm.submitting ? "Guardando..." : "Guardar"}
-                </button>
+                <button onClick={() => setShowRecursoStockMovementModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={submitRecursoStockMovement} disabled={recursoStockMovementForm.submitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoStockMovementForm.submitting ? "Guardando..." : "Guardar"}</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Stock Adjustment Modal ───────────────────────────── */}
-      {showStockAdjustmentModal && selectedStockProduct && (
+      {/* ── Recurso Stock Adjustment Modal ──────────────────── */}
+      {showRecursoStockAdjustmentModal && selectedRecurso && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
-            <button
-              onClick={() => setShowStockAdjustmentModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
             <h3 className="text-xl text-gray-900 dark:text-white mb-2">Ajustar Stock</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
-
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Actual *</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={stockAdjustmentForm.stockActual}
-                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockActual} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Minimo *</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={stockAdjustmentForm.stockMinimo}
-                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo *</label>
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockMinimo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
-                <input
-                  type="text"
-                  value={stockAdjustmentForm.motivo}
-                  onChange={(e) => setStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                />
+                <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
               </div>
-              {stockAdjustmentForm.error && (
-                <p className="text-sm text-red-500">{stockAdjustmentForm.error}</p>
-              )}
+              {recursoStockAdjustmentForm.error && <p className="text-sm text-red-500">{recursoStockAdjustmentForm.error}</p>}
               <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowStockAdjustmentModal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={submitStockAdjustment}
-                  disabled={stockAdjustmentForm.submitting}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
-                >
-                  {stockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}
-                </button>
+                <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={submitRecursoStockAdjustment} disabled={recursoStockAdjustmentForm.submitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoStockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Stock History Modal ──────────────────────────────── */}
-      {showStockHistoryModal && selectedStockProduct && (
+      {/* ── Recurso Stock History Modal ──────────────────────── */}
+      {showRecursoStockHistoryModal && selectedRecurso && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setShowStockHistoryModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <button onClick={() => setShowRecursoStockHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
             <h3 className="text-xl text-gray-900 dark:text-white mb-2">Historial de Movimientos</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedStockProduct.producto}</p>
-
-            {stockHistoryState.loading && <p className="text-sm text-gray-500 dark:text-gray-400">Cargando historial...</p>}
-            {!stockHistoryState.loading && stockHistoryState.error && (
-              <p className="text-sm text-red-500">{stockHistoryState.error}</p>
-            )}
-            {!stockHistoryState.loading && !stockHistoryState.error && stockHistoryState.movements.length === 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Sin movimientos registrados.</p>
-            )}
-
-            {!stockHistoryState.loading && !stockHistoryState.error && stockHistoryState.movements.length > 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
+            {recursoStockHistoryState.loading && <p className="text-sm text-gray-500 dark:text-gray-400">Cargando historial...</p>}
+            {!recursoStockHistoryState.loading && recursoStockHistoryState.error && <p className="text-sm text-red-500">{recursoStockHistoryState.error}</p>}
+            {!recursoStockHistoryState.loading && !recursoStockHistoryState.error && recursoStockHistoryState.movements.length === 0 && <p className="text-sm text-gray-500 dark:text-gray-400">Sin movimientos registrados.</p>}
+            {!recursoStockHistoryState.loading && !recursoStockHistoryState.error && recursoStockHistoryState.movements.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
@@ -1518,26 +1464,14 @@ export function ProductsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {stockHistoryState.movements.map((movement) => (
-                      <tr key={movement.id}>
-                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                          {movement.createdAt ? new Date(movement.createdAt).toLocaleString("es-PE") : "-"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            movement.tipo === "entrada"
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              : movement.tipo === "salida"
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                          }`}>
-                            {movement.tipo}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">{movement.cantidad}</td>
-                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{movement.stockAnterior}</td>
-                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{movement.stockNuevo}</td>
-                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{movement.motivo}</td>
+                    {recursoStockHistoryState.movements.map((m) => (
+                      <tr key={m.id}>
+                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{m.createdAt ? new Date(m.createdAt).toLocaleString("es-PE") : "-"}</td>
+                        <td className="px-3 py-2"><span className={`px-2 py-1 rounded-full text-xs ${m.tipo === "entrada" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : m.tipo === "salida" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"}`}>{m.tipo}</span></td>
+                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">{m.cantidad}</td>
+                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{m.stockAnterior}</td>
+                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{m.stockNuevo}</td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{m.motivo}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1610,28 +1544,6 @@ export function ProductsPage() {
                     placeholder="0"
                     min={0}
                     step="0.01"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Inicial</label>
-                  <input
-                    type="number"
-                    value={newProduct.stockActual}
-                    onChange={(e) => setNewProduct({ ...newProduct, stockActual: Number(e.target.value) })}
-                    min={0}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Minimo</label>
-                  <input
-                    type="number"
-                    value={newProduct.stockMinimo}
-                    onChange={(e) => setNewProduct({ ...newProduct, stockMinimo: Number(e.target.value) })}
-                    min={0}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
@@ -1867,6 +1779,54 @@ export function ProductsPage() {
                 <button onClick={handleAddCarrito} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
                   Guardar Carrito
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Recurso Modal ──────────────────────────────────── */}
+      {showRecursoModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
+            <button onClick={() => setShowRecursoModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Recurso</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Recurso *</label>
+                <input type="text" value={recursoForm.recurso} onChange={(e) => setRecursoForm({ ...recursoForm, recurso: e.target.value })} placeholder="Ej: Silla plegable" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">SKU *</label>
+                  <input type="text" value={recursoForm.sku} onChange={(e) => setRecursoForm({ ...recursoForm, sku: e.target.value })} placeholder="Ej: REC-001" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
+                  <input type="number" value={recursoForm.precio || ""} onChange={(e) => setRecursoForm({ ...recursoForm, precio: Number(e.target.value) })} placeholder="0.00" min={0} step="0.01" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca</label>
+                <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]">
+                  <option value="donofrio">D'Onofrio</option>
+                  <option value="jugueton">Juguerón</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Inicial</label>
+                  <input type="number" value={recursoForm.stockActual} onChange={(e) => setRecursoForm({ ...recursoForm, stockActual: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo</label>
+                  <input type="number" value={recursoForm.stockMinimo} onChange={(e) => setRecursoForm({ ...recursoForm, stockMinimo: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                </div>
+              </div>
+              {recursoFormError && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{recursoFormError}</p>}
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowRecursoModal(false)} disabled={recursoFormSubmitting} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={handleSaveRecurso} disabled={recursoFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoFormSubmitting ? "Guardando..." : "Guardar Recurso"}</button>
               </div>
             </div>
           </div>

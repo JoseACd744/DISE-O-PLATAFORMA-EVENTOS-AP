@@ -37,6 +37,15 @@ interface FichaProductoSuelto {
   cantidad: number;
 }
 
+interface FichaRecurso {
+  id: number;
+  recurso_id: number;
+  recurso_nombre: string;
+  cantidad: number;
+  sku: string;
+  precio: string;
+}
+
 type EstadoPago = "pagado" | "parcial" | "pendiente";
 
 interface Ficha {
@@ -52,10 +61,9 @@ interface Ficha {
   hora_recojo: string;
   paquetes: FichaPaquete[];
   productosSueltos: FichaProductoSuelto[];
-  // Recursos asignados (ambas marcas pueden usar carritos)
-  carritoIds?: number[]; // IDs de carritos del catálogo
-  // Campos específicos de Jugueton (inflables)
-  inflableIds?: number[]; // IDs de inflables seleccionados
+  carritoIds?: number[];
+  inflableIds?: number[];
+  recursos?: FichaRecurso[];
   comentarios?: string;
   personalIds?: number[];
   cliente_id?: string | null;
@@ -93,6 +101,7 @@ interface FichaFormData {
   carritoIds: number[];
   inflableIds: number[];
   personalIds: number[];
+  recursos: Array<{ recursoId: number; cantidad: number }>;
 }
 
 const getInitialFormData = (): FichaFormData => ({
@@ -117,6 +126,7 @@ const getInitialFormData = (): FichaFormData => ({
   carritoIds: [],
   inflableIds: [],
   personalIds: [],
+  recursos: [],
 });
 
 interface ExistingClient {
@@ -578,7 +588,7 @@ export function FichasPage() {
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, productNames, carritos, inflables, personales } = useProducts();
+  const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos } = useProducts();
 
   const availableClients = useMemo(
     () => clients.filter((c) => c.status === "active"),
@@ -618,6 +628,14 @@ export function FichasPage() {
         })),
         carritoIds: f.carritoIds || [],
         inflableIds: f.inflableIds || [],
+        recursos: (f.recursos || []).map((r: any) => ({
+          id: r.id,
+          recurso_id: r.recurso_id,
+          recurso_nombre: r.recurso_nombre || "",
+          cantidad: r.cantidad || 1,
+          sku: r.sku || "",
+          precio: r.precio || "0.00",
+        })),
         comentarios: f.comentarios || "",
         personalIds: f.personalIds || [],
         cliente_id: f.cliente_id || null,
@@ -1602,6 +1620,25 @@ export function FichasPage() {
     });
   };
 
+  const handleToggleRecurso = (recursoId: number) => {
+    setFormData(prev => {
+      const exists = prev.recursos.some(r => r.recursoId === recursoId);
+      return {
+        ...prev,
+        recursos: exists
+          ? prev.recursos.filter(r => r.recursoId !== recursoId)
+          : [...prev.recursos, { recursoId, cantidad: 1 }],
+      };
+    });
+  };
+
+  const handleRecursoCantidadChange = (recursoId: number, cantidad: number) => {
+    setFormData(prev => ({
+      ...prev,
+      recursos: prev.recursos.map(r => r.recursoId === recursoId ? { ...r, cantidad: Math.max(1, cantidad) } : r),
+    }));
+  };
+
   const handleAddAbono = async (fichaId: number, abono: Abono) => {
     try {
       await apiRequest(`/fichas/${fichaId}/abonos`, {
@@ -1721,6 +1758,7 @@ export function FichasPage() {
           carritoIds: formData.carritoIds,
           inflableIds: brand === "jugueton" ? formData.inflableIds : [],
           personalIds: formData.personalIds,
+          recursos: formData.recursos,
         }),
       });
 
@@ -2255,6 +2293,18 @@ export function FichasPage() {
                     </div>
                   </>
                 )}
+                {(selectedFicha.recursos?.length ?? 0) > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
+                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Recursos Asignados</span></div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedFicha.recursos!.map(r => (
+                        <span key={r.id} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">
+                          {r.cantidad}× {r.recurso_nombre}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2"><div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Personal Asignado</span></div><div className="flex flex-wrap gap-1.5">{getNombresPersonal(selectedFicha).length > 0 ? getNombresPersonal(selectedFicha).map(nombre => <span key={nombre} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">{nombre}</span>) : <span className="text-xs text-gray-400">Sin personal asignado</span>}</div></div>
               </div>
               {selectedFicha.comentarios && (
@@ -2525,6 +2575,40 @@ export function FichasPage() {
                         </div>
                       </div>
                     </>
+                  )}
+                  {/* Recursos */}
+                  {recursos.length > 0 && (
+                    <div>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Recursos</label>
+                      <div className="space-y-2">
+                        {recursos.map(recurso => {
+                          const entry = formData.recursos.find(r => r.recursoId === recurso.id);
+                          const checked = !!entry;
+                          return (
+                            <div key={recurso.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${checked ? 'border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'}`}>
+                              <input type="checkbox" checked={checked} onChange={() => handleToggleRecurso(recurso.id)} className="w-4 h-4 accent-[#EF8022] shrink-0" />
+                              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleRecurso(recurso.id)}>
+                                <p className="text-sm text-gray-900 dark:text-white truncate">{recurso.recurso}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{recurso.sku} · S/ {recurso.precio.toFixed(2)}</p>
+                              </div>
+                              {checked && (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={entry.cantidad}
+                                  onChange={(e) => handleRecursoCantidadChange(recurso.id, Number(e.target.value))}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-center bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#EF8022]"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {formData.recursos.length > 0 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.recursos.length}</p>
+                      )}
+                    </div>
                   )}
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Personal (global) *</label>
