@@ -23,8 +23,7 @@ function ProductSelector({
   const filtered = allProducts.filter(
     (p) =>
       p.producto.toLowerCase().includes(search.toLowerCase()) ||
-      p.categoria.toLowerCase().includes(search.toLowerCase()) ||
-      p.sabor.toLowerCase().includes(search.toLowerCase())
+      p.categoria.toLowerCase().includes(search.toLowerCase())
   );
 
   const selectedProduct = allProducts.find((p) => p.sku === selectedSku);
@@ -38,7 +37,7 @@ function ProductSelector({
       >
         <span className={selectedProduct ? "" : "text-gray-400"}>
           {selectedProduct
-            ? `${selectedProduct.producto} (${selectedProduct.presentacion})`
+            ? `${selectedProduct.producto}`
             : "Seleccionar producto..."}
         </span>
         <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
@@ -64,7 +63,7 @@ function ProductSelector({
                 key={p.sku}
                 type="button"
                 onClick={() => {
-                  onSelect(p.sku, `${p.producto} (${p.presentacion} - ${p.sabor})`);
+                  onSelect(p.sku, p.producto);
                   setOpen(false);
                   setSearch("");
                 }}
@@ -75,9 +74,6 @@ function ProductSelector({
                 {p.sku === selectedSku && <Check className="w-3 h-3 text-[#EF8022] shrink-0" />}
                 <div className="min-w-0">
                   <span className="text-gray-900 dark:text-white">{p.producto}</span>
-                  <span className="text-gray-400 ml-1 text-xs">
-                    {p.presentacion} · {p.sabor.length > 30 ? p.sabor.substring(0, 30) + "..." : p.sabor}
-                  </span>
                 </div>
                 <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 shrink-0">{p.categoria}</span>
               </button>
@@ -126,8 +122,7 @@ export function ProductsPage() {
     categoria: "",
     nuevaCategoria: "",
     producto: "",
-    presentacion: "",
-    sabor: "",
+    sku: "",
     precio: 0,
     stockActual: 0,
     stockMinimo: 0,
@@ -315,7 +310,6 @@ export function ProductsPage() {
   const filteredProducts = allProducts.filter((product) => {
     const matchesSearch =
       product.producto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sabor.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "Todas" || product.categoria === selectedCategory;
     return matchesSearch && matchesCategory;
@@ -354,19 +348,16 @@ export function ProductsPage() {
 
   // Add product via context
   const handleAddProduct = async () => {
-    if (!newProduct.producto || !newProduct.presentacion || !newProduct.sabor) return;
+    if (!newProduct.producto || !newProduct.sku) return;
     const catName = newProduct.nuevaCategoria || newProduct.categoria;
     if (!catName) return;
 
-    const sku = `${newProduct.producto}/${newProduct.presentacion}/${newProduct.sabor}`;
     await addProduct(catName, {
       producto: newProduct.producto,
-      presentacion: newProduct.presentacion,
-      sabor: newProduct.sabor,
+      sku: newProduct.sku,
       precio: Number(newProduct.precio || 0),
       stockActual: Number(newProduct.stockActual || 0),
       stockMinimo: Number(newProduct.stockMinimo || 0),
-      sku,
     });
 
     setShowAddProduct(false);
@@ -374,8 +365,7 @@ export function ProductsPage() {
       categoria: "",
       nuevaCategoria: "",
       producto: "",
-      presentacion: "",
-      sabor: "",
+      sku: "",
       precio: 0,
       stockActual: 0,
       stockMinimo: 0,
@@ -438,7 +428,7 @@ export function ProductsPage() {
     contenido.reduce((s, i) => s + i.cantidad, 0);
 
   const handleDeleteProduct = async (product: FlatProduct) => {
-    const confirmed = window.confirm(`¿Eliminar el producto ${product.producto} (${product.presentacion})? Esta acción no se puede deshacer.`);
+    const confirmed = window.confirm(`¿Eliminar el producto ${product.producto}? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
 
     await deleteProduct(product.id);
@@ -726,7 +716,7 @@ export function ProductsPage() {
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Buscar por producto, sabor o SKU..."
+                    placeholder="Buscar por producto o SKU..."
                     value={searchTerm}
                     onChange={(e) => handleSearchChange(e.target.value)}
                     className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
@@ -761,8 +751,6 @@ export function ProductsPage() {
                   <tr>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Categoría</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
-                    <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Presentación</th>
-                    <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Sabor</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Stock</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
@@ -778,12 +766,6 @@ export function ProductsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-900 dark:text-white">{product.producto}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]">
-                          {product.presentacion}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm max-w-xs">{product.sabor}</td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-400 text-sm">
                         {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
                       </td>
@@ -1593,24 +1575,14 @@ export function ProductsPage() {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Presentación *</label>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">SKU *</label>
                   <input
                     type="text"
-                    value={newProduct.presentacion}
-                    onChange={(e) => setNewProduct({ ...newProduct, presentacion: e.target.value })}
-                    placeholder="Ej: Paleta"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Sabor *</label>
-                  <input
-                    type="text"
-                    value={newProduct.sabor}
-                    onChange={(e) => setNewProduct({ ...newProduct, sabor: e.target.value })}
-                    placeholder="Ej: Vainilla con chocolate"
+                    value={newProduct.sku}
+                    onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
+                    placeholder="Ej: MAGNUM-001"
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
@@ -1649,9 +1621,6 @@ export function ProductsPage() {
                   />
                 </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                SKU generado: <span className="font-mono">{newProduct.producto}/{newProduct.presentacion}/{newProduct.sabor}</span>
-              </p>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar

@@ -14,8 +14,6 @@ type ApiCategory = {
   productos?: Array<{
     id: number;
     producto: string;
-    presentacion: string;
-    sabor: string;
     sku: string;
     precio?: number | null;
     stock_actual?: number | null;
@@ -78,8 +76,6 @@ export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
     productos: (category.productos || []).map((product) => ({
       id: product.id,
       producto: product.producto,
-      presentacion: product.presentacion,
-      sabor: product.sabor,
       sku: product.sku,
       precio: Number(product.precio || 0),
       stockActual: Number(product.stock_actual || 0),

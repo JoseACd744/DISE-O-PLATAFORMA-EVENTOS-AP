@@ -12,8 +12,6 @@ import {
 export interface Product {
   id: number;
   producto: string;
-  presentacion: string;
-  sabor: string;
   sku: string;
   precio: number;
   stockActual: number;
@@ -153,7 +151,6 @@ function buildChoferPayload(
 interface ProductsContextType {
   categories: Category[];
   allProducts: FlatProduct[];
-  presentations: string[];
   addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
   updateProductStock: (id: number, payload: { stockActual: number; stockMinimo?: number; motivo?: string }) => Promise<void>;
@@ -227,13 +224,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     [categories]
   );
 
-  const presentations = useMemo(() => [...new Set(allProducts.map((p) => p.presentacion))], [allProducts]);
-
   const productNames = useMemo(() => {
-    const names = allProducts.map((p) => {
-      const suffix = p.presentacion !== "Mini" ? ` (${p.presentacion})` : "";
-      return `${p.producto}${suffix}`;
-    });
+    const names = allProducts.map((p) => p.producto);
     return [...new Set([...names, "Termo de helado (5L)", "Termo de helado (10L)"])];
   }, [allProducts]);
 
@@ -253,10 +245,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         categoria_id: category.id,
         producto: product.producto,
-        presentacion: product.presentacion,
-        sabor: product.sabor,
         sku: product.sku,
         precio: Number(product.precio || 0),
+        stock_actual: Number(product.stockActual || 0),
+        stock_minimo: Number(product.stockMinimo || 0),
       }),
     });
 
@@ -487,7 +479,6 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       value={{
         categories,
         allProducts,
-        presentations,
         addProduct,
         deleteProduct,
         updateProductStock,
