@@ -102,6 +102,54 @@ export interface Personal {
   celular?: string;
 }
 
+function isValidPhoneNumber(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (!/^[+\d\s-]+$/.test(trimmed)) return false;
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+function buildChoferPayload(
+  data: Partial<Omit<Personal, "id" | "nombre" | "celular">>,
+  mode: "create" | "update"
+) {
+  const nombre = data.nombre_completo?.trim();
+  const dni = data.dni?.trim();
+  const telefono = data.numero_telefono?.trim();
+  const licencia = data.licencia?.trim();
+
+  if (mode === "create") {
+    if (!nombre) throw new Error("El nombre completo es obligatorio para chofer.");
+    if (!dni || !/^\d{8}$/.test(dni)) throw new Error("El DNI del chofer debe tener 8 dígitos.");
+    if (!telefono || !isValidPhoneNumber(telefono)) {
+      throw new Error("El teléfono del chofer debe tener entre 7 y 15 dígitos (admite +, espacios y guiones).");
+    }
+    if (!licencia) throw new Error("La licencia es obligatoria para chofer.");
+
+    return {
+      rol: "chofer" as const,
+      nombre_completo: nombre,
+      dni,
+      numero_telefono: telefono,
+      licencia,
+    };
+  }
+
+  if (!licencia) throw new Error("La licencia es obligatoria para editar un chofer.");
+  if (!telefono || !isValidPhoneNumber(telefono)) {
+    throw new Error("El teléfono del chofer debe tener entre 7 y 15 dígitos (admite +, espacios y guiones).");
+  }
+  if (dni && !/^\d{8}$/.test(dni)) throw new Error("El DNI del chofer debe tener 8 dígitos.");
+
+  return {
+    ...(nombre !== undefined ? { nombre_completo: nombre } : {}),
+    ...(dni !== undefined ? { dni } : {}),
+    numero_telefono: telefono,
+    licencia,
+  };
+}
+
 interface ProductsContextType {
   categories: Category[];
   allProducts: FlatProduct[];
@@ -131,7 +179,11 @@ interface ProductsContextType {
 
   personales: Personal[];
   addPersonal: (personal: Omit<Personal, "id" | "nombre" | "celular">) => Promise<void>;
-  updatePersonal: (id: number, data: Partial<Omit<Personal, "id" | "nombre" | "celular">>) => Promise<void>;
+  updatePersonal: (
+    id: number,
+    data: Partial<Omit<Personal, "id" | "nombre" | "celular">>,
+    existingRole?: Personal["rol"]
+  ) => Promise<void>;
   updatePersonalEstado: (id: number, estado: Personal["estado"]) => Promise<void>;
   deletePersonal: (id: number) => Promise<void>;
 
@@ -371,35 +423,48 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   };
 
   const addPersonal = async (personal: Omit<Personal, "id" | "nombre" | "celular">) => {
+    const payload = personal.rol === "chofer"
+      ? buildChoferPayload(personal, "create")
+      : {
+          nombre_completo: personal.nombre_completo,
+          dni: personal.dni,
+          fecha_nacimiento: personal.fecha_nacimiento,
+          numero_telefono: personal.numero_telefono,
+          rol: personal.rol,
+          estado: personal.estado,
+          ...(personal.licencia ? { licencia: personal.licencia } : {}),
+          ...(personal.foto_url ? { foto_url: personal.foto_url } : {}),
+        };
+
     await apiRequest("/personal", {
       method: "POST",
-      body: JSON.stringify({
-        nombre_completo: personal.nombre_completo,
-        dni: personal.dni,
-        fecha_nacimiento: personal.fecha_nacimiento,
-        numero_telefono: personal.numero_telefono,
-        rol: personal.rol,
-        estado: personal.estado,
-        ...(personal.licencia ? { licencia: personal.licencia } : {}),
-        ...(personal.foto_url ? { foto_url: personal.foto_url } : {}),
-      }),
+      body: JSON.stringify(payload),
     });
     await reloadData();
   };
 
-  const updatePersonal = async (id: number, data: Partial<Omit<Personal, "id" | "nombre" | "celular">>) => {
+  const updatePersonal = async (
+    id: number,
+    data: Partial<Omit<Personal, "id" | "nombre" | "celular">>,
+    existingRole?: Personal["rol"]
+  ) => {
+    const targetRole = data.rol ?? existingRole;
+    const payload = targetRole === "chofer"
+      ? buildChoferPayload(data, "update")
+      : {
+          ...(data.nombre_completo !== undefined ? { nombre_completo: data.nombre_completo } : {}),
+          ...(data.dni !== undefined ? { dni: data.dni } : {}),
+          ...(data.fecha_nacimiento !== undefined ? { fecha_nacimiento: data.fecha_nacimiento } : {}),
+          ...(data.numero_telefono !== undefined ? { numero_telefono: data.numero_telefono } : {}),
+          ...(data.rol !== undefined ? { rol: data.rol } : {}),
+          ...(data.estado !== undefined ? { estado: data.estado } : {}),
+          ...(data.licencia !== undefined ? { licencia: data.licencia } : {}),
+          ...(data.foto_url !== undefined ? { foto_url: data.foto_url } : {}),
+        };
+
     await apiRequest(`/personal/${id}`, {
       method: "PUT",
-      body: JSON.stringify({
-        ...(data.nombre_completo !== undefined ? { nombre_completo: data.nombre_completo } : {}),
-        ...(data.dni !== undefined ? { dni: data.dni } : {}),
-        ...(data.fecha_nacimiento !== undefined ? { fecha_nacimiento: data.fecha_nacimiento } : {}),
-        ...(data.numero_telefono !== undefined ? { numero_telefono: data.numero_telefono } : {}),
-        ...(data.rol !== undefined ? { rol: data.rol } : {}),
-        ...(data.estado !== undefined ? { estado: data.estado } : {}),
-        ...(data.licencia !== undefined ? { licencia: data.licencia } : {}),
-        ...(data.foto_url !== undefined ? { foto_url: data.foto_url } : {}),
-      }),
+      body: JSON.stringify(payload),
     });
     await reloadData();
   };

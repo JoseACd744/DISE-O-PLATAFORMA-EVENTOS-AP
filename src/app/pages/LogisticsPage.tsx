@@ -104,13 +104,21 @@ export function LogisticsPage() {
   const [showAddAsignacion, setShowAddAsignacion] = useState(false);
 
   // Chofer form
-  const [choferForm, setChoferForm] = useState({ nombre: "", dni: "", celular: "", licencia: "A-IIb", estado: "disponible" as EstadoChofer });
+  const [choferForm, setChoferForm] = useState({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
   // Vehiculo form
   const [vehiculoForm, setVehiculoForm] = useState({ placa: "", modelo: "", marca: "", capacidad: 0, marcasAsignadas: ["donofrio"] as ("donofrio" | "jugueton")[], estado: "disponible" as EstadoVehiculo, ultimoMantenimiento: "", kmActual: 0 });
   // Asignacion form
   const [asignacionForm, setAsignacionForm] = useState({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [] as ("donofrio" | "jugueton")[], fichasIds: [] as number[] });
   const [fichasSearch, setFichasSearch] = useState("");
   const [fichasSort, setFichasSort] = useState<"fecha" | "hora" | "distrito" | "cliente">("fecha");
+
+  const isValidChoferPhone = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    if (!/^[+\d\s-]+$/.test(trimmed)) return false;
+    const digits = trimmed.replace(/\D/g, "");
+    return digits.length >= 7 && digits.length <= 15;
+  };
 
   const loadLogisticsData = async () => {
     if (!brand) return;
@@ -139,9 +147,9 @@ export function LogisticsPage() {
       setChoferes(
         choferesApi.map((c) => ({
           id: c.id,
-          nombre: c.nombre,
+          nombre: c.nombre_completo || c.nombre || "",
           dni: c.dni || "",
-          celular: c.celular || "",
+          celular: c.celular || c.numero_telefono || "",
           licencia: c.licencia || "",
           estado: c.estado,
           rutasCompletadas: c.rutas_completadas || 0,
@@ -246,20 +254,41 @@ export function LogisticsPage() {
 
   // Submit handlers
   const handleAddChofer = async () => {
-    if (!choferForm.nombre || !choferForm.dni) return;
+    const nombre = choferForm.nombre.trim();
+    const dni = choferForm.dni.trim();
+    const celular = choferForm.celular.trim();
+    const licencia = choferForm.licencia.trim();
+
+    if (!nombre) {
+      setError("El nombre completo del chofer es obligatorio.");
+      return;
+    }
+    if (!/^\d{8}$/.test(dni)) {
+      setError("El DNI del chofer debe tener 8 dígitos.");
+      return;
+    }
+    if (!isValidChoferPhone(celular)) {
+      setError("El celular del chofer debe tener entre 7 y 15 dígitos y puede usar +, espacios o guiones.");
+      return;
+    }
+    if (!licencia) {
+      setError("La licencia es obligatoria para chofer.");
+      return;
+    }
+
+    setError("");
     await apiRequest("/personal", {
       method: "POST",
       body: JSON.stringify({
-        nombre: choferForm.nombre,
-        dni: choferForm.dni,
-        celular: choferForm.celular,
-        licencia: choferForm.licencia,
         rol: "chofer",
-        estado: choferForm.estado,
+        nombre_completo: nombre,
+        dni,
+        celular,
+        licencia,
       }),
     });
     setShowAddChofer(false);
-    setChoferForm({ nombre: "", dni: "", celular: "", licencia: "A-IIb", estado: "disponible" });
+    setChoferForm({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
     await loadLogisticsData();
   };
   const handleAddVehiculo = async () => {
@@ -615,21 +644,28 @@ export function LogisticsPage() {
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
                   <input type="text" value={choferForm.nombre} onChange={e => setChoferForm(p => ({ ...p, nombre: e.target.value }))} className={inputClass} placeholder="Ej: Carlos Mendoza" /></div>
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">DNI *</label>
-                  <input type="text" value={choferForm.dni} onChange={e => setChoferForm(p => ({ ...p, dni: e.target.value }))} maxLength={8} className={inputClass} placeholder="Ej: 45678923" /></div>
+                  <input type="text" value={choferForm.dni} onChange={e => setChoferForm(p => ({ ...p, dni: e.target.value.replace(/\D/g, "").slice(0, 8) }))} maxLength={8} className={inputClass} placeholder="Ej: 45678923" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Celular</label>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Celular *</label>
                   <input type="tel" value={choferForm.celular} onChange={e => setChoferForm(p => ({ ...p, celular: e.target.value }))} className={inputClass} placeholder="Ej: 987 654 321" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Categoría Licencia</label>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Categoría Licencia *</label>
                   <select value={choferForm.licencia} onChange={e => setChoferForm(p => ({ ...p, licencia: e.target.value }))} className={inputClass}>
                     <option value="A-IIb">A-IIb (Camioneta)</option>
                     <option value="A-IIIa">A-IIIa (Camión liviano)</option>
                     <option value="A-IIIb">A-IIIb (Camión pesado)</option>
                   </select></div>
               </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Se enviarán únicamente: rol, nombre_completo, dni, celular y licencia.</p>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button onClick={handleAddChofer} disabled={!choferForm.nombre || !choferForm.dni} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50">Guardar Chofer</button>
+                <button
+                  onClick={handleAddChofer}
+                  disabled={!choferForm.nombre.trim() || !/^\d{8}$/.test(choferForm.dni) || !isValidChoferPhone(choferForm.celular) || !choferForm.licencia.trim()}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50"
+                >
+                  Guardar Chofer
+                </button>
               </div>
             </div>
           </div>

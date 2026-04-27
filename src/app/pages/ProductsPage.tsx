@@ -137,7 +137,6 @@ export function ProductsPage() {
   const [showAddPaquete, setShowAddPaquete] = useState(false);
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
-    precioUnitario: 0,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
   });
 
@@ -169,18 +168,36 @@ export function ProductsPage() {
   const [personalFormSubmitting, setPersonalFormSubmitting] = useState(false);
   const [personalSearch, setPersonalSearch] = useState("");
 
-  const validatePhone = (phone: string): boolean => {
-    const stripped = phone.replace(/[\s\-]/g, "");
+  const validatePhone = (phone: string, role: Personal["rol"]): boolean => {
+    const trimmed = phone.trim();
+    if (!trimmed) return false;
+
+    if (role === "chofer") {
+      if (!/^[+\d\s-]+$/.test(trimmed)) return false;
+      const digits = trimmed.replace(/\D/g, "");
+      return digits.length >= 7 && digits.length <= 15;
+    }
+
+    const stripped = trimmed.replace(/[\s\-]/g, "");
     return /^(\+\d{1,4})?\d{9}$/.test(stripped);
   };
 
   const validatePersonalForm = (form: typeof personalForm): string => {
     if (form.nombre_completo.trim().length < 3) return "El nombre completo debe tener al menos 3 caracteres.";
     if (!/^\d{8}$/.test(form.dni)) return "El DNI debe ser exactamente 8 dígitos numéricos.";
+
+    if (form.rol === "chofer") {
+      if (!validatePhone(form.numero_telefono, "chofer")) {
+        return "Teléfono inválido para chofer. Debe tener de 7 a 15 dígitos y puede usar +, espacios o guiones.";
+      }
+      if (!form.licencia.trim()) return "La licencia es obligatoria para chofer.";
+      return "";
+    }
+
     if (!form.fecha_nacimiento) return "La fecha de nacimiento es requerida.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.fecha_nacimiento)) return "La fecha debe estar en formato YYYY-MM-DD.";
     if (new Date(form.fecha_nacimiento) > new Date()) return "La fecha de nacimiento no puede ser futura.";
-    if (!validatePhone(form.numero_telefono)) return "Teléfono inválido. Ej: +51987654321, 987654321, 987-654-321.";
+    if (!validatePhone(form.numero_telefono, "apoyo")) return "Teléfono inválido. Ej: +51987654321, 987654321, 987-654-321.";
     return "";
   };
 
@@ -208,23 +225,36 @@ export function ProductsPage() {
   };
 
   const handleSubmitPersonal = async () => {
+    if (!editingPersonal && personalForm.rol === "chofer") {
+      setPersonalFormError("Los choferes solo se crean desde la página de rutas.");
+      return;
+    }
+
     const error = validatePersonalForm(personalForm);
     if (error) { setPersonalFormError(error); return; }
     setPersonalFormSubmitting(true);
     setPersonalFormError("");
     try {
-      const payload = {
-        nombre_completo: personalForm.nombre_completo.trim(),
-        dni: personalForm.dni.trim(),
-        fecha_nacimiento: personalForm.fecha_nacimiento,
-        numero_telefono: personalForm.numero_telefono.trim(),
-        rol: personalForm.rol,
-        estado: personalForm.estado,
-        ...(personalForm.licencia.trim() ? { licencia: personalForm.licencia.trim() } : {}),
-        ...(personalForm.foto_url.trim() ? { foto_url: personalForm.foto_url.trim() } : {}),
-      };
+      const payload = personalForm.rol === "chofer"
+        ? {
+            nombre_completo: personalForm.nombre_completo.trim(),
+            dni: personalForm.dni.trim(),
+            numero_telefono: personalForm.numero_telefono.trim(),
+            licencia: personalForm.licencia.trim(),
+          }
+        : {
+            nombre_completo: personalForm.nombre_completo.trim(),
+            dni: personalForm.dni.trim(),
+            fecha_nacimiento: personalForm.fecha_nacimiento,
+            numero_telefono: personalForm.numero_telefono.trim(),
+            rol: "apoyo" as const,
+            estado: personalForm.estado,
+            ...(personalForm.licencia.trim() ? { licencia: personalForm.licencia.trim() } : {}),
+            ...(personalForm.foto_url.trim() ? { foto_url: personalForm.foto_url.trim() } : {}),
+          };
+
       if (editingPersonal) {
-        await updatePersonal(editingPersonal.id, payload);
+        await updatePersonal(editingPersonal.id, payload, editingPersonal.rol);
       } else {
         await addPersonal(payload);
       }
@@ -355,18 +385,31 @@ export function ProductsPage() {
   // Add paquete via context
   const handleAddPaquete = async () => {
     if (!newPaquete.nombre) return;
+    const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
+    const precioTotalCalculado = contenidoValido.reduce((total, item) => {
+      const producto = allProducts.find((p) => p.sku === item.productoSku);
+      const precioProducto = Number(producto?.precio || 0);
+      return total + (precioProducto * item.cantidad);
+    }, 0);
+
     await addPaquete({
       nombre: newPaquete.nombre,
-      precioUnitario: newPaquete.precioUnitario,
-      contenido: newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0),
+      precioUnitario: Number(precioTotalCalculado.toFixed(2)),
+      contenido: contenidoValido,
     });
     setShowAddPaquete(false);
     setNewPaquete({
       nombre: "",
-      precioUnitario: 0,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
   };
+
+  const contenidoPaqueteValido = newPaquete.contenidoItems.filter((item) => item.productoSku && item.cantidad > 0);
+  const precioTotalPaquete = contenidoPaqueteValido.reduce((total, item) => {
+    const producto = allProducts.find((p) => p.sku === item.productoSku);
+    const precioProducto = Number(producto?.precio || 0);
+    return total + (precioProducto * item.cantidad);
+  }, 0);
 
   const handleAddCarrito = async () => {
     const codigo = newCarrito.codigo.trim();
@@ -1094,6 +1137,7 @@ export function ProductsPage() {
               <div>
                 <h2 className="text-lg text-gray-900 dark:text-white">Personal de Staff</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Choferes y personal de apoyo para eventos.</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Los choferes se crean en la página de rutas.</p>
               </div>
               <button
                 onClick={openAddPersonal}
@@ -1215,16 +1259,22 @@ export function ProductsPage() {
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
-                  <input
-                    type="date"
-                    value={personalForm.fecha_nacimiento}
-                    onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
-                    max={new Date().toISOString().split("T")[0]}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
+                {personalForm.rol === "apoyo" ? (
+                  <div>
+                    <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
+                    <input
+                      type="date"
+                      value={personalForm.fecha_nacimiento}
+                      onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
+                      max={new Date().toISOString().split("T")[0]}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-end">
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Para chofer no se envía fecha de nacimiento.</p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1244,28 +1294,40 @@ export function ProductsPage() {
                   <select
                     value={personalForm.rol}
                     onChange={(e) => setPersonalForm({ ...personalForm, rol: e.target.value as Personal["rol"] })}
+                    disabled
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
-                    <option value="apoyo">Apoyo</option>
-                    <option value="chofer">Chofer</option>
+                    {editingPersonal?.rol === "chofer" ? (
+                      <option value="chofer">Chofer</option>
+                    ) : (
+                      <option value="apoyo">Apoyo</option>
+                    )}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
-                  <select
-                    value={personalForm.estado}
-                    onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  >
-                    <option value="disponible">Disponible</option>
-                    <option value="en-ruta">En ruta</option>
-                    <option value="descanso">Descanso</option>
-                  </select>
-                </div>
+                {personalForm.rol === "apoyo" ? (
+                  <div>
+                    <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                    <select
+                      value={personalForm.estado}
+                      onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    >
+                      <option value="disponible">Disponible</option>
+                      <option value="en-ruta">En ruta</option>
+                      <option value="descanso">Descanso</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex items-end">
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Para chofer no se envía estado.</p>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">N° Licencia <span className="text-gray-400">(opcional)</span></label>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
+                  N° Licencia {personalForm.rol === "chofer" ? "*" : <span className="text-gray-400">(opcional)</span>}
+                </label>
                 <input
                   type="text"
                   value={personalForm.licencia}
@@ -1625,18 +1687,12 @@ export function ProductsPage() {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 />
               </div>
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
-                  <input
-                    type="number"
-                    value={newPaquete.precioUnitario || ""}
-                    onChange={(e) => setNewPaquete({ ...newPaquete, precioUnitario: Number(e.target.value) })}
-                    placeholder="0 = a cotizar"
-                    min={0}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
+              <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Precio total del paquete (auto)</span>
+                  <span className="text-lg text-[#EF8022]">S/ {precioTotalPaquete.toFixed(2)}</span>
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Se calcula con la suma de (precio del producto x cantidad).</p>
               </div>
 
               {/* Contenido con selector de catálogo */}
@@ -1673,6 +1729,9 @@ export function ProductsPage() {
                         min={0}
                         className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                       />
+                      <div className="w-28 px-2 py-2 text-right text-xs text-gray-500 dark:text-gray-400">
+                        S/ {((Number(allProducts.find((p) => p.sku === item.productoSku)?.precio || 0)) * (item.cantidad || 0)).toFixed(2)}
+                      </div>
                       {newPaquete.contenidoItems.length > 1 && (
                         <button
                           onClick={() => {
