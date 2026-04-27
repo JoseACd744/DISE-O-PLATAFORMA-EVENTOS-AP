@@ -101,7 +101,7 @@ export interface Personal {
   fecha_nacimiento: string;
   numero_telefono: string;
   rol: "chofer" | "apoyo";
-  estado: "disponible" | "en-ruta" | "descanso";
+  estado: "disponible" | "ocupado" | "descanso";
   licencia?: string;
   foto_url?: string;
   // Legacy fields from older API responses

@@ -125,8 +125,8 @@ const getInitialFormData = (): FichaFormData => ({
   productosSueltos: [],
   carritoIds: [],
   inflableIds: [],
-  personalIds: [],
-  recursos: [],
+  personalIds: [0],
+  recursos: [{ recursoId: 0, cantidad: 1 }],
 });
 
 interface ExistingClient {
@@ -273,6 +273,12 @@ function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
       Pendiente
     </span>
   );
+}
+
+function formatEstadoPersonal(estado: string) {
+  if (estado === "ocupado" || estado === "en-ruta") return "Ocupado";
+  if (estado === "descanso") return "Descanso";
+  return "Disponible";
 }
 
 
@@ -1552,11 +1558,19 @@ export function FichasPage() {
     popup.document.close();
   };
 
-  const handleTogglePersonal = (personalId: number) => {
-    setFormData(prev => {
-      const ids = prev.personalIds;
-      return { ...prev, personalIds: ids.includes(personalId) ? ids.filter(id => id !== personalId) : [...ids, personalId] };
-    });
+  const handleAddPersonalRow = () => {
+    setFormData((prev) => ({ ...prev, personalIds: [...prev.personalIds, 0] }));
+  };
+
+  const handleRemovePersonalRow = (idx: number) => {
+    setFormData((prev) => ({ ...prev, personalIds: prev.personalIds.filter((_, i) => i !== idx) }));
+  };
+
+  const handlePersonalChange = (idx: number, personalId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      personalIds: prev.personalIds.map((value, i) => (i === idx ? personalId : value)),
+    }));
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -1620,22 +1634,25 @@ export function FichasPage() {
     });
   };
 
-  const handleToggleRecurso = (recursoId: number) => {
-    setFormData(prev => {
-      const exists = prev.recursos.some(r => r.recursoId === recursoId);
-      return {
-        ...prev,
-        recursos: exists
-          ? prev.recursos.filter(r => r.recursoId !== recursoId)
-          : [...prev.recursos, { recursoId, cantidad: 1 }],
-      };
-    });
+  const handleAddRecursoRow = () => {
+    setFormData((prev) => ({ ...prev, recursos: [...prev.recursos, { recursoId: 0, cantidad: 1 }] }));
   };
 
-  const handleRecursoCantidadChange = (recursoId: number, cantidad: number) => {
+  const handleRemoveRecursoRow = (idx: number) => {
+    setFormData((prev) => ({ ...prev, recursos: prev.recursos.filter((_, i) => i !== idx) }));
+  };
+
+  const handleRecursoChange = (idx: number, recursoId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      recursos: prev.recursos.map((recurso, i) => (i === idx ? { ...recurso, recursoId } : recurso)),
+    }));
+  };
+
+  const handleRecursoCantidadChange = (idx: number, cantidad: number) => {
     setFormData(prev => ({
       ...prev,
-      recursos: prev.recursos.map(r => r.recursoId === recursoId ? { ...r, cantidad: Math.max(1, cantidad) } : r),
+      recursos: prev.recursos.map((r, i) => i === idx ? { ...r, cantidad: Math.max(1, cantidad) } : r),
     }));
   };
 
@@ -1757,8 +1774,8 @@ export function FichasPage() {
           productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
           carritoIds: formData.carritoIds,
           inflableIds: brand === "jugueton" ? formData.inflableIds : [],
-          personalIds: formData.personalIds,
-          recursos: formData.recursos,
+          personalIds: formData.personalIds.filter((personalId) => personalId > 0),
+          recursos: formData.recursos.filter((recurso) => recurso.recursoId > 0),
         }),
       });
 
@@ -2538,11 +2555,10 @@ export function FichasPage() {
                 </div>
               </div>
 
-              {/* Recursos */}
+              {/* Recursos, inflables, carritos y personal */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Recursos</h4>
                 <div className="space-y-4">
-                  {/* Carritos - ambas marcas */}
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Carritos</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2557,78 +2573,94 @@ export function FichasPage() {
                       ))}
                     </div>
                   </div>
-                  {/* Inflables - solo Jugueton */}
                   {brand === "jugueton" && (
-                    <>
-                      <div>
-                        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Inflables</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {inflables.map(inflable => (
-                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${formData.inflableIds.includes(inflable.id) ? 'border-[#1F3C8B] bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-                              <input type="checkbox" checked={formData.inflableIds.includes(inflable.id)} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-[#1F3C8B]" />
-                              <div className="min-w-0">
-                                <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.nombre}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.cantidadTotal} unid. · S/{inflable.precioAlquiler}/día</p>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {/* Recursos */}
-                  {recursos.length > 0 && (
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Recursos</label>
-                      <div className="space-y-2">
-                        {recursos.map(recurso => {
-                          const entry = formData.recursos.find(r => r.recursoId === recurso.id);
-                          const checked = !!entry;
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Inflables</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {inflables.map(inflable => (
+                          <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${formData.inflableIds.includes(inflable.id) ? 'border-[#1F3C8B] bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                            <input type="checkbox" checked={formData.inflableIds.includes(inflable.id)} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-[#1F3C8B]" />
+                            <div className="min-w-0">
+                              <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.nombre}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.cantidadTotal} unid. · S/{inflable.precioAlquiler}/día</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className="block text-sm text-gray-600 dark:text-gray-400">Recursos</label>
+                      <button type="button" onClick={handleAddRecursoRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar recurso</button>
+                    </div>
+                    {recursos.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay recursos registrados.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.recursos.map((item, idx) => {
+                          const selectedIds = formData.recursos.filter((_, i) => i !== idx).map((entry) => entry.recursoId).filter((id) => id > 0);
+                          const availableRecursos = recursos.filter((recurso) => recurso.id === item.recursoId || !selectedIds.includes(recurso.id));
+
                           return (
-                            <div key={recurso.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${checked ? 'border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'}`}>
-                              <input type="checkbox" checked={checked} onChange={() => handleToggleRecurso(recurso.id)} className="w-4 h-4 accent-[#EF8022] shrink-0" />
-                              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleToggleRecurso(recurso.id)}>
-                                <p className="text-sm text-gray-900 dark:text-white truncate">{recurso.recurso}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{recurso.sku} · S/ {recurso.precio.toFixed(2)}</p>
-                              </div>
-                              {checked && (
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={entry.cantidad}
-                                  onChange={(e) => handleRecursoCantidadChange(recurso.id, Number(e.target.value))}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-center bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#EF8022]"
-                                />
+                            <div key={`${item.recursoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select value={item.recursoId} onChange={(e) => handleRecursoChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
+                                <option value={0}>Seleccionar recurso...</option>
+                                {availableRecursos.map((recurso) => (
+                                  <option key={recurso.id} value={recurso.id}>{recurso.recurso} · {recurso.sku}</option>
+                                ))}
+                              </select>
+                              <input type="number" min={1} value={item.cantidad} onChange={(e) => handleRecursoCantidadChange(idx, Number(e.target.value))} className={`${inputClass} w-full text-sm`} />
+                              {formData.recursos.length > 1 ? (
+                                <button type="button" onClick={() => handleRemoveRecursoRow(idx)} className="justify-self-start md:justify-self-center p-2 text-red-400 hover:text-red-600 md:mt-0 mt-1"><X className="w-4 h-4" /></button>
+                              ) : (
+                                <span className="hidden md:block" />
                               )}
                             </div>
                           );
                         })}
                       </div>
-                      {formData.recursos.length > 0 && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.recursos.length}</p>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.recursos.filter((recurso) => recurso.recursoId > 0).length}</p>
+                  </div>
+
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Personal (global) *</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {personales.map(personal => (
-                        <label key={personal.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${formData.personalIds.includes(personal.id) ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : "border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700"}`}>
-                          <input
-                            type="checkbox"
-                            checked={formData.personalIds.includes(personal.id)}
-                            onChange={() => handleTogglePersonal(personal.id)}
-                            className="w-4 h-4 accent-[#EF8022]"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm text-gray-900 dark:text-white truncate">{personal.nombre_completo || personal.nombre}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{personal.rol} · {personal.estado}</p>
-                          </div>
-                        </label>
-                      ))}
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className="block text-sm text-gray-600 dark:text-gray-400">Personal</label>
+                      <button type="button" onClick={handleAddPersonalRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.personalIds.length}</p>
+                    {personales.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay personal registrado.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.personalIds.map((personalId, idx) => {
+                          const selectedIds = formData.personalIds.filter((_, i) => i !== idx).filter((id) => id > 0);
+                          const availablePersonales = personales.filter((personal) => personal.id === personalId || !selectedIds.includes(personal.id));
+                          const selectedPersonal = personales.find((personal) => personal.id === personalId);
+
+                          return (
+                            <div key={`${personalId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select value={personalId} onChange={(e) => handlePersonalChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
+                                <option value={0}>Seleccionar personal...</option>
+                                {availablePersonales.map((personal) => (
+                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.rol} · {formatEstadoPersonal(personal.estado)}</option>
+                                ))}
+                              </select>
+                              <div className="flex items-center justify-between gap-2 md:justify-end">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">{selectedPersonal ? `${selectedPersonal.rol} · ${formatEstadoPersonal(selectedPersonal.estado)}` : "Sin seleccionar"}</span>
+                                {formData.personalIds.length > 1 ? (
+                                  <button type="button" onClick={() => handleRemovePersonalRow(idx)} className="p-2 text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                ) : (
+                                  <span className="hidden md:block" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.personalIds.filter((id) => id > 0).length}</p>
                   </div>
                 </div>
               </div>

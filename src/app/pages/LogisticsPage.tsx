@@ -6,7 +6,7 @@ import { apiRequest } from "../lib/api";
 
 // ── Types ────────────────────────────────────────────────────────
 
-type EstadoChofer = "disponible" | "en-ruta" | "descanso";
+type EstadoChofer = "disponible" | "ocupado" | "descanso";
 type EstadoVehiculo = "disponible" | "en-ruta" | "mantenimiento";
 
 interface Chofer {
@@ -62,7 +62,7 @@ const MAX_CARRITOS_POR_VEHICULO = 5;
 function EstadoChoferBadge({ estado }: { estado: EstadoChofer }) {
   const config: Record<EstadoChofer, { bg: string; text: string; icon: typeof CheckCircle2; label: string }> = {
     disponible: { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", icon: CheckCircle2, label: "Disponible" },
-    "en-ruta": { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", icon: MapPin, label: "En Ruta" },
+    ocupado: { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", icon: MapPin, label: "Ocupado" },
     descanso: { bg: "bg-gray-100 dark:bg-gray-700", text: "text-gray-600 dark:text-gray-400", icon: Coffee, label: "Descanso" },
   };
   const c = config[estado];
@@ -151,7 +151,7 @@ export function LogisticsPage() {
           dni: c.dni || "",
           celular: c.celular || c.numero_telefono || "",
           licencia: c.licencia || "",
-          estado: c.estado,
+          estado: c.estado === "en-ruta" ? "ocupado" : c.estado,
           rutasCompletadas: c.rutas_completadas || 0,
         }))
       );

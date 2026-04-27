@@ -270,7 +270,7 @@ export function ProductsPage() {
 
   const estadoPersonalColor: Record<Personal["estado"], string> = {
     disponible: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    "en-ruta": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    ocupado: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     descanso: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
 
@@ -715,9 +715,6 @@ export function ProductsPage() {
             <span className="text-sm text-gray-600 dark:text-gray-400">Total Productos</span>
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{allProducts.length}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Bajo minimo: {allProducts.filter((product) => product.stockActual <= product.stockMinimo).length}
-          </p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
@@ -830,9 +827,7 @@ export function ProductsPage() {
                       nuevaCategoria: "",
                       producto: "",
                       sku: "",
-                      precio: 0,
-                      stockActual: 0,
-                      stockMinimo: 0,
+                      precio: 0
                     });
                     setShowAddProduct(true);
                   }}
@@ -1354,6 +1349,7 @@ export function ProductsPage() {
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
                     <option value="disponible">Disponible</option>
+                    <option value="ocupado">Ocupado</option>
                     <option value="descanso">Descanso</option>
                   </select>
                 </div>
@@ -1810,7 +1806,7 @@ export function ProductsPage() {
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca</label>
                 <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]">
                   <option value="donofrio">D'Onofrio</option>
-                  <option value="jugueton">Juguerón</option>
+                  <option value="jugueton">Juguetón</option>
                 </select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

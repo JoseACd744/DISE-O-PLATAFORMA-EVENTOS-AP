@@ -75,7 +75,7 @@ type ApiPersonal = {
   nombre?: string | null;
   celular?: string | null;
   rol: "chofer" | "apoyo";
-  estado: "disponible" | "en-ruta" | "descanso";
+  estado: "disponible" | "ocupado" | "descanso" | "en-ruta";
 };
 
 export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
@@ -169,7 +169,7 @@ export function mapApiPersonal(apiPersonal: ApiPersonal[]): Personal[] {
     fecha_nacimiento: persona.fecha_nacimiento || "",
     numero_telefono: persona.numero_telefono || persona.celular || "",
     rol: persona.rol,
-    estado: persona.estado,
+    estado: persona.estado === "en-ruta" ? "ocupado" : persona.estado,
     ...(persona.licencia ? { licencia: persona.licencia } : {}),
     ...(persona.foto_url ? { foto_url: persona.foto_url } : {}),
     // Preserve legacy fields if present
