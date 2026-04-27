@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, FlatProduct, Carrito, ProductStockMovement, Personal } from "../contexts/ProductsContext";
+import type { PaqueteItem, Paquete, FlatProduct, Carrito, ProductStockMovement, Personal } from "../contexts/ProductsContext";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -106,6 +106,7 @@ export function ProductsPage() {
     deleteCategory,
     paquetes,
     addPaquete,
+    updatePaquete,
     deletePaquete,
     carritos,
     addCarrito,
@@ -132,6 +133,8 @@ export function ProductsPage() {
 
   // Package modal
   const [showAddPaquete, setShowAddPaquete] = useState(false);
+  const [editingPaquete, setEditingPaquete] = useState<Paquete | null>(null);
+  const [paqueteFormErrors, setPaqueteFormErrors] = useState({ nombre: false });
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
     precioUnitario: 0,
@@ -388,24 +391,53 @@ export function ProductsPage() {
     });
   };
 
-  // Add paquete via context
-  const handleAddPaquete = async () => {
-    if (!newPaquete.nombre) return;
-    const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
-    const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
-
-    await addPaquete({
-      nombre: newPaquete.nombre,
-      precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
-      contenido: contenidoValido,
-    });
+  const closePaqueteModal = () => {
     setShowAddPaquete(false);
+    setEditingPaquete(null);
+    setPaqueteFormErrors({ nombre: false });
     setNewPaquete({
       nombre: "",
       precioUnitario: 0,
       precioEditadoManualmente: false,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
+  };
+
+  const handleEditPaquete = (paq: Paquete) => {
+    setEditingPaquete(paq);
+    setNewPaquete({
+      nombre: paq.nombre,
+      precioUnitario: paq.precioUnitario,
+      precioEditadoManualmente: true,
+      contenidoItems: paq.contenido.length > 0
+        ? paq.contenido
+        : [{ productoSku: "", productoNombre: "", cantidad: 0 }],
+    });
+    setPaqueteFormErrors({ nombre: false });
+    setShowAddPaquete(true);
+  };
+
+  // Add/Edit paquete via context
+  const handleSavePaquete = async () => {
+    if (!newPaquete.nombre.trim()) {
+      setPaqueteFormErrors({ nombre: true });
+      return;
+    }
+    setPaqueteFormErrors({ nombre: false });
+    const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
+    const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
+    const payload = {
+      nombre: newPaquete.nombre.trim(),
+      precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
+      contenido: contenidoValido,
+    };
+
+    if (editingPaquete) {
+      await updatePaquete(editingPaquete.id, payload);
+    } else {
+      await addPaquete(payload);
+    }
+    closePaqueteModal();
   };
 
   const contenidoPaqueteValido = newPaquete.contenidoItems.filter((item) => item.productoSku && item.cantidad > 0);
@@ -883,12 +915,20 @@ export function ProductsPage() {
                   <div>
                     <h3 className="text-gray-900 dark:text-white mb-1">{paq.nombre}</h3>
                   </div>
-                  <button
-                    onClick={() => deletePaquete(paq.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditPaquete(paq)}
+                      className="p-1.5 text-gray-400 hover:text-[#EF8022] dark:hover:text-[#EF8022] transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deletePaquete(paq.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
@@ -1613,10 +1653,12 @@ export function ProductsPage() {
       {showAddPaquete && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 my-8 relative">
-            <button onClick={() => setShowAddPaquete(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <button onClick={closePaqueteModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Paquete</h3>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-2">
+              {editingPaquete ? "Editar Paquete" : "Nuevo Paquete"}
+            </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               Selecciona productos del catálogo para armar el paquete.
             </p>
@@ -1626,10 +1668,20 @@ export function ProductsPage() {
                 <input
                   type="text"
                   value={newPaquete.nombre}
-                  onChange={(e) => setNewPaquete({ ...newPaquete, nombre: e.target.value })}
+                  onChange={(e) => {
+                    setNewPaquete({ ...newPaquete, nombre: e.target.value });
+                    if (e.target.value.trim()) setPaqueteFormErrors((prev) => ({ ...prev, nombre: false }));
+                  }}
                   placeholder="Ej: Paquete Premium"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                    paqueteFormErrors.nombre
+                      ? "border-red-500 dark:border-red-500"
+                      : "border-gray-300 dark:border-gray-600"
+                  }`}
                 />
+                {paqueteFormErrors.nombre && (
+                  <p className="mt-1 text-xs text-red-500">El nombre del paquete es obligatorio.</p>
+                )}
               </div>
               <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
@@ -1726,11 +1778,11 @@ export function ProductsPage() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddPaquete(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleAddPaquete} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  Guardar Paquete
+                <button onClick={handleSavePaquete} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
+                  {editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
                 </button>
               </div>
             </div>

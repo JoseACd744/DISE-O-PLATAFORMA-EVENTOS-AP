@@ -161,6 +161,7 @@ interface ProductsContextType {
 
   paquetes: Paquete[];
   addPaquete: (paquete: PaqueteInput) => Promise<void>;
+  updatePaquete: (id: number, paquete: PaqueteInput) => Promise<void>;
   deletePaquete: (id: number) => Promise<void>;
 
   carritos: Carrito[];
@@ -361,6 +362,19 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
+  const updatePaquete = async (id: number, paquete: PaqueteInput) => {
+    await apiRequest(`/paquetes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        id,
+        nombre: paquete.nombre,
+        precio_unitario: paquete.precioUnitario,
+        contenido: paquete.contenido.map(mapPaqueteItemToApi),
+      }),
+    });
+    await reloadData();
+  };
+
   const deletePaquete = async (id: number) => {
     await apiRequest(`/paquetes/${id}`, { method: "DELETE" });
     await reloadData();
@@ -517,6 +531,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         deleteCategory,
         paquetes,
         addPaquete,
+        updatePaquete,
         deletePaquete,
         carritos,
         addCarrito,
