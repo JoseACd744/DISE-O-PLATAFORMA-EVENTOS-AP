@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "../components/DateRangePicker";
@@ -577,6 +577,7 @@ export function FichasPage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
   const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
@@ -592,6 +593,7 @@ export function FichasPage() {
   const [clients, setClients] = useState<ExistingClient[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
+  const createFichaLockRef = useRef(false);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos } = useProducts();
@@ -1755,6 +1757,10 @@ export function FichasPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!brand) return;
+    if (createFichaLockRef.current || isSaving) return;
+
+    createFichaLockRef.current = true;
+    setIsSaving(true);
 
     try {
       await apiRequest("/fichas", {
@@ -1792,6 +1798,9 @@ export function FichasPage() {
       await loadFichas();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la ficha");
+    } finally {
+      createFichaLockRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -2472,97 +2481,6 @@ export function FichasPage() {
                 <button type="button" onClick={handleAddProductoSuelto} className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar producto suelto</button>
               </div>
 
-              {/* ── FINANCIAL FIELDS ──────────────────────────── */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Cotización y Descuento</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cotización Total (S/) *</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
-                      <input type="number" name="cotizacion" value={formData.cotizacion || ""} onChange={handleInputChange} required min={0} step={0.01}
-                        className={`${inputClass} pl-9`} placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Descuento (S/)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
-                      <input type="number" name="descuento" value={formData.descuento || ""} onChange={handleInputChange} min={0} step={0.01}
-                        className={`${inputClass} pl-9`} placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total a Pagar</label>
-                    <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
-                      <span className="text-lg text-[#1F3C8B] dark:text-blue-400">
-                        {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) - (Number(formData.descuento) || 0)))}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Los abonos se registran después de crear la ficha, desde el detalle del evento.</p>
-              </div>
-
-              {/* Cliente */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
-                  <select
-                    value={formData.cliente_id}
-                    onChange={(e) => handleExistingClientChange(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Seleccionar cliente (opcional)</option>
-                    {availableClients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.nombre}
-                        {client.razon_social ? ` - ${client.razon_social}` : ""}
-                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
-                </div>
-              </div>
-
-              {/* Ubicación */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
-                    <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
-                      <option value="">Seleccionar distrito</option>
-                      {DISTRITOS_LIMA.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Transporte *</label>
-                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
-                      <option value="traslado">Traslado</option>
-                      <option value="delivery">Delivery</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
-                </div>
-              </div>
-
-              {/* Horarios */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label><input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label><input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} /></div>
-                </div>
-              </div>
-
               {/* Recursos, inflables, carritos y personal */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Recursos</h4>
@@ -2708,6 +2626,97 @@ export function FichasPage() {
                 </div>
               </div>
 
+              {/* ── FINANCIAL FIELDS ──────────────────────────── */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Cotización y Descuento</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cotización Total (S/) *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                      <input type="number" name="cotizacion" value={formData.cotizacion || ""} onChange={handleInputChange} required min={0} step={0.01}
+                        className={`${inputClass} pl-9`} placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Descuento (S/)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                      <input type="number" name="descuento" value={formData.descuento || ""} onChange={handleInputChange} min={0} step={0.01}
+                        className={`${inputClass} pl-9`} placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total a Pagar</label>
+                    <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                      <span className="text-lg text-[#1F3C8B] dark:text-blue-400">
+                        {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) - (Number(formData.descuento) || 0)))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Los abonos se registran después de crear la ficha, desde el detalle del evento.</p>
+              </div>
+
+              {/* Cliente */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
+                  <select
+                    value={formData.cliente_id}
+                    onChange={(e) => handleExistingClientChange(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Seleccionar cliente (opcional)</option>
+                    {availableClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.nombre}
+                        {client.razon_social ? ` - ${client.razon_social}` : ""}
+                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Ubicación */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
+                    <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
+                      <option value="">Seleccionar distrito</option>
+                      {DISTRITOS_LIMA.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Transporte *</label>
+                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
+                      <option value="traslado">Traslado</option>
+                      <option value="delivery">Delivery</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Horarios */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label><input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label><input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} /></div>
+                </div>
+              </div>
+
               {/* Comentarios */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Edit className="w-4 h-4 text-gray-400" /> Comentarios</h4>
@@ -2715,7 +2724,7 @@ export function FichasPage() {
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="submit" className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors text-sm">Guardar Ficha</button>
+                <button type="submit" disabled={isSaving} className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">{isSaving ? "Guardando..." : "Guardar Ficha"}</button>
                 <button type="button" onClick={handleCloseModal} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">Cancelar</button>
               </div>
             </form>

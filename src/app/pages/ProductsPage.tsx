@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
@@ -123,6 +123,7 @@ export function ProductsPage() {
   // Product modal
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<FlatProduct | null>(null);
+  const [productFormSubmitting, setProductFormSubmitting] = useState(false);
   const [newProduct, setNewProduct] = useState({
     categoria: "",
     nuevaCategoria: "",
@@ -135,6 +136,7 @@ export function ProductsPage() {
   const [showAddPaquete, setShowAddPaquete] = useState(false);
   const [editingPaquete, setEditingPaquete] = useState<Paquete | null>(null);
   const [paqueteFormErrors, setPaqueteFormErrors] = useState({ nombre: false });
+  const [paqueteFormSubmitting, setPaqueteFormSubmitting] = useState(false);
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
     precioUnitario: 0,
@@ -144,6 +146,7 @@ export function ProductsPage() {
 
   // Carrito modal
   const [showAddCarrito, setShowAddCarrito] = useState(false);
+  const [carritoFormSubmitting, setCarritoFormSubmitting] = useState(false);
   const [newCarrito, setNewCarrito] = useState({
     modelo: "Blanco" as Carrito["modelo"],
     codigo: "",
@@ -168,6 +171,7 @@ export function ProductsPage() {
   const [personalFormError, setPersonalFormError] = useState("");
   const [personalFormSubmitting, setPersonalFormSubmitting] = useState(false);
   const [personalSearch, setPersonalSearch] = useState("");
+  const formLocksRef = useRef({ product: false, paquete: false, carrito: false });
 
   const validatePhone = (phone: string, role: Personal["rol"]): boolean => {
     const trimmed = phone.trim();
@@ -376,28 +380,37 @@ export function ProductsPage() {
     if (!newProduct.producto || !newProduct.sku) return;
     const catName = newProduct.nuevaCategoria || newProduct.categoria;
     if (!catName) return;
+    if (formLocksRef.current.product || productFormSubmitting) return;
 
-    const payload = {
-      producto: newProduct.producto,
-      sku: newProduct.sku,
-      precio: Number(newProduct.precio || 0),
-    };
+    formLocksRef.current.product = true;
+    setProductFormSubmitting(true);
 
-    if (editingProduct) {
-      await updateProduct(editingProduct.id, catName, payload);
-    } else {
-      await addProduct(catName, payload);
+    try {
+      const payload = {
+        producto: newProduct.producto,
+        sku: newProduct.sku,
+        precio: Number(newProduct.precio || 0),
+      };
+
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, catName, payload);
+      } else {
+        await addProduct(catName, payload);
+      }
+
+      setShowAddProduct(false);
+      setEditingProduct(null);
+      setNewProduct({
+        categoria: "",
+        nuevaCategoria: "",
+        producto: "",
+        sku: "",
+        precio: 0,
+      });
+    } finally {
+      formLocksRef.current.product = false;
+      setProductFormSubmitting(false);
     }
-
-    setShowAddProduct(false);
-    setEditingProduct(null);
-    setNewProduct({
-      categoria: "",
-      nuevaCategoria: "",
-      producto: "",
-      sku: "",
-      precio: 0,
-    });
   };
 
   const closePaqueteModal = () => {
@@ -432,21 +445,30 @@ export function ProductsPage() {
       setPaqueteFormErrors({ nombre: true });
       return;
     }
-    setPaqueteFormErrors({ nombre: false });
-    const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
-    const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
-    const payload = {
-      nombre: newPaquete.nombre.trim(),
-      precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
-      contenido: contenidoValido,
-    };
+    if (formLocksRef.current.paquete || paqueteFormSubmitting) return;
 
-    if (editingPaquete) {
-      await updatePaquete(editingPaquete.id, payload);
-    } else {
-      await addPaquete(payload);
+    formLocksRef.current.paquete = true;
+    setPaqueteFormSubmitting(true);
+    setPaqueteFormErrors({ nombre: false });
+    try {
+      const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
+      const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
+      const payload = {
+        nombre: newPaquete.nombre.trim(),
+        precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
+        contenido: contenidoValido,
+      };
+
+      if (editingPaquete) {
+        await updatePaquete(editingPaquete.id, payload);
+      } else {
+        await addPaquete(payload);
+      }
+      closePaqueteModal();
+    } finally {
+      formLocksRef.current.paquete = false;
+      setPaqueteFormSubmitting(false);
     }
-    closePaqueteModal();
   };
 
   const contenidoPaqueteValido = newPaquete.contenidoItems.filter((item) => item.productoSku && item.cantidad > 0);
@@ -468,23 +490,32 @@ export function ProductsPage() {
     const codigo = newCarrito.codigo.trim();
     const descripcion = newCarrito.descripcion.trim();
     if (!codigo || !descripcion || newCarrito.cantidadTotal <= 0) return;
+    if (formLocksRef.current.carrito || carritoFormSubmitting) return;
 
-    await addCarrito({
-      modelo: newCarrito.modelo,
-      codigo,
-      descripcion,
-      cantidadTotal: newCarrito.cantidadTotal,
-      estado: newCarrito.estado,
-    });
+    formLocksRef.current.carrito = true;
+    setCarritoFormSubmitting(true);
 
-    setShowAddCarrito(false);
-    setNewCarrito({
-      modelo: "Blanco",
-      codigo: "",
-      descripcion: "",
-      cantidadTotal: 1,
-      estado: "disponible",
-    });
+    try {
+      await addCarrito({
+        modelo: newCarrito.modelo,
+        codigo,
+        descripcion,
+        cantidadTotal: newCarrito.cantidadTotal,
+        estado: newCarrito.estado,
+      });
+
+      setShowAddCarrito(false);
+      setNewCarrito({
+        modelo: "Blanco",
+        codigo: "",
+        descripcion: "",
+        cantidadTotal: 1,
+        estado: "disponible",
+      });
+    } finally {
+      formLocksRef.current.carrito = false;
+      setCarritoFormSubmitting(false);
+    }
   };
 
   const getTotalHelados = (contenido: PaqueteItem[]) =>
@@ -1548,8 +1579,8 @@ export function ProductsPage() {
                 <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSaveProduct} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  {editingProduct ? "Actualizar Producto" : "Guardar Producto"}
+                <button onClick={handleSaveProduct} disabled={productFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {productFormSubmitting ? "Guardando..." : editingProduct ? "Actualizar Producto" : "Guardar Producto"}
                 </button>
               </div>
             </div>
@@ -1689,8 +1720,8 @@ export function ProductsPage() {
                 <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSavePaquete} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  {editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
+                <button onClick={handleSavePaquete} disabled={paqueteFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {paqueteFormSubmitting ? "Guardando..." : editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
                 </button>
               </div>
             </div>
@@ -1772,8 +1803,8 @@ export function ProductsPage() {
                 <button onClick={() => setShowAddCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleAddCarrito} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors">
-                  Guardar Carrito
+                <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {carritoFormSubmitting ? "Guardando..." : "Guardar Carrito"}
                 </button>
               </div>
             </div>
