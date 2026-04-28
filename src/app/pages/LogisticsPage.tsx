@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map } from "lucide-react";
 import { useBrand } from "../contexts/BrandContext";
@@ -102,6 +102,10 @@ export function LogisticsPage() {
   const [showAddChofer, setShowAddChofer] = useState(false);
   const [showAddVehiculo, setShowAddVehiculo] = useState(false);
   const [showAddAsignacion, setShowAddAsignacion] = useState(false);
+  const [choferSubmitting, setChoferSubmitting] = useState(false);
+  const [vehiculoSubmitting, setVehiculoSubmitting] = useState(false);
+  const [asignacionSubmitting, setAsignacionSubmitting] = useState(false);
+  const logisticsLockRef = useRef({ chofer: false, vehiculo: false, asignacion: false });
 
   // Chofer form
   const [choferForm, setChoferForm] = useState({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
@@ -258,6 +262,7 @@ export function LogisticsPage() {
     const dni = choferForm.dni.trim();
     const celular = choferForm.celular.trim();
     const licencia = choferForm.licencia.trim();
+    if (logisticsLockRef.current.chofer || choferSubmitting) return;
 
     if (!nombre) {
       setError("El nombre completo del chofer es obligatorio.");
@@ -277,60 +282,83 @@ export function LogisticsPage() {
     }
 
     setError("");
-    await apiRequest("/personal", {
-      method: "POST",
-      body: JSON.stringify({
-        rol: "chofer",
-        nombre_completo: nombre,
-        dni,
-        celular,
-        licencia,
-      }),
-    });
-    setShowAddChofer(false);
-    setChoferForm({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
-    await loadLogisticsData();
+    logisticsLockRef.current.chofer = true;
+    setChoferSubmitting(true);
+    try {
+      await apiRequest("/personal", {
+        method: "POST",
+        body: JSON.stringify({
+          rol: "chofer",
+          nombre_completo: nombre,
+          dni,
+          celular,
+          licencia,
+        }),
+      });
+      setShowAddChofer(false);
+      setChoferForm({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
+      await loadLogisticsData();
+    } finally {
+      logisticsLockRef.current.chofer = false;
+      setChoferSubmitting(false);
+    }
   };
   const handleAddVehiculo = async () => {
     if (!vehiculoForm.placa || !vehiculoForm.modelo) return;
-    await apiRequest("/logistics/vehiculos", {
-      method: "POST",
-      body: JSON.stringify({
-        placa: vehiculoForm.placa,
-        modelo: vehiculoForm.modelo,
-        marca: vehiculoForm.marca,
-        capacidad_kg: vehiculoForm.capacidad,
-        marcas_asignadas: vehiculoForm.marcasAsignadas,
-        estado: vehiculoForm.estado,
-        ultimo_mantenimiento: vehiculoForm.ultimoMantenimiento || null,
-        km_actual: vehiculoForm.kmActual || 0,
-      }),
-    });
-    setShowAddVehiculo(false);
-    setVehiculoForm({ placa: "", modelo: "", marca: "", capacidad: 0, marcasAsignadas: ["donofrio"], estado: "disponible", ultimoMantenimiento: "", kmActual: 0 });
-    await loadLogisticsData();
+    if (logisticsLockRef.current.vehiculo || vehiculoSubmitting) return;
+    logisticsLockRef.current.vehiculo = true;
+    setVehiculoSubmitting(true);
+    try {
+      await apiRequest("/logistics/vehiculos", {
+        method: "POST",
+        body: JSON.stringify({
+          placa: vehiculoForm.placa,
+          modelo: vehiculoForm.modelo,
+          marca: vehiculoForm.marca,
+          capacidad_kg: vehiculoForm.capacidad,
+          marcas_asignadas: vehiculoForm.marcasAsignadas,
+          estado: vehiculoForm.estado,
+          ultimo_mantenimiento: vehiculoForm.ultimoMantenimiento || null,
+          km_actual: vehiculoForm.kmActual || 0,
+        }),
+      });
+      setShowAddVehiculo(false);
+      setVehiculoForm({ placa: "", modelo: "", marca: "", capacidad: 0, marcasAsignadas: ["donofrio"], estado: "disponible", ultimoMantenimiento: "", kmActual: 0 });
+      await loadLogisticsData();
+    } finally {
+      logisticsLockRef.current.vehiculo = false;
+      setVehiculoSubmitting(false);
+    }
   };
   const handleAddAsignacion = async () => {
     if (!asignacionForm.choferId || !asignacionForm.vehiculoId) return;
     const totalCarritos = getTotalCarritosByIds(asignacionForm.fichasIds);
     if (totalCarritos > MAX_CARRITOS_POR_VEHICULO) return;
-    await apiRequest("/logistics/asignaciones", {
-      method: "POST",
-      body: JSON.stringify({
-        chofer_id: asignacionForm.choferId,
-        vehiculo_id: asignacionForm.vehiculoId,
-        fecha: asignacionForm.fecha,
-        ruta: asignacionForm.ruta,
-        entregas: asignacionForm.fichasIds.length || asignacionForm.entregas,
-        estado: "programada",
-        fichas_ids: asignacionForm.fichasIds,
-      }),
-    });
-    setShowAddAsignacion(false);
-    setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
-    setFichasSearch("");
-    setFichasSort("fecha");
-    await loadLogisticsData();
+    if (logisticsLockRef.current.asignacion || asignacionSubmitting) return;
+    logisticsLockRef.current.asignacion = true;
+    setAsignacionSubmitting(true);
+    try {
+      await apiRequest("/logistics/asignaciones", {
+        method: "POST",
+        body: JSON.stringify({
+          chofer_id: asignacionForm.choferId,
+          vehiculo_id: asignacionForm.vehiculoId,
+          fecha: asignacionForm.fecha,
+          ruta: asignacionForm.ruta,
+          entregas: asignacionForm.fichasIds.length || asignacionForm.entregas,
+          estado: "programada",
+          fichas_ids: asignacionForm.fichasIds,
+        }),
+      });
+      setShowAddAsignacion(false);
+      setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
+      setFichasSearch("");
+      setFichasSort("fecha");
+      await loadLogisticsData();
+    } finally {
+      logisticsLockRef.current.asignacion = false;
+      setAsignacionSubmitting(false);
+    }
   };
 
   const handleDeleteChofer = async (id: number) => {
@@ -349,6 +377,7 @@ export function LogisticsPage() {
   ];
 
   return (
+    <>
     <div className="p-4 sm:p-6 md:p-8">
       {error ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -397,9 +426,7 @@ export function LogisticsPage() {
             );
           })}
         </div>
-
         {/* Search + Add row */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
@@ -431,16 +458,15 @@ export function LogisticsPage() {
                   <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody>
                 {filteredChoferes.map(chofer => (
-                  <tr key={chofer.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                  <tr key={chofer.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#1F3C8B] to-[#EF8022] flex items-center justify-center text-white text-sm">{chofer.nombre.charAt(0)}</div>
-                        <span className="text-sm text-gray-900 dark:text-white">{chofer.nombre}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-white truncate">{chofer.nombre}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 font-mono">{chofer.dni}</td>
+                    <td className="px-6 py-4 text-sm font-mono text-gray-600 dark:text-gray-400">{chofer.dni}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{chofer.celular}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{chofer.licencia}</td>
                     <td className="px-6 py-4"><EstadoChoferBadge estado={chofer.estado} /></td>
@@ -468,34 +494,30 @@ export function LogisticsPage() {
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-700/50">
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Vehículo</th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Placa</th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cap. (kg)</th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Capacidad</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Marcas</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Estado</th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Último Mant.</th>
-                  <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Km</th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Último Mantenimiento</th>
+                  <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Km Actual</th>
                   <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody>
                 {filteredVehiculos.map(vehiculo => (
-                  <tr key={vehiculo.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                  <tr key={vehiculo.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center"><Truck className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" /></div>
-                        <div>
-                          <p className="text-sm text-gray-900 dark:text-white">{vehiculo.modelo}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{vehiculo.marca}</p>
+                        <div className="w-9 h-9 rounded-lg bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 flex items-center justify-center">
+                          <Truck className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-900 dark:text-white truncate">{vehiculo.modelo}</p>
+                          <span className="text-sm font-mono px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-gray-900 dark:text-white">{vehiculo.placa}</span>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-mono px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-gray-900 dark:text-white">{vehiculo.placa}</span>
-                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{vehiculo.capacidad.toLocaleString()}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-1">{vehiculo.marcasAsignadas.map(m => <MarcaBadge key={m} marca={m} />)}</div>
-                    </td>
+                    <td className="px-6 py-4"><div className="flex gap-1">{vehiculo.marcasAsignadas.map(m => <MarcaBadge key={m} marca={m} />)}</div></td>
                     <td className="px-6 py-4"><EstadoVehiculoBadge estado={vehiculo.estado} /></td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{vehiculo.ultimoMantenimiento}</td>
                     <td className="px-6 py-4 text-right text-sm text-gray-600 dark:text-gray-400 font-mono">{vehiculo.kmActual.toLocaleString()}</td>
@@ -662,9 +684,9 @@ export function LogisticsPage() {
                 <button
                   onClick={handleAddChofer}
                   disabled={!choferForm.nombre.trim() || !/^\d{8}$/.test(choferForm.dni) || !isValidChoferPhone(choferForm.celular) || !choferForm.licencia.trim()}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50"
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Guardar Chofer
+                  {choferSubmitting ? "Guardando..." : "Guardar Chofer"}
                 </button>
               </div>
             </div>
@@ -728,7 +750,7 @@ export function LogisticsPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddVehiculo(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button onClick={handleAddVehiculo} disabled={!vehiculoForm.placa || !vehiculoForm.modelo} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50">Guardar Vehículo</button>
+                <button onClick={handleAddVehiculo} disabled={!vehiculoForm.placa || !vehiculoForm.modelo || vehiculoSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50 disabled:cursor-not-allowed">{vehiculoSubmitting ? "Guardando..." : "Guardar Vehículo"}</button>
               </div>
             </div>
           </div>
@@ -887,12 +909,12 @@ export function LogisticsPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowAddAsignacion(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button onClick={handleAddAsignacion} disabled={!asignacionForm.choferId || !asignacionForm.vehiculoId || asignacionForm.fichasIds.length === 0} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50">Crear Asignación</button>
+                <button onClick={handleAddAsignacion} disabled={!asignacionForm.choferId || !asignacionForm.vehiculoId || asignacionForm.fichasIds.length === 0 || asignacionSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50 disabled:cursor-not-allowed">{asignacionSubmitting ? "Guardando..." : "Crear Asignación"}</button>
               </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -153,6 +153,11 @@ export function InflablesPage() {
   const [showNewAlerta, setShowNewAlerta] = useState(false);
   const [showNewReservaCarrito, setShowNewReservaCarrito] = useState(false);
   const [mainTab, setMainTab] = useState<"inflables" | "carritos" | "mantenimiento">("inflables");
+  const [reservaSubmitting, setReservaSubmitting] = useState(false);
+  const [reservaCarritoSubmitting, setReservaCarritoSubmitting] = useState(false);
+  const [inflableSubmitting, setInflableSubmitting] = useState(false);
+  const [alertaSubmitting, setAlertaSubmitting] = useState(false);
+  const submitLocksRef = useRef({ reserva: false, reservaCarrito: false, inflable: false, alerta: false });
 
   // Forms
   const [newReserva, setNewReserva] = useState({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
@@ -315,6 +320,7 @@ export function InflablesPage() {
 
   const handleAddReserva = async () => {
     if (!newReserva.inflableId || !newReserva.clienteNombre || !newReserva.fecha || !newReserva.cantidad) return;
+    if (submitLocksRef.current.reserva || reservaSubmitting) return;
     const inflable = inflables.find(i => i.id === newReserva.inflableId);
     if (!inflable) return;
     const reserved = getReservedCount(newReserva.inflableId, newReserva.fecha);
@@ -322,23 +328,31 @@ export function InflablesPage() {
       alert(`Solo hay ${inflable.cantidadTotal - reserved} unidad(es) disponible(s) de "${inflable.nombre}" para esa fecha.`);
       return;
     }
-    await apiRequest(`/inflables/${newReserva.inflableId}/reservas`, {
-      method: "POST",
-      body: JSON.stringify({
-        cliente_nombre: newReserva.clienteNombre,
-        fecha: newReserva.fecha,
-        cantidad: newReserva.cantidad,
-        evento: newReserva.evento,
-        notas: newReserva.notas,
-      }),
-    });
-    setShowNewReserva(false);
-    setNewReserva({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
-    await loadData();
+    submitLocksRef.current.reserva = true;
+    setReservaSubmitting(true);
+    try {
+      await apiRequest(`/inflables/${newReserva.inflableId}/reservas`, {
+        method: "POST",
+        body: JSON.stringify({
+          cliente_nombre: newReserva.clienteNombre,
+          fecha: newReserva.fecha,
+          cantidad: newReserva.cantidad,
+          evento: newReserva.evento,
+          notas: newReserva.notas,
+        }),
+      });
+      setShowNewReserva(false);
+      setNewReserva({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
+      await loadData();
+    } finally {
+      submitLocksRef.current.reserva = false;
+      setReservaSubmitting(false);
+    }
   };
 
   const handleAddReservaCarrito = async () => {
     if (!newResCarrito.carritoId || !newResCarrito.clienteNombre || !newResCarrito.fecha || !newResCarrito.cantidad) return;
+    if (submitLocksRef.current.reservaCarrito || reservaCarritoSubmitting) return;
     const carrito = carritos.find(c => c.id === newResCarrito.carritoId);
     if (!carrito) return;
     const reserved = getCarritoReservedCount(newResCarrito.carritoId, newResCarrito.fecha);
@@ -346,19 +360,26 @@ export function InflablesPage() {
       alert(`Solo hay ${carrito.cantidadTotal - reserved} unidad(es) disponible(s) del Carrito ${carrito.modelo} para esa fecha. No se puede crear la reserva para evitar sobreventa.`);
       return;
     }
-    await apiRequest(`/carritos/${newResCarrito.carritoId}/reservas`, {
-      method: "POST",
-      body: JSON.stringify({
-        cliente_nombre: newResCarrito.clienteNombre,
-        fecha: newResCarrito.fecha,
-        cantidad: newResCarrito.cantidad,
-        evento: newResCarrito.evento,
-        notas: newResCarrito.notas,
-      }),
-    });
-    setShowNewReservaCarrito(false);
-    setNewResCarrito({ carritoId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
-    await loadData();
+    submitLocksRef.current.reservaCarrito = true;
+    setReservaCarritoSubmitting(true);
+    try {
+      await apiRequest(`/carritos/${newResCarrito.carritoId}/reservas`, {
+        method: "POST",
+        body: JSON.stringify({
+          cliente_nombre: newResCarrito.clienteNombre,
+          fecha: newResCarrito.fecha,
+          cantidad: newResCarrito.cantidad,
+          evento: newResCarrito.evento,
+          notas: newResCarrito.notas,
+        }),
+      });
+      setShowNewReservaCarrito(false);
+      setNewResCarrito({ carritoId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
+      await loadData();
+    } finally {
+      submitLocksRef.current.reservaCarrito = false;
+      setReservaCarritoSubmitting(false);
+    }
   };
 
   const handleDeleteReserva = async (id: number) => {
@@ -441,23 +462,31 @@ export function InflablesPage() {
 
   const handleAddInflable = async () => {
     if (!newInflable.nombre || !newInflable.descripcion || !newInflable.cantidadTotal || !newInflable.precioAlquiler || !inflableImagen.url) return;
-    await apiRequest("/inflables", {
-      method: "POST",
-      body: JSON.stringify({
-        nombre: newInflable.nombre,
-        descripcion: newInflable.descripcion,
-        cantidad_total: newInflable.cantidadTotal,
-        precio_alquiler: newInflable.precioAlquiler,
-        dimensiones: newInflable.dimensiones,
-        edad_minima: newInflable.edadMinima,
-        imagen_url: inflableImagen.url,
-      }),
-    });
-    setShowNewInflable(false);
-    setNewInflable({ nombre: "", descripcion: "", cantidadTotal: 1, precioAlquiler: 0, dimensiones: "", edadMinima: "" });
-    setInflableImagen({ url: "", path: "", name: "" });
-    setUploadImagenError("");
-    await loadData();
+    if (submitLocksRef.current.inflable || inflableSubmitting) return;
+    submitLocksRef.current.inflable = true;
+    setInflableSubmitting(true);
+    try {
+      await apiRequest("/inflables", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: newInflable.nombre,
+          descripcion: newInflable.descripcion,
+          cantidad_total: newInflable.cantidadTotal,
+          precio_alquiler: newInflable.precioAlquiler,
+          dimensiones: newInflable.dimensiones,
+          edad_minima: newInflable.edadMinima,
+          imagen_url: inflableImagen.url,
+        }),
+      });
+      setShowNewInflable(false);
+      setNewInflable({ nombre: "", descripcion: "", cantidadTotal: 1, precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+      setInflableImagen({ url: "", path: "", name: "" });
+      setUploadImagenError("");
+      await loadData();
+    } finally {
+      submitLocksRef.current.inflable = false;
+      setInflableSubmitting(false);
+    }
   };
 
   const handleDeleteInflable = async (id: number) => {
@@ -468,27 +497,35 @@ export function InflablesPage() {
 
   const handleAddAlerta = async () => {
     if (!newAlerta.recursoId || !newAlerta.titulo || !newAlerta.descripcion) return;
+    if (submitLocksRef.current.alerta || alertaSubmitting) return;
     const recurso = newAlerta.recursoTipo === "inflable"
       ? inflables.find(i => i.id === newAlerta.recursoId)
       : carritos.find(c => c.id === newAlerta.recursoId);
     if (!recurso) return;
-    await apiRequest("/maintenance", {
-      method: "POST",
-      body: JSON.stringify({
-        recurso_tipo: newAlerta.recursoTipo,
-        recurso_id: newAlerta.recursoId,
-        recurso_nombre: recurso.nombre || (recurso as Carrito).modelo,
-        severidad: newAlerta.severidad,
-        estado: "pendiente",
-        titulo: newAlerta.titulo,
-        descripcion: newAlerta.descripcion,
-        reportado_por: newAlerta.reportadoPor || "Sistema",
-        fecha_reporte: todayStr,
-      }),
-    });
-    setShowNewAlerta(false);
-    setNewAlerta({ recursoTipo: "inflable", recursoId: 0, severidad: "advertencia", titulo: "", descripcion: "", reportadoPor: "" });
-    await loadData();
+    submitLocksRef.current.alerta = true;
+    setAlertaSubmitting(true);
+    try {
+      await apiRequest("/maintenance", {
+        method: "POST",
+        body: JSON.stringify({
+          recurso_tipo: newAlerta.recursoTipo,
+          recurso_id: newAlerta.recursoId,
+          recurso_nombre: recurso.nombre || (recurso as Carrito).modelo,
+          severidad: newAlerta.severidad,
+          estado: "pendiente",
+          titulo: newAlerta.titulo,
+          descripcion: newAlerta.descripcion,
+          reportado_por: newAlerta.reportadoPor || "Sistema",
+          fecha_reporte: todayStr,
+        }),
+      });
+      setShowNewAlerta(false);
+      setNewAlerta({ recursoTipo: "inflable", recursoId: 0, severidad: "advertencia", titulo: "", descripcion: "", reportadoPor: "" });
+      await loadData();
+    } finally {
+      submitLocksRef.current.alerta = false;
+      setAlertaSubmitting(false);
+    }
   };
 
   const handleUpdateAlertaEstado = async (id: number, nuevoEstado: EstadoAlerta) => {
@@ -963,7 +1000,7 @@ export function InflablesPage() {
               <input type="text" placeholder="Ej: Cumpleaños..." value={newReserva.evento} onChange={e => setNewReserva({ ...newReserva, evento: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
               <textarea placeholder="Observaciones..." value={newReserva.notas} onChange={e => setNewReserva({ ...newReserva, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
-            <ModalButtons onCancel={() => setShowNewReserva(false)} onConfirm={handleAddReserva} label="Crear Reserva" />
+            <ModalButtons onCancel={() => setShowNewReserva(false)} onConfirm={handleAddReserva} label="Crear Reserva" submitting={reservaSubmitting} />
           </div>
         </ModalWrapper>
       )}
@@ -1004,7 +1041,7 @@ export function InflablesPage() {
               <input type="text" placeholder="Ej: Feria escolar..." value={newResCarrito.evento} onChange={e => setNewResCarrito({ ...newResCarrito, evento: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
               <textarea placeholder="Observaciones..." value={newResCarrito.notas} onChange={e => setNewResCarrito({ ...newResCarrito, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
-            <ModalButtons onCancel={() => setShowNewReservaCarrito(false)} onConfirm={handleAddReservaCarrito} label="Crear Reserva" />
+            <ModalButtons onCancel={() => setShowNewReservaCarrito(false)} onConfirm={handleAddReservaCarrito} label="Crear Reserva" submitting={reservaCarritoSubmitting} />
           </div>
         </ModalWrapper>
       )}
@@ -1048,7 +1085,7 @@ export function InflablesPage() {
                 </div>
               )}
             </div>
-            <ModalButtons onCancel={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }} onConfirm={handleAddInflable} label="Guardar Inflable" />
+            <ModalButtons onCancel={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }} onConfirm={handleAddInflable} label="Guardar Inflable" submitting={inflableSubmitting} />
           </div>
         </ModalWrapper>
       )}
@@ -1095,7 +1132,7 @@ export function InflablesPage() {
               <textarea value={newAlerta.descripcion} onChange={e => setNewAlerta({ ...newAlerta, descripcion: e.target.value })} placeholder="Describa el problema, ubicación del daño, urgencia..." rows={3} className={`${inputClass} resize-none`} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Reportado por</label>
               <input type="text" value={newAlerta.reportadoPor} onChange={e => setNewAlerta({ ...newAlerta, reportadoPor: e.target.value })} placeholder="Nombre del responsable" className={inputClass} /></div>
-            <ModalButtons onCancel={() => setShowNewAlerta(false)} onConfirm={handleAddAlerta} label="Reportar Problema" confirmColor="bg-red-500 hover:bg-red-600" />
+            <ModalButtons onCancel={() => setShowNewAlerta(false)} onConfirm={handleAddAlerta} label="Reportar Problema" confirmColor="bg-red-500 hover:bg-red-600" submitting={alertaSubmitting} />
           </div>
         </ModalWrapper>
       )}
@@ -1116,11 +1153,11 @@ function ModalWrapper({ children, onClose }: { children: React.ReactNode; onClos
   );
 }
 
-function ModalButtons({ onCancel, onConfirm, label, confirmColor }: { onCancel: () => void; onConfirm: () => void; label: string; confirmColor?: string }) {
+function ModalButtons({ onCancel, onConfirm, label, confirmColor, submitting }: { onCancel: () => void; onConfirm: () => void; label: string; confirmColor?: string; submitting?: boolean }) {
   return (
     <div className="flex gap-3 pt-2">
       <button onClick={onCancel} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm">Cancelar</button>
-      <button onClick={onConfirm} className={`flex-1 text-white px-4 py-3 rounded-lg transition-colors text-sm ${confirmColor || "bg-[#EF8022] hover:bg-[#d9711c]"}`}>{label}</button>
+      <button onClick={onConfirm} disabled={submitting} className={`flex-1 text-white px-4 py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed ${confirmColor || "bg-[#EF8022] hover:bg-[#d9711c]"}`}>{submitting ? "Guardando..." : label}</button>
     </div>
   );
 }

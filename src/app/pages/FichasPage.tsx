@@ -596,7 +596,11 @@ export function FichasPage() {
   const createFichaLockRef = useRef(false);
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos } = useProducts();
+  const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
+
+  const refreshFichasAndCatalogs = async () => {
+    await Promise.all([loadFichas(), reloadData()]);
+  };
 
   const availableClients = useMemo(
     () => clients.filter((c) => c.status === "active"),
@@ -1679,7 +1683,7 @@ export function FichasPage() {
         }),
       });
 
-      await loadFichas();
+      await refreshFichasAndCatalogs();
       if (selectedFicha && selectedFicha.id === fichaId) {
         const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
         setSelectedFicha((prev) => prev ? {
@@ -1748,7 +1752,7 @@ export function FichasPage() {
         setShowAbonoModal(false);
         setAbonoTargetFicha(null);
       }
-      await loadFichas();
+      await refreshFichasAndCatalogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar la ficha");
     }
@@ -1795,7 +1799,7 @@ export function FichasPage() {
 
       setShowAddModal(false);
       setFormData(getInitialFormData());
-      await loadFichas();
+      await refreshFichasAndCatalogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la ficha");
     } finally {

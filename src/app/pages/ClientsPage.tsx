@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useRef } from "react";
 import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, X, Filter, Building2 } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useBrand, Brand } from "../contexts/BrandContext";
@@ -34,6 +34,8 @@ export function ClientsPage() {
   const [brandFilter, setBrandFilter] = useState<BrandFilter>(brand || "todos");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isSavingClient, setIsSavingClient] = useState(false);
+  const clientSaveLockRef = useRef(false);
   const [newClient, setNewClient] = useState({
     nombre: "",
     razonSocial: "",
@@ -125,6 +127,10 @@ export function ClientsPage() {
 
   const handleAddClient = async () => {
     if (!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city) return;
+    if (clientSaveLockRef.current || isSavingClient) return;
+
+    clientSaveLockRef.current = true;
+    setIsSavingClient(true);
 
     try {
       await apiRequest("/clients", {
@@ -144,15 +150,22 @@ export function ClientsPage() {
       });
 
       setShowAddModal(false);
-        setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active" });
+      setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active" });
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
+    } finally {
+      clientSaveLockRef.current = false;
+      setIsSavingClient(false);
     }
   };
 
   const handleEditClient = async () => {
     if (!editingClient) return;
+    if (clientSaveLockRef.current || isSavingClient) return;
+
+    clientSaveLockRef.current = true;
+    setIsSavingClient(true);
 
     try {
       await apiRequest(`/clients/${editingClient.id}`, {
@@ -174,6 +187,9 @@ export function ClientsPage() {
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el cliente");
+    } finally {
+      clientSaveLockRef.current = false;
+      setIsSavingClient(false);
     }
   };
 
@@ -565,9 +581,10 @@ export function ClientsPage() {
                 </button>
                 <button
                   onClick={handleAddClient}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors"
+                  disabled={isSavingClient}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Guardar Cliente
+                  {isSavingClient ? "Guardando..." : "Guardar Cliente"}
                 </button>
               </div>
             </div>
@@ -692,9 +709,10 @@ export function ClientsPage() {
                 </button>
                 <button
                   onClick={handleEditClient}
-                  className="flex-1 bg-[#1F3C8B] text-white px-4 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors"
+                  disabled={isSavingClient}
+                  className="flex-1 bg-[#1F3C8B] text-white px-4 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Actualizar Cliente
+                  {isSavingClient ? "Guardando..." : "Actualizar Cliente"}
                 </button>
               </div>
             </div>

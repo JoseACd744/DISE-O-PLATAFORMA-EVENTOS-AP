@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
@@ -16,6 +16,7 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [googleBrand, setGoogleBrand] = useState<"donofrio" | "jugueton">("donofrio");
+  const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -23,6 +24,8 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLockRef.current || isSubmitting) return;
+    submitLockRef.current = true;
     setError("");
     setIsSubmitting(true);
 
@@ -54,11 +57,14 @@ export function LoginPage() {
     } catch {
       setError("No se pudo conectar con el servidor");
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   const handleGoogleLogin = async (credential: string) => {
+    if (submitLockRef.current || isSubmitting) return;
+    submitLockRef.current = true;
     setError("");
     setIsSubmitting(true);
 
@@ -90,6 +96,7 @@ export function LoginPage() {
     } catch {
       setError("No se pudo conectar con el servidor");
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -232,7 +239,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#E64441] transition-colors font-semibold"
+              className="w-full bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#E64441] transition-colors font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Ingresando..." : "Iniciar Sesión"}
             </button>
