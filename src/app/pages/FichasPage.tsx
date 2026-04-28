@@ -594,6 +594,7 @@ export function FichasPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
+  const dateRefreshLockRef = useRef(false);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
@@ -1580,7 +1581,15 @@ export function FichasPage() {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (name === "fecha_evento" && !dateRefreshLockRef.current) {
+      dateRefreshLockRef.current = true;
+      void refreshFichasAndCatalogs().finally(() => {
+        dateRefreshLockRef.current = false;
+      });
+    }
   };
 
   const handleExistingClientChange = (clientId: string) => {
