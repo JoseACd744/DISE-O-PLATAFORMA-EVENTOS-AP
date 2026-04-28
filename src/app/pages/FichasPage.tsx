@@ -731,7 +731,7 @@ export function FichasPage() {
   }, [brand]);
   // Catálogo de paquetes ahora global (sin separación por marca)
   const paquetesDisponibles = contextPaquetes
-    .map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, precio: p.precioUnitario }));
+    .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
 
   const distritos = ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
 
@@ -851,12 +851,20 @@ export function FichasPage() {
       subtotal: 0,
     }));
 
+    const recursosFicha = (ficha.recursos ?? []).map((r, index) => ({
+      item: lineasPaquetes.length + lineasSueltos.length + index + 1,
+      descripcion: r.recurso_nombre,
+      cantidad: r.cantidad,
+      precioUnitario: Number(r.precio) || 0,
+      subtotal: (Number(r.precio) || 0) * r.cantidad,
+    }));
+
     const lineasRecursos = [
       ...(carritoDetalle.length > 0
-        ? [{ item: lineasPaquetes.length + lineasSueltos.length + 1, descripcion: `Carritos asignados: ${carritoDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
+        ? [{ item: lineasPaquetes.length + lineasSueltos.length + recursosFicha.length + 1, descripcion: `Carritos asignados: ${carritoDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
         : []),
       ...(inflableDetalle.length > 0
-        ? [{ item: lineasPaquetes.length + lineasSueltos.length + (carritoDetalle.length > 0 ? 2 : 1), descripcion: `Inflables asignados: ${inflableDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
+        ? [{ item: lineasPaquetes.length + lineasSueltos.length + recursosFicha.length + (carritoDetalle.length > 0 ? 2 : 1), descripcion: `Inflables asignados: ${inflableDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
         : []),
     ];
 
@@ -919,6 +927,12 @@ export function FichasPage() {
           descripcion: l.descripcion,
           cantidad: l.cantidad,
           precio: l.subtotal,
+        })),
+        ...recursosFicha.map((r, idx) => ({
+          producto: `Recurso ${idx + 1}`,
+          descripcion: r.descripcion,
+          cantidad: r.cantidad,
+          precio: r.subtotal,
         })),
       ];
 
@@ -1273,6 +1287,13 @@ export function FichasPage() {
         total: 0,
         destacado: false,
       })),
+      ...recursosFicha.map((r) => ({
+        cantidad: r.cantidad,
+        descripcion: r.descripcion,
+        pu: r.precioUnitario,
+        total: r.subtotal,
+        destacado: r.subtotal > 0,
+      })),
       ...(carritoDetalle.length > 0
         ? [{
             cantidad: carritoDetalle.length,
@@ -1294,8 +1315,8 @@ export function FichasPage() {
       {
         cantidad: 1,
         descripcion: `${ficha.transporte === "delivery" ? "Delivery" : "Traslado"} a ${ficha.distrito}`,
-        pu: 70,
-        total: 70,
+        pu: 0,
+        total: 0,
         destacado: true,
       },
       {
@@ -1663,7 +1684,7 @@ export function FichasPage() {
     if (!paq) return;
     setFormData(prev => ({
       ...prev,
-      paquetes: prev.paquetes.map((p, i) => i === idx ? { ...p, paqueteId: paq.id, paqueteNombre: paq.nombre, paqueteTipo: paq.tipo } : p)
+      paquetes: prev.paquetes.map((p, i) => i === idx ? { ...p, paqueteId: paq.id, paqueteNombre: paq.nombre } : p)
     }));
   };
   const handlePaqueteCantidadChange = (idx: number, cantidad: number) => {
