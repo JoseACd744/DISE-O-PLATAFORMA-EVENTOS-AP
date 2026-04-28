@@ -1966,8 +1966,8 @@ export function FichasPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {ficha.fecha_evento || ficha.fecha}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {ficha.fecha_reserva}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {formatDate(ficha.fecha_reserva)}</span>
                     <EstadoPagoBadge estado={estado} />
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
@@ -2136,8 +2136,8 @@ export function FichasPage() {
               <div>
                 <h3 className="text-2xl text-gray-900 dark:text-white mb-2">Detalle del Evento</h3>
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {selectedFicha.fecha_evento || selectedFicha.fecha}</span></div>
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Reserva: {selectedFicha.fecha_reserva}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Reserva: {formatDate(selectedFicha.fecha_reserva)}</span></div>
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
