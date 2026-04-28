@@ -844,13 +844,17 @@ export function FichasPage() {
       };
     });
 
-    const lineasSueltos = ficha.productosSueltos.map((p, index) => ({
-      item: lineasPaquetes.length + index + 1,
-      descripcion: `${p.productoNombre} (Producto adicional)`,
-      cantidad: p.cantidad,
-      precioUnitario: 0,
-      subtotal: 0,
-    }));
+    const lineasSueltos = ficha.productosSueltos.map((p, index) => {
+      const catalogo = allProducts.find((item) => item.producto === p.productoNombre);
+      const precioUnitario = catalogo?.precio ?? 0;
+      return {
+        item: lineasPaquetes.length + index + 1,
+        descripcion: `${p.productoNombre} (Producto adicional)`,
+        cantidad: p.cantidad,
+        precioUnitario,
+        subtotal: precioUnitario * p.cantidad,
+      };
+    });
 
     const recursosFicha = (ficha.recursos ?? []).map((r, index) => ({
       item: lineasPaquetes.length + lineasSueltos.length + index + 1,
@@ -1320,17 +1324,15 @@ export function FichasPage() {
         total: 0,
         destacado: true,
       },
-      {
-        cantidad: 1,
-        descripcion: `Incluye: ${
-          ficha.comentarios
-            ? ficha.comentarios
-            : "Sombrilla, tacho y carrito con sistema de frio."
-        }`,
-        pu: 0,
-        total: 0,
-        destacado: false,
-      },
+      ...(ficha.comentarios
+        ? [{
+            cantidad: 1,
+            descripcion: ficha.comentarios,
+            pu: 0,
+            total: 0,
+            destacado: false,
+          }]
+        : []),
     ];
 
     const filasTablaDonofrio = filasDonofrio
