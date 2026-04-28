@@ -788,7 +788,8 @@ export function FichasPage() {
       .replaceAll("'", "&#039;");
 
   const formatDate = (dateIso: string) => {
-    const d = new Date(`${dateIso}T00:00:00`);
+    const raw = dateIso.includes("T") ? dateIso.slice(0, 10) : dateIso;
+    const d = new Date(`${raw}T00:00:00`);
     if (Number.isNaN(d.getTime())) return dateIso;
     return d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
   };
