@@ -1288,8 +1288,8 @@ export function FichasPage() {
       ...lineasSueltos.map((l) => ({
         cantidad: l.cantidad,
         descripcion: l.descripcion,
-        pu: 0,
-        total: 0,
+        pu: l.precioUnitario,
+        total: l.subtotal,
         destacado: false,
       })),
       ...recursosFicha.map((r) => ({
