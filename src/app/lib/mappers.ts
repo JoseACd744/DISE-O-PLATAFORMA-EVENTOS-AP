@@ -47,6 +47,7 @@ type ApiCarrito = {
   codigo: string;
   descripcion: string | null;
   cantidad_total: number;
+  precio_alquiler?: number | null;
   estado: "disponible" | "en-uso" | "mantenimiento";
 };
 
@@ -131,6 +132,7 @@ export function mapApiCarritos(apiCarritos: ApiCarrito[]): Carrito[] {
     codigo: carrito.codigo,
     descripcion: carrito.descripcion || "",
     cantidadTotal: carrito.cantidad_total,
+    precioAlquiler: Number(carrito.precio_alquiler || 0),
     estado: carrito.estado,
   }));
 }

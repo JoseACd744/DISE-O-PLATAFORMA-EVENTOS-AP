@@ -595,9 +595,10 @@ export function FichasPage() {
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
   const dateRefreshLockRef = useRef(false);
+  const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
+  const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
 
   const refreshFichasAndCatalogs = async () => {
     await Promise.all([loadFichas(), reloadData()]);
@@ -607,6 +608,44 @@ export function FichasPage() {
     () => clients.filter((c) => c.status === "active"),
     [clients]
   );
+
+  const cotizacionSugerida = useMemo(() => {
+    const totalPaquetes = formData.paquetes.reduce((sum, paquete) => {
+      const catalogo = contextPaquetes.find((item) => item.id === paquete.paqueteId);
+      return sum + ((catalogo?.precioUnitario || 0) * Math.max(0, paquete.cantidad || 0));
+    }, 0);
+
+    const totalProductos = formData.productosSueltos.reduce((sum, producto) => {
+      const catalogo = allProducts.find((item) => item.producto === producto.productoNombre);
+      return sum + ((catalogo?.precio || 0) * Math.max(0, producto.cantidad || 0));
+    }, 0);
+
+    const totalCarritos = formData.carritoIds.reduce((sum, carritoId) => {
+      const carrito = carritos.find((item) => item.id === carritoId);
+      return sum + (carrito?.precioAlquiler || 0);
+    }, 0);
+
+    const totalInflables = brand === "jugueton"
+      ? formData.inflableIds.reduce((sum, inflableId) => {
+          const inflable = inflables.find((item) => item.id === inflableId);
+          return sum + (inflable?.precioAlquiler || 0);
+        }, 0)
+      : 0;
+
+    const totalRecursos = formData.recursos.reduce((sum, recurso) => {
+      const catalogo = recursos.find((item) => item.id === recurso.recursoId);
+      return sum + ((catalogo?.precio || 0) * Math.max(0, recurso.cantidad || 0));
+    }, 0);
+
+    const totalTransporte = formData.transporte ? 70 : 0;
+
+    return Math.max(0, totalPaquetes + totalProductos + totalCarritos + totalInflables + totalRecursos + totalTransporte);
+  }, [allProducts, brand, carritos, contextPaquetes, formData.carritoIds, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, formData.transporte, inflables, recursos]);
+
+  useEffect(() => {
+    if (cotizacionMode !== "auto") return;
+    setFormData((prev) => (prev.cotizacion === cotizacionSugerida ? prev : { ...prev, cotizacion: cotizacionSugerida }));
+  }, [cotizacionMode, cotizacionSugerida]);
 
   const loadFichas = async () => {
     if (!brand) return;
@@ -1582,7 +1621,12 @@ export function FichasPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === "cotizacion") {
+      setCotizacionMode("manual");
+      setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
 
     if (name === "fecha_evento" && !dateRefreshLockRef.current) {
       dateRefreshLockRef.current = true;
@@ -1659,6 +1703,11 @@ export function FichasPage() {
 
   const handleAddRecursoRow = () => {
     setFormData((prev) => ({ ...prev, recursos: [...prev.recursos, { recursoId: 0, cantidad: 1 }] }));
+  };
+
+  const useSuggestedCotizacion = () => {
+    setCotizacionMode("auto");
+    setFormData((prev) => ({ ...prev, cotizacion: cotizacionSugerida }));
   };
 
   const handleRemoveRecursoRow = (idx: number) => {
@@ -1817,7 +1866,7 @@ export function FichasPage() {
     }
   };
 
-  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); };
+  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
 
@@ -1892,7 +1941,7 @@ export function FichasPage() {
               <option value="parcial">Parcial</option>
               <option value="pendiente">Pendiente</option>
             </select>
-            <button onClick={() => setShowAddModal(true)}
+            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); }}
               className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
@@ -2642,9 +2691,24 @@ export function FichasPage() {
               {/* ── FINANCIAL FIELDS ──────────────────────────── */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Cotización y Descuento</h4>
+                <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
+                    Modo: {cotizacionMode === "auto" ? "Autocalculado" : "Editable manual"}
+                  </span>
+                  <span className="rounded-full bg-[#EF8022]/10 px-2.5 py-1 text-[#EF8022] dark:bg-[#EF8022]/20">
+                    Sugerido: {formatMoney(cotizacionSugerida)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={useSuggestedCotizacion}
+                    className="rounded-full border border-[#EF8022] px-2.5 py-1 text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors"
+                  >
+                    Usar sugerido
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cotización Total (S/) *</label>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cotización Total (S/) * {cotizacionMode === "auto" ? "(autocalculada)" : "(editable)"}</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
                       <input type="number" name="cotizacion" value={formData.cotizacion || ""} onChange={handleInputChange} required min={0} step={0.01}
@@ -2667,6 +2731,10 @@ export function FichasPage() {
                       </span>
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Paquetes, productos, carritos, inflables, recursos y transporte se suman automáticamente.</div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Los abonos se registran después de crear la ficha, desde el detalle del evento.</p>
               </div>

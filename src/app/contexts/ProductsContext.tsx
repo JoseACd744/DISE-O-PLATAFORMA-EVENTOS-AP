@@ -73,6 +73,7 @@ export interface Carrito {
   codigo: string;
   descripcion: string;
   cantidadTotal: number;
+  precioAlquiler?: number;
   estado: "disponible" | "en-uso" | "mantenimiento";
 }
 
@@ -403,7 +404,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         codigo: carrito.codigo,
         descripcion: carrito.descripcion,
         cantidad_total: carrito.cantidadTotal,
-        precio_alquiler: 0,
+        precio_alquiler: Number(carrito.precioAlquiler || 0),
         estado: carrito.estado,
       }),
     });

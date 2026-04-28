@@ -1,10 +1,46 @@
-import { useState, useRef } from "react";
-import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
+import { apiRequest } from "../lib/api";
+import { useBrand } from "../contexts/BrandContext";
 
 const ITEMS_PER_PAGE = 15;
+
+type CalendarFicha = {
+  id: number;
+  fecha: string;
+  fechaEvento: string;
+  clienteNombre: string;
+  distrito: string;
+  horaEntrega: string;
+  horaRecojo: string;
+  personalIds: number[];
+};
+
+type CalendarEntry = {
+  fichaId: number;
+  clienteNombre: string;
+  distrito: string;
+  horaEntrega: string;
+  horaRecojo: string;
+  personalCount: number;
+};
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfMonth(year: number, month: number) {
+  return new Date(year, month, 1).getDay();
+}
+
+function formatCalendarDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const DAY_HEADERS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
 
 // ── Product selector dropdown ────────────────────────────────────
 
@@ -92,6 +128,7 @@ export function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
+  const { brand } = useBrand();
 
   // ← shared context instead of local state
   const {
@@ -171,6 +208,13 @@ export function ProductsPage() {
   const [personalFormError, setPersonalFormError] = useState("");
   const [personalFormSubmitting, setPersonalFormSubmitting] = useState(false);
   const [personalSearch, setPersonalSearch] = useState("");
+  const [fichasCalendario, setFichasCalendario] = useState<CalendarFicha[]>([]);
+  const [personalCalendarMonth, setPersonalCalendarMonth] = useState(new Date().getMonth());
+  const [personalCalendarYear, setPersonalCalendarYear] = useState(new Date().getFullYear());
+  const [selectedPersonalCalendarId, setSelectedPersonalCalendarId] = useState(0);
+  const [selectedPersonalCalendarDate, setSelectedPersonalCalendarDate] = useState<string | null>(null);
+  const [personalCalendarLoading, setPersonalCalendarLoading] = useState(false);
+  const [personalCalendarError, setPersonalCalendarError] = useState("");
   const formLocksRef = useRef({ product: false, paquete: false, carrito: false });
 
   const validatePhone = (phone: string, role: Personal["rol"]): boolean => {
@@ -277,6 +321,108 @@ export function ProductsPage() {
     ocupado: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     descanso: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
+
+  const selectedPersonalCalendar = selectedPersonalCalendarId > 0
+    ? personales.find((p) => p.id === selectedPersonalCalendarId) || null
+    : null;
+
+  const personalCalendarEvents = useMemo(() => {
+    return fichasCalendario
+      .filter((ficha) => selectedPersonalCalendarId === 0 || ficha.personalIds.includes(selectedPersonalCalendarId))
+      .sort((a, b) => a.fechaEvento.localeCompare(b.fechaEvento));
+  }, [fichasCalendario, selectedPersonalCalendarId]);
+
+  const personalCalendarByDate = useMemo(() => {
+    return personalCalendarEvents.reduce<Record<string, CalendarEntry[]>>((acc, ficha) => {
+      const dateKey = ficha.fechaEvento;
+      if (!dateKey) return acc;
+
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push({
+        fichaId: ficha.id,
+        clienteNombre: ficha.clienteNombre,
+        distrito: ficha.distrito,
+        horaEntrega: ficha.horaEntrega,
+        horaRecojo: ficha.horaRecojo,
+        personalCount: ficha.personalIds.length,
+      });
+      return acc;
+    }, {});
+  }, [personalCalendarEvents]);
+
+  const selectedPersonalCalendarDateEvents = selectedPersonalCalendarDate
+    ? personalCalendarByDate[selectedPersonalCalendarDate] || []
+    : [];
+
+  const personalCalendarMonthLabel = new Date(personalCalendarYear, personalCalendarMonth, 1).toLocaleDateString("es-PE", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const personalCalendarToday = new Date().toISOString().split("T")[0];
+
+  const goToPreviousPersonalCalendarMonth = () => {
+    setSelectedPersonalCalendarDate(null);
+    setPersonalCalendarMonth((month) => {
+      if (month === 0) {
+        setPersonalCalendarYear((year) => year - 1);
+        return 11;
+      }
+      return month - 1;
+    });
+  };
+
+  const goToNextPersonalCalendarMonth = () => {
+    setSelectedPersonalCalendarDate(null);
+    setPersonalCalendarMonth((month) => {
+      if (month === 11) {
+        setPersonalCalendarYear((year) => year + 1);
+        return 0;
+      }
+      return month + 1;
+    });
+  };
+
+  const loadPersonalCalendarData = async () => {
+    if (!brand) return;
+
+    setPersonalCalendarLoading(true);
+    setPersonalCalendarError("");
+
+    try {
+      const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
+      const details = await Promise.all(list.map((item) => apiRequest<any>(`/fichas/${item.id}`)));
+
+      const mapped: CalendarFicha[] = details.map((f) => ({
+        id: f.id,
+        fecha: f.fecha_evento || f.fecha || "",
+        fechaEvento: f.fecha_evento || f.fecha || "",
+        clienteNombre: f.cliente_nombre || "",
+        distrito: f.distrito || "",
+        horaEntrega: f.hora_entrega || "",
+        horaRecojo: f.hora_recojo || "",
+        personalIds: Array.isArray(f.personalIds) ? f.personalIds : [],
+      }));
+
+      setFichasCalendario(mapped);
+    } catch (err) {
+      setPersonalCalendarError(err instanceof Error ? err.message : "No se pudo cargar el calendario del personal");
+      setFichasCalendario([]);
+    } finally {
+      setPersonalCalendarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "personal") return;
+    void loadPersonalCalendarData();
+  }, [activeTab, brand]);
+
+  useEffect(() => {
+    if (selectedPersonalCalendarId > 0 && !personales.some((p) => p.id === selectedPersonalCalendarId)) {
+      setSelectedPersonalCalendarId(0);
+    }
+  }, [personales, selectedPersonalCalendarId]);
 
   // Recurso modal state
   const emptyRecursoForm = {
@@ -1230,6 +1376,168 @@ export function ProductsPage() {
                 onChange={(e) => setPersonalSearch(e.target.value)}
                 className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
               />
+            </div>
+
+            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 p-4 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
+                <div>
+                  <h3 className="text-base text-gray-900 dark:text-white">Calendario del personal</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona un colaborador para ver sus eventos ocupados por fecha.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                  <select
+                    value={selectedPersonalCalendarId}
+                    onChange={(e) => {
+                      setSelectedPersonalCalendarId(Number(e.target.value));
+                      setSelectedPersonalCalendarDate(null);
+                    }}
+                    className="w-full sm:w-72 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  >
+                    <option value={0}>Todo el personal</option>
+                    {personales.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre_completo} · {p.rol} · {p.estado}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void loadPersonalCalendarData()}
+                    className="px-4 py-2.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-sm whitespace-nowrap"
+                  >
+                    Recargar
+                  </button>
+                </div>
+              </div>
+
+              {personalCalendarError ? (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                  {personalCalendarError}
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={goToPreviousPersonalCalendarMonth}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Mes anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="text-sm sm:text-base text-gray-900 dark:text-white capitalize">
+                  {personalCalendarMonthLabel}
+                </div>
+                <button
+                  type="button"
+                  onClick={goToNextPersonalCalendarMonth}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Mes siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-2 text-[11px] sm:text-xs text-center text-gray-500 dark:text-gray-400 mb-2">
+                {DAY_HEADERS.map((day) => (
+                  <div key={day} className="py-1 font-medium uppercase tracking-wide">{day}</div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-2">
+                {Array.from({ length: getFirstDayOfMonth(personalCalendarYear, personalCalendarMonth) }).map((_, index) => (
+                  <div key={`empty-${index}`} className="aspect-square rounded-xl border border-transparent" />
+                ))}
+                {Array.from({ length: getDaysInMonth(personalCalendarYear, personalCalendarMonth) }, (_, index) => {
+                  const day = index + 1;
+                  const dateStr = formatCalendarDate(new Date(personalCalendarYear, personalCalendarMonth, day));
+                  const entries = personalCalendarByDate[dateStr] || [];
+                  const isToday = dateStr === personalCalendarToday;
+                  const isSelected = dateStr === selectedPersonalCalendarDate;
+
+                  return (
+                    <button
+                      key={dateStr}
+                      type="button"
+                      onClick={() => setSelectedPersonalCalendarDate(isSelected ? null : dateStr)}
+                      className={`aspect-square rounded-xl border p-2 text-left transition-all ${
+                        isSelected
+                          ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
+                          : isToday
+                            ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
+                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-[#EF8022]/50 hover:bg-[#EF8022]/5"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-1">
+                        <span className={`text-sm font-medium ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                          {day}
+                        </span>
+                        {entries.length > 0 && (
+                          <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-[#EF8022] text-white text-[10px] font-semibold">
+                            {entries.length}
+                          </span>
+                        )}
+                      </div>
+                      {entries.length > 0 && (
+                        <div className="mt-1 space-y-1">
+                          <div className="h-1.5 rounded-full bg-[#EF8022]/80" />
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight truncate">
+                            {selectedPersonalCalendarId > 0 ? "Ocupado" : `${entries.length} evento(s)`}
+                          </p>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h4 className="text-sm text-gray-900 dark:text-white">
+                      {selectedPersonalCalendarDate
+                        ? `Eventos del ${new Date(`${selectedPersonalCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
+                        : "Detalle del día"}
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {selectedPersonalCalendarId > 0
+                        ? `Filtrado para ${selectedPersonalCalendar?.nombre_completo || "el personal seleccionado"}`
+                        : "Vista global de ocupación"}
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {personalCalendarLoading ? "Cargando..." : `${personalCalendarEvents.length} evento(s)`}
+                  </span>
+                </div>
+
+                {selectedPersonalCalendarDate ? (
+                  selectedPersonalCalendarDateEvents.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedPersonalCalendarDateEvents.map((entry) => (
+                        <div key={entry.fichaId} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                            <div>
+                              <p className="text-sm text-gray-900 dark:text-white">{entry.clienteNombre}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{entry.distrito || "Sin distrito"}</p>
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-[#EF8022]/10 text-[#EF8022]">
+                              {entry.personalCount} personal
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-700">Entrega: {entry.horaEntrega || "—"}</span>
+                            <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-700">Recojo: {entry.horaRecojo || "—"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No hay eventos para ese día con el filtro actual.</p>
+                  )
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona una fecha del calendario para ver los eventos asignados.</p>
+                )}
+              </div>
             </div>
 
             {filteredPersonales.length === 0 ? (
