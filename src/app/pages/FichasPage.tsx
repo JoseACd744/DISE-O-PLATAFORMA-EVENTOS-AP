@@ -596,6 +596,7 @@ export function FichasPage() {
   const createFichaLockRef = useRef(false);
   const dateRefreshLockRef = useRef(false);
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
+  const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
@@ -1821,6 +1822,41 @@ export function FichasPage() {
     setPreviewComprobanteUrl(null);
   };
 
+  const handleOpenEditModal = (ficha: Ficha) => {
+    setFormData({
+      fecha_evento: ficha.fecha_evento || ficha.fecha || "",
+      fecha_reserva: ficha.fecha_reserva || ficha.fecha || "",
+      distrito: ficha.distrito || "",
+      transporte: ficha.transporte || "traslado",
+      direccion: ficha.direccion || "",
+      referencia: ficha.referencia || "",
+      hora_entrega: ficha.hora_entrega || "",
+      hora_recojo: ficha.hora_recojo || "",
+      comentarios: ficha.comentarios || "",
+      cliente_nombre: ficha.cliente_nombre || "",
+      cliente_celular: ficha.cliente_celular || "",
+      contacto_nombre: ficha.contacto_nombre || "",
+      contacto_celular: ficha.contacto_celular || "",
+      cotizacion: ficha.cotizacion,
+      descuento: ficha.descuento,
+      cliente_id: ficha.cliente_id || "",
+      paquetes: ficha.paquetes.length > 0
+        ? ficha.paquetes.map(p => ({ paqueteId: p.paqueteId, paqueteNombre: p.paqueteNombre, paqueteTipo: p.paqueteTipo, cantidad: p.cantidad }))
+        : [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
+      productosSueltos: ficha.productosSueltos || [],
+      carritoIds: (ficha.carritoIds ?? []).length > 0 ? ficha.carritoIds! : [0],
+      inflableIds: ficha.inflableIds || [],
+      personalIds: (ficha.personalIds ?? []).length > 0 ? ficha.personalIds! : [0],
+      recursos: (ficha.recursos ?? []).length > 0
+        ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad }))
+        : [{ recursoId: 0, cantidad: 1 }],
+    });
+    setCotizacionMode("manual");
+    setEditingFichaId(ficha.id);
+    closeFichaDetail();
+    setShowAddModal(true);
+  };
+
   const handleDeleteFicha = async (ficha: Ficha) => {
     const confirmed = window.confirm(`¿Eliminar la ficha #${ficha.id} de ${ficha.cliente_nombre}? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
@@ -1848,49 +1884,53 @@ export function FichasPage() {
     createFichaLockRef.current = true;
     setIsSaving(true);
 
+    const payload = {
+      fecha: formData.fecha_evento,
+      fecha_evento: formData.fecha_evento,
+      fecha_reserva: formData.fecha_reserva,
+      distrito: formData.distrito,
+      transporte: formData.transporte,
+      direccion: formData.direccion,
+      referencia: formData.referencia,
+      hora_entrega: formData.hora_entrega,
+      hora_recojo: formData.hora_recojo,
+      comentarios: formData.comentarios,
+      cliente_id: formData.cliente_id || null,
+      cliente_nombre: formData.cliente_nombre,
+      cliente_celular: formData.cliente_celular,
+      contacto_nombre: formData.contacto_nombre,
+      contacto_celular: formData.contacto_celular,
+      cotizacion: Number(formData.cotizacion),
+      descuento: Number(formData.descuento),
+      brand,
+      paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
+      productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
+      carritoIds: formData.carritoIds.filter((carritoId) => carritoId > 0),
+      inflableIds: brand === "jugueton" ? formData.inflableIds : [],
+      personalIds: formData.personalIds.filter((personalId) => personalId > 0),
+      recursos: formData.recursos.filter((recurso) => recurso.recursoId > 0),
+    };
+
     try {
-      await apiRequest("/fichas", {
-        method: "POST",
-        body: JSON.stringify({
-          fecha: formData.fecha_evento,
-          fecha_evento: formData.fecha_evento,
-          fecha_reserva: formData.fecha_reserva,
-          distrito: formData.distrito,
-          transporte: formData.transporte,
-          direccion: formData.direccion,
-          referencia: formData.referencia,
-          hora_entrega: formData.hora_entrega,
-          hora_recojo: formData.hora_recojo,
-          comentarios: formData.comentarios,
-          cliente_id: formData.cliente_id || null,
-          cliente_nombre: formData.cliente_nombre,
-          cliente_celular: formData.cliente_celular,
-          contacto_nombre: formData.contacto_nombre,
-          contacto_celular: formData.contacto_celular,
-          cotizacion: Number(formData.cotizacion),
-          descuento: Number(formData.descuento),
-          brand,
-          paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
-          productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
-          carritoIds: formData.carritoIds.filter((carritoId) => carritoId > 0),
-          inflableIds: brand === "jugueton" ? formData.inflableIds : [],
-          personalIds: formData.personalIds.filter((personalId) => personalId > 0),
-          recursos: formData.recursos.filter((recurso) => recurso.recursoId > 0),
-        }),
-      });
+      if (editingFichaId !== null) {
+        await apiRequest(`/fichas/${editingFichaId}`, { method: "PUT", body: JSON.stringify(payload) });
+      } else {
+        await apiRequest("/fichas", { method: "POST", body: JSON.stringify(payload) });
+      }
 
       setShowAddModal(false);
+      setEditingFichaId(null);
       setFormData(getInitialFormData());
       await refreshFichasAndCatalogs();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la ficha");
+      setError(err instanceof Error ? err.message : editingFichaId !== null ? "No se pudo actualizar la ficha" : "No se pudo crear la ficha");
     } finally {
       createFichaLockRef.current = false;
       setIsSaving(false);
     }
   };
 
-  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); };
+  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); setEditingFichaId(null); };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
 
@@ -2444,6 +2484,12 @@ export function FichasPage() {
                 <CreditCard className="w-4 h-4" /> Registrar Abono
               </button>
               <button
+                onClick={() => handleOpenEditModal(selectedFicha)}
+                className="flex-1 border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center justify-center gap-2 text-sm"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+              <button
                 onClick={() => handleDeleteFicha(selectedFicha)}
                 className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
               >
@@ -2483,7 +2529,7 @@ export function FichasPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-6">
-              <h3 className="text-2xl text-gray-900 dark:text-white">Nueva Ficha de Evento</h3>
+              <h3 className="text-2xl text-gray-900 dark:text-white">{editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento"}</h3>
               <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"><X className="w-5 h-5" /></button>
             </div>
 
@@ -2829,7 +2875,7 @@ export function FichasPage() {
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="submit" disabled={isSaving} className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">{isSaving ? "Guardando..." : "Guardar Ficha"}</button>
+                <button type="submit" disabled={isSaving} className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">{isSaving ? "Guardando..." : editingFichaId !== null ? "Guardar Cambios" : "Guardar Ficha"}</button>
                 <button type="button" onClick={handleCloseModal} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">Cancelar</button>
               </div>
             </form>
