@@ -54,7 +54,8 @@ interface Ficha {
   fecha_reserva: string;
   fecha: string;
   distrito: string;
-  transporte?: "traslado" | "delivery";
+  transporte?: "cumpleanos" | "corporativo" | "delivery";
+  costo_envio?: number;
   direccion: string;
   referencia?: string;
   hora_entrega: string;
@@ -83,7 +84,8 @@ interface FichaFormData {
   fecha_evento: string;
   fecha_reserva: string;
   distrito: string;
-  transporte: "traslado" | "delivery";
+  transporte: "cumpleanos" | "corporativo" | "delivery";
+  costo_envio: number;
   direccion: string;
   referencia: string;
   hora_entrega: string;
@@ -108,7 +110,8 @@ const getInitialFormData = (): FichaFormData => ({
   fecha_evento: new Date().toISOString().slice(0, 10),
   fecha_reserva: new Date().toISOString().slice(0, 10),
   distrito: "",
-  transporte: "traslado",
+  transporte: "cumpleanos",
+  costo_envio: 0,
   direccion: "",
   referencia: "",
   hora_entrega: "",
@@ -137,6 +140,28 @@ interface ExistingClient {
   telefono: string | null;
   creado_por: "donofrio" | "jugueton";
   status: "active" | "inactive";
+}
+
+interface TarifaEnvio {
+  id: number;
+  zona: string;
+  distrito: string;
+  costo_cumpleanos: number;
+  costo_corporativo: number;
+  costo_delivery: number;
+}
+
+function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["transporte"]): number {
+  if (transporte === "corporativo") return tarifa.costo_corporativo;
+  if (transporte === "delivery") return tarifa.costo_delivery;
+  return tarifa.costo_cumpleanos;
+}
+
+function labelTransporte(t?: string): string {
+  if (t === "cumpleanos") return "Cumpleaños";
+  if (t === "corporativo") return "Corporativo";
+  if (t === "delivery") return "Delivery";
+  return t || "-";
 }
 
 const DISTRITOS_LIMA = [
@@ -597,6 +622,7 @@ export function FichasPage() {
   const dateRefreshLockRef = useRef(false);
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
+  const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
@@ -638,10 +664,10 @@ export function FichasPage() {
       return sum + ((catalogo?.precio || 0) * Math.max(0, recurso.cantidad || 0));
     }, 0);
 
-    const totalTransporte = formData.transporte ? 70 : 0;
+    const totalTransporte = formData.costo_envio || 0;
 
     return Math.max(0, totalPaquetes + totalProductos + totalCarritos + totalInflables + totalRecursos + totalTransporte);
-  }, [allProducts, brand, carritos, contextPaquetes, formData.carritoIds, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, formData.transporte, inflables, recursos]);
+  }, [allProducts, brand, carritos, contextPaquetes, formData.carritoIds, formData.costo_envio, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, inflables, recursos]);
 
   useEffect(() => {
     if (cotizacionMode !== "auto") return;
@@ -664,7 +690,8 @@ export function FichasPage() {
         fecha_reserva: f.fecha_reserva || f.fecha || "",
         fecha: f.fecha_evento || f.fecha || "",
         distrito: f.distrito || "",
-        transporte: (f.transporte || f.tipo_transporte || "traslado") as "traslado" | "delivery",
+        transporte: (f.transporte || f.tipo_transporte || "cumpleanos") as "cumpleanos" | "corporativo" | "delivery",
+        costo_envio: Number(f.costo_envio || 0),
         direccion: f.direccion || "",
         referencia: f.referencia || "",
         hora_entrega: f.hora_entrega || "",
@@ -730,6 +757,19 @@ export function FichasPage() {
     loadFichas();
     loadClients();
   }, [brand]);
+
+  useEffect(() => {
+    if (!formData.distrito || !showAddModal) {
+      setTarifaCache(null);
+      return;
+    }
+    apiRequest<TarifaEnvio>(`/tarifas-envio/distrito/${encodeURIComponent(formData.distrito)}`)
+      .then((tarifa) => {
+        setTarifaCache(tarifa);
+        setFormData((prev) => ({ ...prev, costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
+      })
+      .catch(() => setTarifaCache(null));
+  }, [formData.distrito, showAddModal]);
   // Catálogo de paquetes ahora global (sin separación por marca)
   const paquetesDisponibles = contextPaquetes
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
@@ -966,9 +1006,9 @@ export function FichasPage() {
 
       filasJugueton.push({
         producto: "Transporte",
-        descripcion: `${ficha.transporte === "delivery" ? "Delivery" : "Traslado"} (${escapeHtml(ficha.distrito)})`,
+        descripcion: `Costo de transporte a ${escapeHtml(ficha.distrito)}`,
         cantidad: 1,
-        precio: 0,
+        precio: ficha.costo_envio || 0,
       });
 
       const filasTablaJugueton = filasJugueton
@@ -1320,9 +1360,9 @@ export function FichasPage() {
         : []),
       {
         cantidad: 1,
-        descripcion: `${ficha.transporte === "delivery" ? "Delivery" : "Traslado"} a ${ficha.distrito}`,
-        pu: 0,
-        total: 0,
+        descripcion: `Costo de transporte a ${ficha.distrito}`,
+        pu: ficha.costo_envio || 0,
+        total: ficha.costo_envio || 0,
         destacado: true,
       },
       ...(ficha.comentarios
@@ -1649,6 +1689,15 @@ export function FichasPage() {
     if (name === "cotizacion") {
       setCotizacionMode("manual");
       setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
+    } else if (name === "transporte" && tarifaCache) {
+      const newTransporte = value as FichaFormData["transporte"];
+      setFormData((prev) => ({
+        ...prev,
+        transporte: newTransporte,
+        costo_envio: getCostoFromTarifa(tarifaCache, newTransporte),
+      }));
+    } else if (name === "costo_envio") {
+      setFormData((prev) => ({ ...prev, costo_envio: Number(value) || 0 }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -1827,7 +1876,8 @@ export function FichasPage() {
       fecha_evento: ficha.fecha_evento || ficha.fecha || "",
       fecha_reserva: ficha.fecha_reserva || ficha.fecha || "",
       distrito: ficha.distrito || "",
-      transporte: ficha.transporte || "traslado",
+      transporte: ficha.transporte || "cumpleanos",
+      costo_envio: ficha.costo_envio || 0,
       direccion: ficha.direccion || "",
       referencia: ficha.referencia || "",
       hora_entrega: ficha.hora_entrega || "",
@@ -1902,6 +1952,7 @@ export function FichasPage() {
       contacto_celular: formData.contacto_celular,
       cotizacion: Number(formData.cotizacion),
       descuento: Number(formData.descuento),
+      costo_envio: Number(formData.costo_envio),
       brand,
       paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
       productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
@@ -2413,8 +2464,8 @@ export function FichasPage() {
                 <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_recojo}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Transporte</p>
-                <p className="text-gray-900 dark:text-white">{selectedFicha.transporte === "delivery" ? "Delivery" : "Traslado"}</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
+                <p className="text-gray-900 dark:text-white">{labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${formatMoney(selectedFicha.costo_envio)}` : ""}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 flex items-center gap-2">
@@ -2849,11 +2900,31 @@ export function FichasPage() {
                   </div>
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Transporte *</label>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Tipo de Evento *</label>
                     <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
-                      <option value="traslado">Traslado</option>
+                      <option value="cumpleanos">Cumpleaños</option>
+                      <option value="corporativo">Corporativo</option>
                       <option value="delivery">Delivery</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                      <input
+                        type="number"
+                        name="costo_envio"
+                        value={formData.costo_envio || ""}
+                        onChange={handleInputChange}
+                        min={0}
+                        step={0.01}
+                        placeholder="0.00"
+                        className={`${inputClass} pl-9`}
+                      />
+                    </div>
+                    {tarifaCache && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
+                    )}
                   </div>
                   <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
                 </div>

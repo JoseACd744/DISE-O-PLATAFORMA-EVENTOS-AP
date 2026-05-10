@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(xargs cat *)",
+      "Bash(npm run *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\" -Force)",
+      "Bash(Select-Object Name, LastWriteTime)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\" -Recurse -Depth 2 | Select-Object FullName, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) { \"DIR\" } else { \"FILE\" }}} | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\", \"\"\\) + \" \\(\" + $_.Type + \"\\)\" })"
+    ]
+  }
+}
