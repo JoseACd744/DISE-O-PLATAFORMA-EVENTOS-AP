@@ -164,58 +164,7 @@ function labelTransporte(t?: string): string {
   return t || "-";
 }
 
-const DISTRITOS_LIMA = [
-  "Ancón",
-  "Ate",
-  "Barranco",
-  "Breña",
-  "Carabayllo",
-  "Chaclacayo",
-  "Chorrillos",
-  "Cieneguilla",
-  "Comas",
-  "El Agustino",
-  "Independencia",
-  "Jesús María",
-  "La Molina",
-  "La Victoria",
-  "Lima",
-  "Lince",
-  "Los Olivos",
-  "Lurigancho",
-  "Lurín",
-  "Magdalena del Mar",
-  "Miraflores",
-  "Pachacámac",
-  "Pucusana",
-  "Pueblo Libre",
-  "Puente Piedra",
-  "Punta Hermosa",
-  "Punta Negra",
-  "Rímac",
-  "San Bartolo",
-  "San Borja",
-  "San Isidro",
-  "San Juan de Lurigancho",
-  "San Juan de Miraflores",
-  "San Luis",
-  "San Martín de Porres",
-  "San Miguel",
-  "Santa Anita",
-  "Santa María del Mar",
-  "Santa Rosa",
-  "Santiago de Surco",
-  "Surquillo",
-  "Villa El Salvador",
-  "Villa María del Triunfo",
-  "Callao",
-  "Bellavista",
-  "Carmen de la Legua-Reynoso",
-  "La Perla",
-  "La Punta",
-  "Mi Perú",
-  "Ventanilla",
-];
+// Distritos se cargan desde la API y se almacenan en `distritosOptions`/`distritos`.
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -229,6 +178,16 @@ function getEstadoPago(f: Ficha): EstadoPago {
   return "pendiente";
 }
 function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`; }
+
+function toMoneyNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const normalized = value.replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
 
 function normalizeAssetUrl(value: string) {
   if (!value) return "";
@@ -305,6 +264,8 @@ function formatEstadoPersonal(estado: string) {
   if (estado === "descanso") return "Descanso";
   return "Disponible";
 }
+
+// Función helper para obtener estado dinámico (será usada dentro del componente)
 
 
 function AbonoModal({
@@ -623,12 +584,29 @@ export function FichasPage() {
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
   const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
+  const [distritosOptions, setDistritosOptions] = useState<string[]>([]);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
 
   const refreshFichasAndCatalogs = async () => {
     await Promise.all([loadFichas(), reloadData()]);
+  };
+
+  // Obtener estado dinámico del personal basado en eventos asignados en una fecha específica
+  const getDynamicPersonalEstado = (personalId: number, eventDate?: string): Ficha["personalIds"] extends any[] ? string : string => {
+    if (!eventDate) {
+      // Si no hay fecha, verificar si tiene ANY evento
+      const hasEvents = fichas.some((f) => f.personalIds?.includes(personalId));
+      return hasEvents ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
+    } else {
+      // Verificar si tiene eventos en esa fecha específica
+      const hasEventsOnDate = fichas.some(
+        (f) => f.personalIds?.includes(personalId) && 
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+      );
+      return hasEventsOnDate ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
+    }
   };
 
   const availableClients = useMemo(
@@ -639,32 +617,32 @@ export function FichasPage() {
   const cotizacionSugerida = useMemo(() => {
     const totalPaquetes = formData.paquetes.reduce((sum, paquete) => {
       const catalogo = contextPaquetes.find((item) => item.id === paquete.paqueteId);
-      return sum + ((catalogo?.precioUnitario || 0) * Math.max(0, paquete.cantidad || 0));
+      return sum + (toMoneyNumber(catalogo?.precioUnitario) * Math.max(0, toMoneyNumber(paquete.cantidad)));
     }, 0);
 
     const totalProductos = formData.productosSueltos.reduce((sum, producto) => {
       const catalogo = allProducts.find((item) => item.producto === producto.productoNombre);
-      return sum + ((catalogo?.precio || 0) * Math.max(0, producto.cantidad || 0));
+      return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(producto.cantidad)));
     }, 0);
 
     const totalCarritos = formData.carritoIds.reduce((sum, carritoId) => {
       const carrito = carritos.find((item) => item.id === carritoId);
-      return sum + (carrito?.precioAlquiler || 0);
+      return sum + toMoneyNumber(carrito?.precioAlquiler);
     }, 0);
 
     const totalInflables = brand === "jugueton"
       ? formData.inflableIds.reduce((sum, inflableId) => {
           const inflable = inflables.find((item) => item.id === inflableId);
-          return sum + (inflable?.precioAlquiler || 0);
+          return sum + toMoneyNumber(inflable?.precioAlquiler);
         }, 0)
       : 0;
 
     const totalRecursos = formData.recursos.reduce((sum, recurso) => {
       const catalogo = recursos.find((item) => item.id === recurso.recursoId);
-      return sum + ((catalogo?.precio || 0) * Math.max(0, recurso.cantidad || 0));
+      return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(recurso.cantidad)));
     }, 0);
 
-    const totalTransporte = formData.costo_envio || 0;
+    const totalTransporte = toMoneyNumber(formData.costo_envio);
 
     return Math.max(0, totalPaquetes + totalProductos + totalCarritos + totalInflables + totalRecursos + totalTransporte);
   }, [allProducts, brand, carritos, contextPaquetes, formData.carritoIds, formData.costo_envio, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, inflables, recursos]);
@@ -700,11 +678,11 @@ export function FichasPage() {
           paqueteId: p.paquete_id || 0,
           paqueteNombre: p.paquete_nombre || "",
           paqueteTipo: p.paquete_tipo || "",
-          cantidad: p.cantidad || 1,
+          cantidad: toMoneyNumber(p.cantidad) || 1,
         })),
         productosSueltos: (f.productosSueltos || []).map((p: any) => ({
           productoNombre: p.producto_nombre,
-          cantidad: p.cantidad || 1,
+          cantidad: toMoneyNumber(p.cantidad) || 1,
         })),
         carritoIds: f.carritoIds || [],
         inflableIds: f.inflableIds || [],
@@ -712,9 +690,9 @@ export function FichasPage() {
           id: r.id,
           recurso_id: r.recurso_id,
           recurso_nombre: r.recurso_nombre || "",
-          cantidad: r.cantidad || 1,
+          cantidad: toMoneyNumber(r.cantidad) || 1,
           sku: r.sku || "",
-          precio: r.precio || "0.00",
+          precio: String(toMoneyNumber(r.precio)),
         })),
         comentarios: f.comentarios || "",
         personalIds: f.personalIds || [],
@@ -723,13 +701,13 @@ export function FichasPage() {
         cliente_celular: f.cliente_celular || "",
         contacto_nombre: f.contacto_nombre || "",
         contacto_celular: f.contacto_celular || "",
-        cotizacion: Number(f.cotizacion || 0),
-        descuento: Number(f.descuento || 0),
+        cotizacion: toMoneyNumber(f.cotizacion),
+        descuento: toMoneyNumber(f.descuento),
         brand: f.brand,
         abonos: (f.abonos || []).map((a: any) => ({
           id: a.id,
           fecha: a.fecha,
-          monto: Number(a.monto || 0),
+          monto: toMoneyNumber(a.monto),
           numeroOperacion: a.numero_operacion || "",
           comprobante: a.comprobante_url || "",
           medio: a.medio,
@@ -759,6 +737,24 @@ export function FichasPage() {
   }, [brand]);
 
   useEffect(() => {
+    if (!brand) return;
+    const loadDistritos = async () => {
+      try {
+        const tarifas = await apiRequest<TarifaEnvio[]>(`/tarifas-envio`);
+        const districts = Array.from(new Set((tarifas || []).map(t => (t.distrito || "").trim()).filter(Boolean)));
+        districts.sort((a, b) => a.localeCompare(b));
+        setDistritosOptions(["Todos", ...districts]);
+      } catch (err) {
+        // Fallback: construir distritos a partir de las fichas cargadas
+        const fallback = ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
+        setDistritosOptions(fallback);
+      }
+    };
+
+    void loadDistritos();
+  }, [brand, fichas]);
+
+  useEffect(() => {
     if (!formData.distrito || !showAddModal) {
       setTarifaCache(null);
       return;
@@ -774,7 +770,9 @@ export function FichasPage() {
   const paquetesDisponibles = contextPaquetes
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
 
-  const distritos = ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
+  const distritos = distritosOptions.length > 0
+    ? distritosOptions
+    : ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
 
   const filteredFichas = fichas.filter(ficha => {
     const matchesSearch = ficha.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1689,6 +1687,8 @@ export function FichasPage() {
     if (name === "cotizacion") {
       setCotizacionMode("manual");
       setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
+    } else if (name === "descuento") {
+      setFormData((prev) => ({ ...prev, descuento: Number(value) || 0 }));
     } else if (name === "transporte" && tarifaCache) {
       const newTransporte = value as FichaFormData["transporte"];
       setFormData((prev) => ({
@@ -1951,8 +1951,8 @@ export function FichasPage() {
       contacto_nombre: formData.contacto_nombre,
       contacto_celular: formData.contacto_celular,
       cotizacion: Number(formData.cotizacion),
-      descuento: Number(formData.descuento),
-      costo_envio: Number(formData.costo_envio),
+      descuento: toMoneyNumber(formData.descuento),
+      costo_envio: toMoneyNumber(formData.costo_envio),
       brand,
       paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
       productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
@@ -2788,11 +2788,11 @@ export function FichasPage() {
                               <select value={personalId} onChange={(e) => handlePersonalChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
                                 <option value={0}>Seleccionar personal...</option>
                                 {availablePersonales.map((personal) => (
-                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.rol} · {formatEstadoPersonal(personal.estado)}</option>
+                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.rol} · {getDynamicPersonalEstado(personal.id, formData.fecha_evento)}</option>
                                 ))}
                               </select>
                               <div className="flex items-center justify-between gap-2 md:justify-end">
-                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">{selectedPersonal ? `${selectedPersonal.rol} · ${formatEstadoPersonal(selectedPersonal.estado)}` : "Sin seleccionar"}</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">{selectedPersonal ? `${selectedPersonal.rol} · ${getDynamicPersonalEstado(selectedPersonal.id, formData.fecha_evento)}` : "Sin seleccionar"}</span>
                                 {formData.personalIds.length > 1 ? (
                                   <button type="button" onClick={() => handleRemovePersonalRow(idx)} className="p-2 text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
                                 ) : (
@@ -2895,7 +2895,7 @@ export function FichasPage() {
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
                     <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
                       <option value="">Seleccionar distrito</option>
-                      {DISTRITOS_LIMA.map(d => <option key={d} value={d}>{d}</option>)}
+                      {distritos.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                   <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>

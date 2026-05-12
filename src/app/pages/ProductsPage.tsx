@@ -40,6 +40,12 @@ function formatCalendarDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function normalizeDateString(dateStr: string | undefined): string {
+  if (!dateStr) return "";
+  // Remove time portion if present (e.g., "2026-05-14T00:00:00" -> "2026-05-14")
+  return dateStr.split("T")[0];
+}
+
 const DAY_HEADERS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
 
 // ── Product selector dropdown ────────────────────────────────────
@@ -213,6 +219,8 @@ export function ProductsPage() {
   const [personalCalendarYear, setPersonalCalendarYear] = useState(new Date().getFullYear());
   const [selectedPersonalCalendarId, setSelectedPersonalCalendarId] = useState(0);
   const [selectedPersonalCalendarDate, setSelectedPersonalCalendarDate] = useState<string | null>(null);
+  const [showPersonalCalendarDayModal, setShowPersonalCalendarDayModal] = useState(false);
+  const [selectedPersonalCalendarDayDate, setSelectedPersonalCalendarDayDate] = useState<string | null>(null);
   const [personalCalendarLoading, setPersonalCalendarLoading] = useState(false);
   const [personalCalendarError, setPersonalCalendarError] = useState("");
   const formLocksRef = useRef({ product: false, paquete: false, carrito: false });
@@ -326,6 +334,19 @@ export function ProductsPage() {
     ? personales.find((p) => p.id === selectedPersonalCalendarId) || null
     : null;
 
+  // Calcular estado dinámico del personal basado en eventos asignados (solo HOY)
+  const getDynamicPersonalEstado = (personalId: number): Personal["estado"] => {
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD de hoy
+    const hasEventsToday = fichasCalendario.some(
+      (ficha) => ficha.personalIds.includes(personalId) && 
+      normalizeDateString(ficha.fechaEvento || ficha.fecha) === today
+    );
+    if (hasEventsToday) return "ocupado";
+    
+    const personal = personales.find((p) => p.id === personalId);
+    return personal?.estado || "disponible";
+  };
+
   const personalCalendarEvents = useMemo(() => {
     return fichasCalendario
       .filter((ficha) => selectedPersonalCalendarId === 0 || ficha.personalIds.includes(selectedPersonalCalendarId))
@@ -393,16 +414,21 @@ export function ProductsPage() {
       const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
       const details = await Promise.all(list.map((item) => apiRequest<any>(`/fichas/${item.id}`)));
 
-      const mapped: CalendarFicha[] = details.map((f) => ({
-        id: f.id,
-        fecha: f.fecha_evento || f.fecha || "",
-        fechaEvento: f.fecha_evento || f.fecha || "",
-        clienteNombre: f.cliente_nombre || "",
-        distrito: f.distrito || "",
-        horaEntrega: f.hora_entrega || "",
-        horaRecojo: f.hora_recojo || "",
-        personalIds: Array.isArray(f.personalIds) ? f.personalIds : [],
-      }));
+      const mapped: CalendarFicha[] = details.map((f) => {
+        const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);
+        const personalIds = Array.isArray(f.personalIds) ? f.personalIds : [];
+        
+        return {
+          id: f.id,
+          fecha: fechaNormalizada,
+          fechaEvento: fechaNormalizada,
+          clienteNombre: f.cliente_nombre || "",
+          distrito: f.distrito || "",
+          horaEntrega: f.hora_entrega || "",
+          horaRecojo: f.hora_recojo || "",
+          personalIds: personalIds,
+        };
+      });
 
       setFichasCalendario(mapped);
     } catch (err) {
@@ -1378,177 +1404,198 @@ export function ProductsPage() {
               />
             </div>
 
-            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 p-4 sm:p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
-                <div>
-                  <h3 className="text-base text-gray-900 dark:text-white">Calendario del personal</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona un colaborador para ver sus eventos ocupados por fecha.</p>
+            {/* Layout de 2 columnas: Personal list + Calendar */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+              {/* Columna izquierda: Lista compacta de personal */}
+              <div className="lg:col-span-1">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sticky top-20">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Personal Disponible</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {filteredPersonales.length === 0 ? (
+                      <p className="text-xs text-gray-400">Sin personal registrado</p>
+                    ) : (
+                      filteredPersonales.map((p) => {
+                        const isSelected = selectedPersonalCalendarId === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPersonalCalendarId(isSelected ? 0 : p.id);
+                              setSelectedPersonalCalendarDate(null);
+                            }}
+                            className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${
+                              isSelected
+                                ? "border-[#EF8022] bg-[#EF8022]/10 dark:bg-[#EF8022]/20"
+                                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 hover:border-[#EF8022]/50 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            }`}
+                          >
+                            <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{p.nombre_completo}</p>
+                            <div className="flex items-center justify-between gap-2 mt-1">
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400">{p.rol}</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                getDynamicPersonalEstado(p.id) === "disponible"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                  : getDynamicPersonalEstado(p.id) === "ocupado"
+                                    ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                              }`}>
+                                {getDynamicPersonalEstado(p.id)}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                  <select
-                    value={selectedPersonalCalendarId}
-                    onChange={(e) => {
-                      setSelectedPersonalCalendarId(Number(e.target.value));
-                      setSelectedPersonalCalendarDate(null);
-                    }}
-                    className="w-full sm:w-72 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  >
-                    <option value={0}>Todo el personal</option>
-                    {personales.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre_completo} · {p.rol} · {p.estado}
-                      </option>
-                    ))}
-                  </select>
+              </div>
+
+              {/* Columna derecha: Calendario */}
+              <div className="lg:col-span-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 p-4 sm:p-5">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <h3 className="text-base text-gray-900 dark:text-white">Calendario de Disponibilidad</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{selectedPersonalCalendarId > 0 ? `Eventos de ${selectedPersonalCalendar?.nombre_completo}` : "Vista de ocupación global"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadPersonalCalendarData()}
+                      className="px-3 py-1.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-xs whitespace-nowrap"
+                    >
+                      Recargar
+                    </button>
+                  </div>
+
+                  {personalCalendarError ? (
+                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                      {personalCalendarError}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mb-3">
                   <button
                     type="button"
-                    onClick={() => void loadPersonalCalendarData()}
-                    className="px-4 py-2.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-sm whitespace-nowrap"
+                    onClick={goToPreviousPersonalCalendarMonth}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Mes anterior"
                   >
-                    Recargar
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="text-sm text-gray-900 dark:text-white capitalize font-medium">
+                    {personalCalendarMonthLabel}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goToNextPersonalCalendarMonth}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Mes siguiente"
+                  >
+                    <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
-              </div>
 
-              {personalCalendarError ? (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
-                  {personalCalendarError}
+                <div className="grid grid-cols-7 gap-1 text-[10px] text-center text-gray-500 dark:text-gray-400 mb-2">
+                  {DAY_HEADERS.map((day) => (
+                    <div key={day} className="py-1 font-medium uppercase tracking-wide">{day}</div>
+                  ))}
                 </div>
-              ) : null}
 
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={goToPreviousPersonalCalendarMonth}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  aria-label="Mes anterior"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="text-sm sm:text-base text-gray-900 dark:text-white capitalize">
-                  {personalCalendarMonthLabel}
-                </div>
-                <button
-                  type="button"
-                  onClick={goToNextPersonalCalendarMonth}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  aria-label="Mes siguiente"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+                <div className="grid grid-cols-7 gap-1 mb-4">
+                  {Array.from({ length: getFirstDayOfMonth(personalCalendarYear, personalCalendarMonth) }).map((_, index) => (
+                    <div key={`empty-${index}`} className="aspect-square rounded-lg border border-transparent" />
+                  ))}
+                  {Array.from({ length: getDaysInMonth(personalCalendarYear, personalCalendarMonth) }, (_, index) => {
+                    const day = index + 1;
+                    const dateStr = formatCalendarDate(new Date(personalCalendarYear, personalCalendarMonth, day));
+                    const entries = personalCalendarByDate[dateStr] || [];
+                    const isToday = dateStr === personalCalendarToday;
+                    const isSelected = dateStr === selectedPersonalCalendarDate;
 
-              <div className="grid grid-cols-7 gap-2 text-[11px] sm:text-xs text-center text-gray-500 dark:text-gray-400 mb-2">
-                {DAY_HEADERS.map((day) => (
-                  <div key={day} className="py-1 font-medium uppercase tracking-wide">{day}</div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-2">
-                {Array.from({ length: getFirstDayOfMonth(personalCalendarYear, personalCalendarMonth) }).map((_, index) => (
-                  <div key={`empty-${index}`} className="aspect-square rounded-xl border border-transparent" />
-                ))}
-                {Array.from({ length: getDaysInMonth(personalCalendarYear, personalCalendarMonth) }, (_, index) => {
-                  const day = index + 1;
-                  const dateStr = formatCalendarDate(new Date(personalCalendarYear, personalCalendarMonth, day));
-                  const entries = personalCalendarByDate[dateStr] || [];
-                  const isToday = dateStr === personalCalendarToday;
-                  const isSelected = dateStr === selectedPersonalCalendarDate;
-
-                  return (
-                    <button
-                      key={dateStr}
-                      type="button"
-                      onClick={() => setSelectedPersonalCalendarDate(isSelected ? null : dateStr)}
-                      className={`aspect-square rounded-xl border p-2 text-left transition-all ${
-                        isSelected
-                          ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
-                          : isToday
-                            ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
-                            : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-[#EF8022]/50 hover:bg-[#EF8022]/5"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1">
-                        <span className={`text-sm font-medium ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => {
+                          if (entries.length > 0) {
+                            setSelectedPersonalCalendarDayDate(dateStr);
+                            setShowPersonalCalendarDayModal(true);
+                          }
+                        }}
+                        className={`aspect-square rounded-lg border p-1.5 text-left transition-all flex flex-col gap-1 overflow-hidden ${
+                          isSelected
+                            ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
+                            : isToday
+                              ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
+                              : entries.length > 0
+                                ? "border-[#EF8022]/40 bg-white dark:bg-gray-800 hover:border-[#EF8022] hover:shadow-md"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
+                        }`}
+                      >
+                        <span className={`text-xs font-bold ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
                           {day}
                         </span>
                         {entries.length > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-[#EF8022] text-white text-[10px] font-semibold">
-                            {entries.length}
-                          </span>
+                          <div className="space-y-0.5 flex-1 overflow-y-auto">
+                            {entries.slice(0, 2).map((entry, idx) => (
+                              <div key={idx} className="bg-[#EF8022]/90 rounded px-1.5 py-0.5 text-white">
+                                <p className="text-[10px] font-semibold truncate leading-tight">{entry.clienteNombre}</p>
+                                {entry.horaEntrega && (
+                                  <p className="text-[8px] opacity-90">{entry.horaEntrega}</p>
+                                )}
+                              </div>
+                            ))}
+                            {entries.length > 2 && (
+                              <div className="text-[9px] text-[#EF8022] font-medium px-1">
+                                +{entries.length - 2} más
+                              </div>
+                            )}
+                          </div>
                         )}
-                      </div>
-                      {entries.length > 0 && (
-                        <div className="mt-1 space-y-1">
-                          <div className="h-1.5 rounded-full bg-[#EF8022]/80" />
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight truncate">
-                            {selectedPersonalCalendarId > 0 ? "Ocupado" : `${entries.length} evento(s)`}
-                          </p>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <h4 className="text-sm text-gray-900 dark:text-white">
-                      {selectedPersonalCalendarDate
-                        ? `Eventos del ${new Date(`${selectedPersonalCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
-                        : "Detalle del día"}
-                    </h4>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {selectedPersonalCalendarId > 0
-                        ? `Filtrado para ${selectedPersonalCalendar?.nombre_completo || "el personal seleccionado"}`
-                        : "Vista global de ocupación"}
-                    </p>
-                  </div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {personalCalendarLoading ? "Cargando..." : `${personalCalendarEvents.length} evento(s)`}
-                  </span>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {selectedPersonalCalendarDate ? (
-                  selectedPersonalCalendarDateEvents.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedPersonalCalendarDateEvents.map((entry) => (
-                        <div key={entry.fichaId} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                            <div>
-                              <p className="text-sm text-gray-900 dark:text-white">{entry.clienteNombre}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{entry.distrito || "Sin distrito"}</p>
-                            </div>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-[#EF8022]/10 text-[#EF8022]">
-                              {entry.personalCount} personal
-                            </span>
+                {/* Detalle del día seleccionado */}
+                {selectedPersonalCalendarDate && (
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 mt-3">
+                    <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
+                      Eventos del {new Date(`${selectedPersonalCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" })}
+                    </h4>
+                    {selectedPersonalCalendarDateEvents.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {selectedPersonalCalendarDateEvents.map((entry) => (
+                          <div key={entry.fichaId} className="rounded border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50">
+                            <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{entry.clienteNombre}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400">Hora: {entry.horaEntrega || entry.horaRecojo || "—"}</p>
                           </div>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-700">Entrega: {entry.horaEntrega || "—"}</span>
-                            <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-700">Recojo: {entry.horaRecojo || "—"}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">No hay eventos para ese día con el filtro actual.</p>
-                  )
-                ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona una fecha del calendario para ver los eventos asignados.</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Sin eventos registrados</p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
 
-            {filteredPersonales.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">{personalSearch ? "Sin resultados para la búsqueda." : "Aún no hay personal registrado."}</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
+            {/* Tabla de Personal Completa */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#EF8022]" />
+                Directorio Completo de Personal
+              </h3>
+              {filteredPersonales.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p className="text-sm">{personalSearch ? "Sin resultados para la búsqueda." : "Aún no hay personal registrado."}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Nombre / DNI</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Teléfono</th>
@@ -1571,8 +1618,8 @@ export function ProductsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${estadoPersonalColor[p.estado]}`}>
-                            {p.estado}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${estadoPersonalColor[getDynamicPersonalEstado(p.id)]}`}>
+                            {getDynamicPersonalEstado(p.id)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -1600,9 +1647,115 @@ export function ProductsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Modal de Detalles del Día */}
+          {showPersonalCalendarDayModal && selectedPersonalCalendarDayDate && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+                <button 
+                  onClick={() => setShowPersonalCalendarDayModal(false)} 
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                
+                <div className="mb-6">
+                  <h3 className="text-2xl text-gray-900 dark:text-white mb-2">
+                    {new Date(`${selectedPersonalCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", { 
+                      weekday: "long", 
+                      day: "numeric", 
+                      month: "long", 
+                      year: "numeric" 
+                    })}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {personalCalendarByDate[selectedPersonalCalendarDayDate]?.length || 0} evento(s) registrado(s)
+                  </p>
+                </div>
+
+                {personalCalendarByDate[selectedPersonalCalendarDayDate] && 
+                 personalCalendarByDate[selectedPersonalCalendarDayDate].length > 0 ? (
+                  <div className="space-y-4">
+                    {personalCalendarByDate[selectedPersonalCalendarDayDate].map((entry) => {
+                      const ficha = fichasCalendario.find(f => f.id === entry.fichaId);
+                      const personalOcupado = ficha?.personalIds 
+                        ? personales.filter(p => ficha.personalIds.includes(p.id))
+                        : [];
+
+                      return (
+                        <div 
+                          key={entry.fichaId} 
+                          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex-1">
+                              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                {entry.clienteNombre}
+                              </h4>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {entry.distrito && `📍 ${entry.distrito}`}
+                              </p>
+                            </div>
+                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] text-sm font-medium">
+                              {entry.personalCount} personal
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                            <div className="grid grid-cols-2 gap-3">
+                              {entry.horaEntrega && (
+                                <div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Hora Entrega</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{entry.horaEntrega}</p>
+                                </div>
+                              )}
+                              {entry.horaRecojo && (
+                                <div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Hora Recojo</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{entry.horaRecojo}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {personalOcupado.length > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Personal Asignado</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {personalOcupado.map(p => (
+                                    <span 
+                                      key={p.id}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 text-xs font-medium"
+                                    >
+                                      👤 {p.nombre_completo || p.nombre}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    Sin eventos registrados para esta fecha
+                  </p>
+                )}
+
+                <button
+                  onClick={() => setShowPersonalCalendarDayModal(false)}
+                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] transition-colors font-medium"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
