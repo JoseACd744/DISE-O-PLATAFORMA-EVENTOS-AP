@@ -133,6 +133,16 @@ function EstadoAlertaBadge({ estado }: { estado: EstadoAlerta }) {
   return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${c.bg} ${c.text}`}><Icon className="w-3 h-3" /> {c.label}</span>;
 }
 
+function extractStoragePathFromUrl(value: string) {
+  if (!value) return "";
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  } catch { /* no parseable */ }
+  return "";
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function InflablesPage() {
@@ -157,6 +167,7 @@ export function InflablesPage() {
   const [reservaSubmitting, setReservaSubmitting] = useState(false);
   const [reservaCarritoSubmitting, setReservaCarritoSubmitting] = useState(false);
   const [inflableSubmitting, setInflableSubmitting] = useState(false);
+  const [isCleaningImagen, setIsCleaningImagen] = useState(false);
   const [alertaSubmitting, setAlertaSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<
     | { kind: "reserva"; id: number; label: string }
@@ -405,39 +416,47 @@ export function InflablesPage() {
     setDeleteTarget({ kind: "reservaCarrito", id, label: `${reserva.clienteNombre} - ${reserva.evento}` });
   };
 
+  const deleteUploadedImagen = async (path: string): Promise<boolean> => {
+    if (!path) return true;
+    try {
+      await apiRequest<{ ok?: boolean }>("/upload", {
+        method: "DELETE",
+        body: JSON.stringify({ path }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleInflableImagenUpload = async (file: File) => {
     setIsUploadingImagen(true);
     setUploadImagenError("");
 
     try {
       if (inflableImagen.path) {
-        await apiRequest<{ ok?: boolean }>("/upload", {
-          method: "DELETE",
-          body: JSON.stringify({ path: inflableImagen.path }),
-        });
+        const cleaned = await deleteUploadedImagen(inflableImagen.path);
+        if (!cleaned) {
+          throw new Error("No se pudo eliminar la imagen anterior. Intenta de nuevo antes de subir otra.");
+        }
         setInflableImagen({ url: "", path: "", name: "" });
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "inflables");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "inflables");
 
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: fd });
 
       if (!response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const errorData = contentType.includes("application/json")
-          ? await response.json()
-          : { error: `HTTP ${response.status}` };
+        const ct = response.headers.get("content-type") || "";
+        const errorData = ct.includes("application/json") ? await response.json() : { error: `HTTP ${response.status}` };
         throw new Error((errorData as any).error || "Error al subir la imagen");
       }
 
       const data = await response.json();
       const rawUrl = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";
-      const rawPath = data?.path || data?.filePath || data?.data?.path || "";
+      const rawPath = data?.path || data?.filePath || data?.data?.path || extractStoragePathFromUrl(rawUrl);
 
       if (!rawUrl) throw new Error("La API respondió sin URL del archivo subido");
       if (!rawPath) throw new Error("La API respondió sin path del archivo subido");
@@ -456,17 +475,13 @@ export function InflablesPage() {
     }
   };
 
-  const cleanupInflableImagen = async () => {
-    if (!inflableImagen.path) return;
-    try {
-      await apiRequest<{ ok?: boolean }>("/upload", {
-        method: "DELETE",
-        body: JSON.stringify({ path: inflableImagen.path }),
-      });
-    } catch {
-      // best-effort
-    }
-    setInflableImagen({ url: "", path: "", name: "" });
+  const cleanupInflableImagen = async (): Promise<boolean> => {
+    if (!inflableImagen.path) return true;
+    setIsCleaningImagen(true);
+    const ok = await deleteUploadedImagen(inflableImagen.path);
+    setIsCleaningImagen(false);
+    if (ok) setInflableImagen({ url: "", path: "", name: "" });
+    return ok;
   };
 
   const handleAddInflable = async () => {
@@ -474,6 +489,7 @@ export function InflablesPage() {
     if (submitLocksRef.current.inflable || inflableSubmitting) return;
     submitLocksRef.current.inflable = true;
     setInflableSubmitting(true);
+    setUploadImagenError("");
     try {
       await apiRequest("/inflables/tipos", {
         method: "POST",
@@ -486,11 +502,25 @@ export function InflablesPage() {
           imagen_url: inflableImagen.url,
         }),
       });
+      // Guardado OK — el archivo queda en propiedad del tipo, no limpiar
+      setInflableImagen((prev) => ({ ...prev, path: "" }));
       setShowNewInflable(false);
       setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
       setInflableImagen({ url: "", path: "", name: "" });
       setUploadImagenError("");
       await loadData();
+    } catch (err) {
+      // Guardado falló — intentar limpiar la imagen huérfana
+      let cleanupFailed = false;
+      if (inflableImagen.path) {
+        setIsCleaningImagen(true);
+        const cleaned = await deleteUploadedImagen(inflableImagen.path);
+        setIsCleaningImagen(false);
+        cleanupFailed = !cleaned;
+        if (cleaned) setInflableImagen({ url: "", path: "", name: "" });
+      }
+      const base = err instanceof Error ? err.message : "No se pudo guardar el tipo de inflable";
+      setUploadImagenError(cleanupFailed ? `${base}. Además, no se pudo eliminar la imagen subida.` : base);
     } finally {
       submitLocksRef.current.inflable = false;
       setInflableSubmitting(false);
@@ -1108,7 +1138,14 @@ export function InflablesPage() {
 
       {/* New Inflable Modal */}
       {showNewInflable && (
-        <ModalWrapper onClose={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }}>
+        <ModalWrapper onClose={async () => {
+          if (inflableSubmitting || isUploadingImagen || isCleaningImagen) return;
+          const ok = await cleanupInflableImagen();
+          if (!ok) { setUploadImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+          setShowNewInflable(false);
+          setUploadImagenError("");
+          setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+        }}>
           <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Tipo de Inflable</h3>
           <div className="space-y-4">
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label><input type="text" value={newInflable.nombre} onChange={e => setNewInflable({ ...newInflable, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} /></div>
@@ -1124,18 +1161,18 @@ export function InflablesPage() {
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Imagen *</label>
               <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
-                isUploadingImagen
+                isUploadingImagen || isCleaningImagen
                   ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
                   : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#1F3C8B] hover:text-[#1F3C8B]"
               }`}>
                 <Upload className="w-4 h-4" />
-                <span>{isUploadingImagen ? "Subiendo..." : inflableImagen.name || "Subir imagen del inflable"}</span>
+                <span>{isUploadingImagen ? "Subiendo..." : isCleaningImagen ? "Limpiando imagen..." : inflableImagen.name || "Subir imagen del inflable"}</span>
                 <input
                   type="file"
                   accept="image/*"
-                  disabled={isUploadingImagen}
+                  disabled={isUploadingImagen || isCleaningImagen}
                   className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleInflableImagenUpload(f); }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void handleInflableImagenUpload(f); }}
                 />
               </label>
               {uploadImagenError && <p className="mt-1 text-xs text-red-500">{uploadImagenError}</p>}
@@ -1145,7 +1182,19 @@ export function InflablesPage() {
                 </div>
               )}
             </div>
-            <ModalButtons onCancel={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }} onConfirm={handleAddInflable} label="Guardar Tipo" submitting={inflableSubmitting} />
+            <ModalButtons
+              onCancel={async () => {
+                if (inflableSubmitting || isUploadingImagen || isCleaningImagen) return;
+                const ok = await cleanupInflableImagen();
+                if (!ok) { setUploadImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+                setShowNewInflable(false);
+                setUploadImagenError("");
+                setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+              }}
+              onConfirm={handleAddInflable}
+              label="Guardar Tipo"
+              submitting={inflableSubmitting || isCleaningImagen}
+            />
           </div>
         </ModalWrapper>
       )}
