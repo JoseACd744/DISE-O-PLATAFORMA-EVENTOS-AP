@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map } from "lucide-react";
 import { useBrand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -105,6 +106,12 @@ export function LogisticsPage() {
   const [choferSubmitting, setChoferSubmitting] = useState(false);
   const [vehiculoSubmitting, setVehiculoSubmitting] = useState(false);
   const [asignacionSubmitting, setAsignacionSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { kind: "chofer"; id: number; nombre: string }
+    | { kind: "vehiculo"; id: number; placa: string }
+    | null
+  >(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const logisticsLockRef = useRef({ chofer: false, vehiculo: false, asignacion: false });
 
   // Chofer form
@@ -362,12 +369,33 @@ export function LogisticsPage() {
   };
 
   const handleDeleteChofer = async (id: number) => {
-    await apiRequest(`/personal/${id}`, { method: "DELETE" });
-    await loadLogisticsData();
+    const chofer = choferes.find((item) => item.id === id);
+    if (!chofer) return;
+    setDeleteTarget({ kind: "chofer", id, nombre: chofer.nombre });
   };
   const handleDeleteVehiculo = async (id: number) => {
-    await apiRequest(`/logistics/vehiculos/${id}`, { method: "DELETE" });
-    await loadLogisticsData();
+    const vehiculo = vehiculos.find((item) => item.id === id);
+    if (!vehiculo) return;
+    setDeleteTarget({ kind: "vehiculo", id, placa: vehiculo.placa });
+  };
+
+  const confirmDeleteTarget = async () => {
+    if (!deleteTarget) return;
+
+    setDeleteSubmitting(true);
+    try {
+      if (deleteTarget.kind === "chofer") {
+        await apiRequest(`/personal/${deleteTarget.id}`, { method: "DELETE" });
+      } else {
+        await apiRequest(`/logistics/vehiculos/${deleteTarget.id}`, { method: "DELETE" });
+      }
+      setDeleteTarget(null);
+      await loadLogisticsData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el registro");
+    } finally {
+      setDeleteSubmitting(false);
+    }
   };
 
   const tabs = [
@@ -379,6 +407,24 @@ export function LogisticsPage() {
   return (
     <>
     <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={
+          deleteTarget?.kind === "chofer"
+            ? `Eliminar chofer ${deleteTarget.nombre}`
+            : deleteTarget?.kind === "vehiculo"
+              ? `Eliminar vehículo ${deleteTarget.placa}`
+              : "Eliminar registro"
+        }
+        description="¿Seguro que quieres eliminar este registro? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        loadingLabel="Eliminando..."
+        loading={deleteSubmitting}
+        onConfirm={confirmDeleteTarget}
+      />
       {error ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}

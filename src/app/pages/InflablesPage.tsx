@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Upload,
 } from "lucide-react";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { apiRequest, API_BASE_URL } from "../lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ interface InflableType {
   id: number;
   nombre: string;
   descripcion: string;
-  cantidadTotal: number;
+  cantidadUnidades: number;
   precioAlquiler: number;
   dimensiones: string;
   edadMinima: string;
@@ -157,11 +158,21 @@ export function InflablesPage() {
   const [reservaCarritoSubmitting, setReservaCarritoSubmitting] = useState(false);
   const [inflableSubmitting, setInflableSubmitting] = useState(false);
   const [alertaSubmitting, setAlertaSubmitting] = useState(false);
-  const submitLocksRef = useRef({ reserva: false, reservaCarrito: false, inflable: false, alerta: false });
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { kind: "reserva"; id: number; label: string }
+    | { kind: "reservaCarrito"; id: number; label: string }
+    | { kind: "inflable"; id: number; label: string }
+    | null
+  >(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const submitLocksRef = useRef({ reserva: false, reservaCarrito: false, inflable: false, alerta: false, unidad: false });
 
   // Forms
   const [newReserva, setNewReserva] = useState({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
-  const [newInflable, setNewInflable] = useState({ nombre: "", descripcion: "", cantidadTotal: 1, precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+  const [newInflable, setNewInflable] = useState({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+  const [showNewUnidad, setShowNewUnidad] = useState(false);
+  const [newUnidad, setNewUnidad] = useState({ tipoId: 0, codigo: "", estado: "disponible" as "disponible" | "en-uso" | "mantenimiento" });
+  const [unidadSubmitting, setUnidadSubmitting] = useState(false);
   const [inflableImagen, setInflableImagen] = useState({ url: "", path: "", name: "" });
   const [isUploadingImagen, setIsUploadingImagen] = useState(false);
   const [uploadImagenError, setUploadImagenError] = useState("");
@@ -181,7 +192,7 @@ export function InflablesPage() {
     setError("");
     try {
       const [inflablesApi, carritosApi, maintenanceApi] = await Promise.all([
-        apiRequest<any[]>("/inflables"),
+        apiRequest<any[]>("/inflables/tipos"),
         apiRequest<any[]>("/carritos"),
         apiRequest<any[]>("/maintenance"),
       ]);
@@ -190,7 +201,7 @@ export function InflablesPage() {
         id: i.id,
         nombre: i.nombre,
         descripcion: i.descripcion || "",
-        cantidadTotal: i.cantidad_total || 0,
+        cantidadUnidades: i.cantidad_unidades || 0,
         precioAlquiler: Number(i.precio_alquiler || 0),
         dimensiones: i.dimensiones || "",
         edadMinima: i.edad_minima || "",
@@ -208,8 +219,8 @@ export function InflablesPage() {
       }));
 
       const [reservasInflablesChunks, reservasCarritosChunks] = await Promise.all([
-        Promise.all(inflablesMapped.map((i) => apiRequest<any[]>(`/inflables/${i.id}/reservas`))),
-        Promise.all(carritosMapped.map((c) => apiRequest<any[]>(`/carritos/${c.id}/reservas`))),
+        Promise.all(inflablesMapped.map((i) => apiRequest<any[]>(`/inflables/tipos/${i.id}/reservas`).catch(() => []))),
+        Promise.all(carritosMapped.map((c) => apiRequest<any[]>(`/carritos/${c.id}/reservas`).catch(() => []))),
       ]);
 
       const reservasInflablesMapped: Reserva[] = reservasInflablesChunks.flatMap((chunk) =>
@@ -304,17 +315,17 @@ export function InflablesPage() {
   }, [reservas, reservasCarritos, calendarYear, calendarMonth, selectedType, selectedCarrito, mainTab]);
 
   // Stats
-  const totalInflables = inflables.reduce((s, i) => s + i.cantidadTotal, 0);
+  const totalInflables = inflables.reduce((s, i) => s + i.cantidadUnidades, 0);
   const reservadosInflablesHoy = inflables.reduce((s, i) => s + getReservedCount(i.id, todayStr), 0);
-  const totalCarritos = carritos.reduce((s, c) => s + c.cantidadTotal, 0);
+  const totalCarritos = carritos.length;
   const reservadosCarritosHoy = carritos.reduce((s, c) => s + getCarritoReservedCount(c.id, todayStr), 0);
   const alertasPendientes = alertas.filter(a => a.estado === "pendiente").length;
   const alertasCriticas = alertas.filter(a => a.severidad === "critica" && a.estado !== "resuelta").length;
 
   // Max capacity for calendar
   const calendarMaxCap = mainTab === "inflables"
-    ? (selectedType ? selectedType.cantidadTotal : totalInflables)
-    : (selectedCarrito ? selectedCarrito.cantidadTotal : totalCarritos);
+    ? (selectedType ? selectedType.cantidadUnidades : totalInflables)
+    : totalCarritos;
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -324,8 +335,8 @@ export function InflablesPage() {
     const inflable = inflables.find(i => i.id === newReserva.inflableId);
     if (!inflable) return;
     const reserved = getReservedCount(newReserva.inflableId, newReserva.fecha);
-    if (reserved + newReserva.cantidad > inflable.cantidadTotal) {
-      alert(`Solo hay ${inflable.cantidadTotal - reserved} unidad(es) disponible(s) de "${inflable.nombre}" para esa fecha.`);
+    if (reserved + newReserva.cantidad > inflable.cantidadUnidades) {
+      alert(`Solo hay ${inflable.cantidadUnidades - reserved} unidad(es) disponible(s) de "${inflable.nombre}" para esa fecha.`);
       return;
     }
     submitLocksRef.current.reserva = true;
@@ -385,15 +396,13 @@ export function InflablesPage() {
   const handleDeleteReserva = async (id: number) => {
     const reserva = reservas.find((r) => r.id === id);
     if (!reserva) return;
-    await apiRequest(`/inflables/${reserva.inflableId}/reservas/${id}`, { method: "DELETE" });
-    await loadData();
+    setDeleteTarget({ kind: "reserva", id, label: `${reserva.clienteNombre} - ${reserva.evento}` });
   };
 
   const handleDeleteReservaCarrito = async (id: number) => {
     const reserva = reservasCarritos.find((r) => r.id === id);
     if (!reserva) return;
-    await apiRequest(`/carritos/${reserva.carritoId}/reservas/${id}`, { method: "DELETE" });
-    await loadData();
+    setDeleteTarget({ kind: "reservaCarrito", id, label: `${reserva.clienteNombre} - ${reserva.evento}` });
   };
 
   const handleInflableImagenUpload = async (file: File) => {
@@ -461,17 +470,16 @@ export function InflablesPage() {
   };
 
   const handleAddInflable = async () => {
-    if (!newInflable.nombre || !newInflable.descripcion || !newInflable.cantidadTotal || !newInflable.precioAlquiler || !inflableImagen.url) return;
+    if (!newInflable.nombre || !newInflable.descripcion || !newInflable.precioAlquiler || !inflableImagen.url) return;
     if (submitLocksRef.current.inflable || inflableSubmitting) return;
     submitLocksRef.current.inflable = true;
     setInflableSubmitting(true);
     try {
-      await apiRequest("/inflables", {
+      await apiRequest("/inflables/tipos", {
         method: "POST",
         body: JSON.stringify({
           nombre: newInflable.nombre,
           descripcion: newInflable.descripcion,
-          cantidad_total: newInflable.cantidadTotal,
           precio_alquiler: newInflable.precioAlquiler,
           dimensiones: newInflable.dimensiones,
           edad_minima: newInflable.edadMinima,
@@ -479,7 +487,7 @@ export function InflablesPage() {
         }),
       });
       setShowNewInflable(false);
-      setNewInflable({ nombre: "", descripcion: "", cantidadTotal: 1, precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+      setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
       setInflableImagen({ url: "", path: "", name: "" });
       setUploadImagenError("");
       await loadData();
@@ -489,10 +497,59 @@ export function InflablesPage() {
     }
   };
 
+  const handleAddUnidad = async () => {
+    if (!newUnidad.tipoId || !newUnidad.codigo.trim()) return;
+    if (submitLocksRef.current.unidad || unidadSubmitting) return;
+    submitLocksRef.current.unidad = true;
+    setUnidadSubmitting(true);
+    try {
+      await apiRequest("/inflables", {
+        method: "POST",
+        body: JSON.stringify({
+          tipo_id: newUnidad.tipoId,
+          codigo: newUnidad.codigo.trim(),
+          estado: newUnidad.estado,
+        }),
+      });
+      setShowNewUnidad(false);
+      setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible" });
+      await loadData();
+    } finally {
+      submitLocksRef.current.unidad = false;
+      setUnidadSubmitting(false);
+    }
+  };
+
   const handleDeleteInflable = async (id: number) => {
-    await apiRequest(`/inflables/${id}`, { method: "DELETE" });
-    if (selectedType?.id === id) setSelectedType(null);
-    await loadData();
+    const inflable = inflables.find((item) => item.id === id);
+    if (!inflable) return;
+    setDeleteTarget({ kind: "inflable", id, label: inflable.nombre });
+  };
+
+  const confirmDeleteTarget = async () => {
+    if (!deleteTarget) return;
+
+    setDeleteSubmitting(true);
+    try {
+      if (deleteTarget.kind === "reserva") {
+        const reserva = reservas.find((item) => item.id === deleteTarget.id);
+        if (!reserva) return;
+        await apiRequest(`/inflables/${reserva.inflableId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
+      } else if (deleteTarget.kind === "reservaCarrito") {
+        const reserva = reservasCarritos.find((item) => item.id === deleteTarget.id);
+        if (!reserva) return;
+        await apiRequest(`/carritos/${reserva.carritoId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
+      } else {
+        await apiRequest(`/inflables/tipos/${deleteTarget.id}`, { method: "DELETE" });
+        if (selectedType?.id === deleteTarget.id) setSelectedType(null);
+      }
+      setDeleteTarget(null);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el registro");
+    } finally {
+      setDeleteSubmitting(false);
+    }
   };
 
   const handleAddAlerta = async () => {
@@ -626,8 +683,11 @@ export function InflablesPage() {
               </div>
               <div className="flex gap-3 w-full lg:w-auto items-center">
                 <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-[#EF8022]">Fichas de Eventos</span></p>
+                <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible" }); setShowNewUnidad(true); }} className="border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                  <Plus className="w-4 h-4" /> Nueva Unidad
+                </button>
                 <button onClick={() => setShowNewInflable(true)} className="bg-[#1F3C8B] text-white px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
-                  <Plus className="w-4 h-4" /> Nuevo Inflable
+                  <Plus className="w-4 h-4" /> Nuevo Tipo
                 </button>
               </div>
             </div>
@@ -639,7 +699,7 @@ export function InflablesPage() {
               <h2 className="text-lg text-gray-900 dark:text-white mb-2">Tipos de Inflables</h2>
               {filteredInflables.map(inflable => {
                 const reservedToday = getReservedCount(inflable.id, todayStr);
-                const availToday = inflable.cantidadTotal - reservedToday;
+                const availToday = inflable.cantidadUnidades - reservedToday;
                 const isSelected = selectedType?.id === inflable.id;
                 const maxSev = getMaxSeverity("inflable", inflable.id);
                 const activeAlertCount = getActiveAlerts("inflable", inflable.id).length;
@@ -669,7 +729,7 @@ export function InflablesPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-[#EF8022]">S/ {inflable.precioAlquiler}/día</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full ${availToday > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>
-                            {availToday}/{inflable.cantidadTotal} disp.
+                            {availToday}/{inflable.cantidadUnidades} unid.
                           </span>
                         </div>
                       </div>
@@ -988,7 +1048,7 @@ export function InflablesPage() {
               {newReserva.inflableId > 0 && newReserva.fecha && (() => {
                 const inf = inflables.find(i => i.id === newReserva.inflableId)!;
                 const reserved = getReservedCount(inf.id, newReserva.fecha);
-                const avail = inf.cantidadTotal - reserved;
+                const avail = inf.cantidadUnidades - reserved;
                 return <p className={`text-xs mt-1 ${avail > 0 ? "text-gray-500" : "text-red-500"}`}>{avail > 0 ? `${avail} de ${inf.cantidadTotal} disponible(s)` : "No hay disponibilidad"}</p>;
               })()}
             </div>
@@ -1053,9 +1113,9 @@ export function InflablesPage() {
           <div className="space-y-4">
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label><input type="text" value={newInflable.nombre} onChange={e => setNewInflable({ ...newInflable, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label><textarea value={newInflable.descripcion} onChange={e => setNewInflable({ ...newInflable, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label><input type="number" min={1} value={newInflable.cantidadTotal} onChange={e => setNewInflable({ ...newInflable, cantidadTotal: Number(e.target.value) })} className={inputClass} /></div>
-              <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio/día (S/) *</label><input type="number" min={0} value={newInflable.precioAlquiler || ""} onChange={e => setNewInflable({ ...newInflable, precioAlquiler: Number(e.target.value) })} placeholder="350" className={inputClass} /></div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio/día (S/) *</label>
+              <input type="number" min={0} value={newInflable.precioAlquiler || ""} onChange={e => setNewInflable({ ...newInflable, precioAlquiler: Number(e.target.value) })} placeholder="350" className={inputClass} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label><input type="text" value={newInflable.dimensiones} onChange={e => setNewInflable({ ...newInflable, dimensiones: e.target.value })} placeholder="Ej: 6m x 4m x 3m" className={inputClass} /></div>
@@ -1085,7 +1145,36 @@ export function InflablesPage() {
                 </div>
               )}
             </div>
-            <ModalButtons onCancel={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }} onConfirm={handleAddInflable} label="Guardar Inflable" submitting={inflableSubmitting} />
+            <ModalButtons onCancel={async () => { await cleanupInflableImagen(); setShowNewInflable(false); setUploadImagenError(""); }} onConfirm={handleAddInflable} label="Guardar Tipo" submitting={inflableSubmitting} />
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* New Unidad Modal */}
+      {showNewUnidad && (
+        <ModalWrapper onClose={() => setShowNewUnidad(false)}>
+          <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nueva Unidad Física</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Inflable *</label>
+              <select value={newUnidad.tipoId} onChange={e => setNewUnidad({ ...newUnidad, tipoId: Number(e.target.value) })} className={inputClass}>
+                <option value={0}>Seleccionar tipo...</option>
+                {inflables.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+              <input type="text" value={newUnidad.codigo} onChange={e => setNewUnidad({ ...newUnidad, codigo: e.target.value })} placeholder="Ej: CAST-001" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+              <select value={newUnidad.estado} onChange={e => setNewUnidad({ ...newUnidad, estado: e.target.value as typeof newUnidad.estado })} className={inputClass}>
+                <option value="disponible">Disponible</option>
+                <option value="en-uso">En Uso</option>
+                <option value="mantenimiento">Mantenimiento</option>
+              </select>
+            </div>
+            <ModalButtons onCancel={() => setShowNewUnidad(false)} onConfirm={handleAddUnidad} label="Guardar Unidad" submitting={unidadSubmitting} />
           </div>
         </ModalWrapper>
       )}
@@ -1257,12 +1346,12 @@ function renderInflableDayDetail(
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
             {inflables.map(inf => {
               const reserved = getReservedCount(inf.id, dateToShow);
-              const avail = inf.cantidadTotal - reserved;
+              const avail = inf.cantidadUnidades - reserved;
               return (
                 <div key={inf.id} className={`text-center p-3 rounded-lg border text-xs ${avail === 0 ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20" : reserved > 0 ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"}`}>
                   <span className="text-lg">{emojiMap[inf.imagen]}</span>
                   <p className="text-gray-700 dark:text-gray-300 truncate mt-1">{inf.nombre}</p>
-                  <p className={`mt-1 ${avail === 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>{avail}/{inf.cantidadTotal}</p>
+                  <p className={`mt-1 ${avail === 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>{avail}/{inf.cantidadUnidades}</p>
                 </div>
               );
             })}

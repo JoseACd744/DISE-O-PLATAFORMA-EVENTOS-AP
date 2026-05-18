@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState, useRef } from "react";
 import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, X, Filter, Building2 } from "lucide-react";
 import { Pagination } from "../components/Pagination";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
 
@@ -35,6 +36,8 @@ export function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isSavingClient, setIsSavingClient] = useState(false);
+  const [deleteClientId, setDeleteClientId] = useState<string | null>(null);
+  const [deleteClientSubmitting, setDeleteClientSubmitting] = useState(false);
   const clientSaveLockRef = useRef(false);
   const [newClient, setNewClient] = useState({
     nombre: "",
@@ -194,11 +197,21 @@ export function ClientsPage() {
   };
 
   const handleDeleteClient = async (id: string) => {
+    setDeleteClientId(id);
+  };
+
+  const confirmDeleteClient = async () => {
+    if (!deleteClientId) return;
+
+    setDeleteClientSubmitting(true);
     try {
-      await apiRequest(`/clients/${id}`, { method: "DELETE" });
+      await apiRequest(`/clients/${deleteClientId}`, { method: "DELETE" });
+      setDeleteClientId(null);
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar el cliente");
+    } finally {
+      setDeleteClientSubmitting(false);
     }
   };
 
@@ -223,6 +236,18 @@ export function ClientsPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteClientId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteClientId(null);
+        }}
+        title="Eliminar cliente"
+        description="¿Seguro que quieres eliminar este cliente? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar cliente"
+        loadingLabel="Eliminando..."
+        loading={deleteClientSubmitting}
+        onConfirm={confirmDeleteClient}
+      />
       {error ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}

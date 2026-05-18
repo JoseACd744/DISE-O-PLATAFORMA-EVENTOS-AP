@@ -2,6 +2,17 @@ import { clearAuthSession, getAuthToken, getAuthUser, isAdminRole } from "./auth
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api") as string;
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 type RequestOptions = RequestInit & {
   skipAuth?: boolean;
 };
@@ -46,7 +57,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const errorMessage = (body && typeof body === "object" && "error" in body)
       ? String((body as { error: unknown }).error)
       : `HTTP ${response.status}`;
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, body);
   }
 
   return body as T;

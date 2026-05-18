@@ -43,24 +43,26 @@ type ApiPaquete = {
 
 type ApiCarrito = {
   id: number;
-  modelo: "Blanco" | "Clásico" | "Delgado";
+  modelo: string;
   codigo: string;
+  tipo_id: number;
+  tipo_nombre: string;
   descripcion: string | null;
-  cantidad_total: number;
   precio_alquiler?: number | null;
+  imagen_url?: string | null;
   estado: "disponible" | "en-uso" | "mantenimiento";
 };
 
 type ApiInflable = {
   id: number;
-  nombre: string;
-  descripcion: string | null;
-  cantidad_total: number;
-  precio_alquiler: number;
+  tipo_id: number;
+  tipo_nombre: string;
+  codigo: string;
+  estado: "disponible" | "en-uso" | "mantenimiento";
   dimensiones: string | null;
   edad_minima: string | null;
+  precio_alquiler: number;
   imagen_url?: string | null;
-  imagenes?: Array<string | { id?: number; image_url?: string; url?: string }> | null;
 };
 
 type ApiPersonal = {
@@ -130,9 +132,11 @@ export function mapApiCarritos(apiCarritos: ApiCarrito[]): Carrito[] {
     id: carrito.id,
     modelo: carrito.modelo,
     codigo: carrito.codigo,
+    tipoId: carrito.tipo_id ?? 0,
+    tipoNombre: carrito.tipo_nombre || "",
     descripcion: carrito.descripcion || "",
-    cantidadTotal: carrito.cantidad_total,
     precioAlquiler: Number(carrito.precio_alquiler || 0),
+    imagenUrl: carrito.imagen_url || undefined,
     estado: carrito.estado,
   }));
 }
@@ -140,28 +144,17 @@ export function mapApiCarritos(apiCarritos: ApiCarrito[]): Carrito[] {
 export function mapApiInflables(apiInflables: ApiInflable[]): Inflable[] {
   return apiInflables.map((inflable) => ({
     id: inflable.id,
-    nombre: inflable.nombre,
-    descripcion: inflable.descripcion || "",
-    cantidadTotal: inflable.cantidad_total,
-    precioAlquiler: Number(inflable.precio_alquiler || 0),
+    tipoId: inflable.tipo_id ?? 0,
+    tipoNombre: inflable.tipo_nombre || "",
+    codigo: inflable.codigo || "",
+    estado: inflable.estado,
     dimensiones: inflable.dimensiones || "",
     edadMinima: inflable.edad_minima || "",
+    precioAlquiler: Number(inflable.precio_alquiler || 0),
     imagenUrl: inflable.imagen_url || "",
-    imagenes: Array.isArray(inflable.imagenes)
-      ? inflable.imagenes
-          .map((image) => {
-            if (typeof image === "string") {
-              return { id: null, url: image };
-            }
-
-            const url = image.image_url || image.url || "";
-            if (!url) return null;
-            return { id: typeof image.id === "number" ? image.id : null, url };
-          })
-          .filter((image): image is { id: number | null; url: string } => Boolean(image))
-      : (inflable.imagen_url ? [{ id: null, url: inflable.imagen_url }] : []),
   }));
 }
+
 
 export function mapApiPersonal(apiPersonal: ApiPersonal[]): Personal[] {
   return apiPersonal.map((persona) => ({

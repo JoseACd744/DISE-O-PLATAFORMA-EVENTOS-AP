@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download } from "lucide-react";
-import { DateRange } from "react-day-picker";
+import { DayPicker, DateRange } from "react-day-picker";
+import "react-day-picker/dist/style.css";
 import { DateRangePicker } from "../components/DateRangePicker";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
-import { apiRequest, API_BASE_URL } from "../lib/api";
+import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
 
 // ── Financial types ──────────────────────────────────────────────
 
@@ -149,6 +151,24 @@ interface TarifaEnvio {
   costo_cumpleanos: number;
   costo_corporativo: number;
   costo_delivery: number;
+}
+
+interface CarritoConflict {
+  carrito_id: number;
+  carrito_modelo: string;
+  carrito_codigo: string;
+  ficha_id: number;
+  cliente_nombre: string;
+  fecha_evento: string;
+}
+
+interface InflableConflict {
+  inflable_id: number;
+  inflable_tipo: string;
+  inflable_codigo: string;
+  ficha_id: number;
+  cliente_nombre: string;
+  fecha_evento: string;
 }
 
 function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["transporte"]): number {
@@ -563,6 +583,8 @@ export function FichasPage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deleteFichaId, setDeleteFichaId] = useState<number | null>(null);
+  const [deleteFichaSubmitting, setDeleteFichaSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
@@ -585,6 +607,9 @@ export function FichasPage() {
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
   const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
   const [distritosOptions, setDistritosOptions] = useState<string[]>([]);
+  const [carritoConflicts, setCarritoConflicts] = useState<CarritoConflict[] | null>(null);
+  const [inflableConflicts, setInflableConflicts] = useState<InflableConflict[] | null>(null);
+  const [carritoCalendarId, setCarritoCalendarId] = useState<number | null>(null);
 
   const { brand } = useBrand();
   const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
@@ -602,11 +627,54 @@ export function FichasPage() {
     } else {
       // Verificar si tiene eventos en esa fecha específica
       const hasEventsOnDate = fichas.some(
-        (f) => f.personalIds?.includes(personalId) && 
+        (f) => f.personalIds?.includes(personalId) &&
         (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
       );
       return hasEventsOnDate ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
     }
+  };
+
+  // Obtener disponibilidad dinámica de un carrito según los eventos ya registrados
+  const getDynamicCarritoEstado = (carritoId: number, eventDate?: string): string => {
+    const excludeId = editingFichaId;
+    if (!eventDate) {
+      const busy = fichas.some((f) => f.id !== excludeId && f.carritoIds?.includes(carritoId));
+      return busy ? "Ocupado" : "Disponible";
+    }
+    const busyOnDate = fichas.some(
+      (f) =>
+        f.id !== excludeId &&
+        f.carritoIds?.includes(carritoId) &&
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+    );
+    return busyOnDate ? "Ocupado" : "Disponible";
+  };
+
+  const getDynamicInflableEstado = (inflableId: number, eventDate?: string): string => {
+    const excludeId = editingFichaId;
+    if (!eventDate) {
+      const busy = fichas.some((f) => f.id !== excludeId && f.inflableIds?.includes(inflableId));
+      return busy ? "Ocupado" : "Disponible";
+    }
+    const busyOnDate = fichas.some(
+      (f) =>
+        f.id !== excludeId &&
+        f.inflableIds?.includes(inflableId) &&
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+    );
+    return busyOnDate ? "Ocupado" : "Disponible";
+  };
+
+  // Fechas en que un carrito ya está asignado (para el calendario)
+  const getFechasOcupadasCarrito = (carritoId: number): Date[] => {
+    return fichas
+      .filter((f) => f.id !== editingFichaId && f.carritoIds?.includes(carritoId))
+      .map((f) => {
+        const raw = (f.fecha_evento || f.fecha || "").split("T")[0];
+        const d = new Date(`${raw}T00:00:00`);
+        return isNaN(d.getTime()) ? null : d;
+      })
+      .filter((d): d is Date => d !== null);
   };
 
   const availableClients = useMemo(
@@ -851,7 +919,7 @@ export function FichasPage() {
       .filter(Boolean)
       .map(c => `${c!.codigo} - ${c!.modelo}`);
     const inflableDetalle = (ficha.inflableIds ?? [])
-      .map(id => inflables.find(i => i.id === id)?.nombre)
+      .map(id => inflables.find(i => i.id === id)?.tipoNombre)
       .filter(Boolean) as string[];
     const personalDetalle = getNombresPersonal(ficha);
     const config = ficha.brand === "donofrio"
@@ -1908,21 +1976,28 @@ export function FichasPage() {
   };
 
   const handleDeleteFicha = async (ficha: Ficha) => {
-    const confirmed = window.confirm(`¿Eliminar la ficha #${ficha.id} de ${ficha.cliente_nombre}? Esta acción no se puede deshacer.`);
-    if (!confirmed) return;
+    setDeleteFichaId(ficha.id);
+  };
 
+  const confirmDeleteFicha = async () => {
+    if (!deleteFichaId) return;
+
+    setDeleteFichaSubmitting(true);
     try {
-      await apiRequest(`/fichas/${ficha.id}`, { method: "DELETE" });
-      if (selectedFicha?.id === ficha.id) {
+      await apiRequest(`/fichas/${deleteFichaId}`, { method: "DELETE" });
+      if (selectedFicha?.id === deleteFichaId) {
         closeFichaDetail();
       }
-      if (abonoTargetFicha?.id === ficha.id) {
+      if (abonoTargetFicha?.id === deleteFichaId) {
         setShowAbonoModal(false);
         setAbonoTargetFicha(null);
       }
+      setDeleteFichaId(null);
       await refreshFichasAndCatalogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar la ficha");
+    } finally {
+      setDeleteFichaSubmitting(false);
     }
   };
 
@@ -1974,6 +2049,16 @@ export function FichasPage() {
       setFormData(getInitialFormData());
       await refreshFichasAndCatalogs();
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as { error?: string; conflicts?: Record<string, unknown>[] };
+        const conflicts = body.conflicts ?? [];
+        if (conflicts.length > 0 && "inflable_id" in conflicts[0]) {
+          setInflableConflicts(conflicts as unknown as InflableConflict[]);
+        } else {
+          setCarritoConflicts(conflicts as unknown as CarritoConflict[]);
+        }
+        return;
+      }
       setError(err instanceof Error ? err.message : editingFichaId !== null ? "No se pudo actualizar la ficha" : "No se pudo crear la ficha");
     } finally {
       createFichaLockRef.current = false;
@@ -1987,6 +2072,113 @@ export function FichasPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteFichaId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteFichaId(null);
+        }}
+        title={deleteFichaId ? `Eliminar ficha #${deleteFichaId}` : "Eliminar ficha"}
+        description="¿Seguro que quieres eliminar esta ficha? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar ficha"
+        loadingLabel="Eliminando..."
+        loading={deleteFichaSubmitting}
+        onConfirm={confirmDeleteFicha}
+      />
+
+      {/* Modal de conflictos 409 */}
+      {carritoConflicts !== null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-base text-gray-900 dark:text-white">Conflicto de carritos</h3>
+              </div>
+              <button onClick={() => setCarritoConflicts(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Los siguientes carritos ya están asignados en otra ficha para esa fecha de evento. Quita esos carritos o cambia la fecha para continuar.
+              </p>
+              <div className="space-y-3">
+                {carritoConflicts.map((c, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                    <div className="min-w-0 text-sm">
+                      <p className="text-gray-900 dark:text-white">
+                        <span className="text-red-600 dark:text-red-400">{c.carrito_codigo}</span> — {c.carrito_modelo}
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                        Asignado en ficha <span className="font-medium">#{c.ficha_id}</span> · {c.cliente_nombre} · {formatDate(c.fecha_evento)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => setCarritoConflicts(null)}
+                className="flex-1 bg-[#EF8022] text-white py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors text-sm"
+              >
+                Entendido, voy a corregirlo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de conflictos 409 — Inflables */}
+      {inflableConflicts !== null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-base text-gray-900 dark:text-white">Conflicto de inflables</h3>
+              </div>
+              <button onClick={() => setInflableConflicts(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Los siguientes inflables ya están asignados en otra ficha para esa fecha de evento. Quita esos inflables o cambia la fecha para continuar.
+              </p>
+              <div className="space-y-3">
+                {inflableConflicts.map((c, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                    <div className="min-w-0 text-sm">
+                      <p className="text-gray-900 dark:text-white">
+                        <span className="text-red-600 dark:text-red-400">{c.inflable_codigo}</span> — {c.inflable_tipo}
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                        Asignado en ficha <span className="font-medium">#{c.ficha_id}</span> · {c.cliente_nombre} · {formatDate(c.fecha_evento)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => setInflableConflicts(null)}
+                className="flex-1 bg-[#EF8022] text-white py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors text-sm"
+              >
+                Entendido, voy a corregirlo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -2498,7 +2690,7 @@ export function FichasPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {selectedFicha.inflableIds!.map(id => {
                           const inf = inflables.find(i => i.id === id);
-                          return inf ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400">{inf.nombre}</span> : null;
+                          return inf ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400">{inf.tipoNombre} {inf.codigo}</span> : null;
                         })}
                       </div>
                     </div>
@@ -2681,6 +2873,7 @@ export function FichasPage() {
                           const selectedIds = formData.carritoIds.filter((_, i) => i !== idx).filter((id) => id > 0);
                           const availableCarritos = carritos.filter((carrito) => carrito.id === carritoId || !selectedIds.includes(carrito.id));
                           const selectedCarrito = carritos.find((carrito) => carrito.id === carritoId);
+                          const carritoEstado = carritoId > 0 ? getDynamicCarritoEstado(carritoId, formData.fecha_evento) : null;
 
                           return (
                             <div key={`${carritoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
@@ -2694,14 +2887,29 @@ export function FichasPage() {
                                   .filter((carrito) => carrito.estado !== 'mantenimiento' || carrito.id === carritoId)
                                   .map((carrito) => (
                                     <option key={carrito.id} value={carrito.id}>
-                                      {carrito.codigo} — {carrito.modelo} · {carrito.estado}
+                                      {carrito.codigo} — {carrito.modelo} · {getDynamicCarritoEstado(carrito.id, formData.fecha_evento)}
                                     </option>
                                   ))}
                               </select>
                               <div className="flex items-center justify-between gap-2 md:justify-end">
-                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">
-                                  {selectedCarrito ? `${selectedCarrito.codigo} — ${selectedCarrito.modelo}` : "Sin seleccionar"}
+                                <span className={`text-xs md:hidden truncate ${carritoEstado === "Ocupado" ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
+                                  {selectedCarrito ? `${selectedCarrito.codigo} — ${selectedCarrito.modelo} · ${carritoEstado}` : "Sin seleccionar"}
                                 </span>
+                                {carritoId > 0 && carritoEstado && (
+                                  <span className={`hidden md:inline-flex text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${carritoEstado === "Ocupado" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"}`}>
+                                    {carritoEstado}
+                                  </span>
+                                )}
+                                {carritoId > 0 && (
+                                  <button
+                                    type="button"
+                                    title="Ver fechas ocupadas"
+                                    onClick={() => setCarritoCalendarId(carritoCalendarId === carritoId ? null : carritoId)}
+                                    className={`p-2 rounded transition-colors ${carritoCalendarId === carritoId ? "text-[#EF8022] bg-[#EF8022]/10" : "text-gray-400 hover:text-[#EF8022]"}`}
+                                  >
+                                    <Calendar className="w-4 h-4" />
+                                  </button>
+                                )}
                                 {formData.carritoIds.length > 1 ? (
                                   <button type="button" onClick={() => handleRemoveCarritoRow(idx)} className="p-2 text-red-400 hover:text-red-600">
                                     <X className="w-4 h-4" />
@@ -2710,6 +2918,41 @@ export function FichasPage() {
                                   <span className="hidden md:block" />
                                 )}
                               </div>
+                              {carritoCalendarId === carritoId && carritoId > 0 && (() => {
+                                const fechasOcupadas = getFechasOcupadasCarrito(carritoId);
+                                const today = new Date();
+                                return (
+                                  <div className="col-span-full mt-1 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+                                      Fechas ocupadas de {selectedCarrito?.codigo} — {selectedCarrito?.modelo}
+                                    </p>
+                                    {fechasOcupadas.length === 0 ? (
+                                      <p className="text-xs text-green-600 dark:text-green-400">Sin eventos asignados</p>
+                                    ) : (
+                                      <>
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                          {fechasOcupadas.map((d, i) => (
+                                            <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                              {d.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}
+                                            </span>
+                                          ))}
+                                        </div>
+                                        <style>{`
+                                          .carrito-cal .rdp-day_selected { background: #ef4444 !important; color: #fff !important; border-radius: 100% !important; }
+                                          .carrito-cal .rdp-day_today:not(.rdp-day_selected) { border: 1px solid #EF8022; border-radius: 100%; }
+                                        `}</style>
+                                        <div className="carrito-cal overflow-auto">
+                                          <DayPicker
+                                            mode="multiple"
+                                            selected={fechasOcupadas}
+                                            defaultMonth={fechasOcupadas[0] ?? today}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })}
@@ -2721,15 +2964,23 @@ export function FichasPage() {
                     <div>
                       <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Inflables</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {inflables.map(inflable => (
-                          <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${formData.inflableIds.includes(inflable.id) ? 'border-[#1F3C8B] bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-                            <input type="checkbox" checked={formData.inflableIds.includes(inflable.id)} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-[#1F3C8B]" />
-                            <div className="min-w-0">
-                              <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.nombre}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.cantidadTotal} unid. · S/{inflable.precioAlquiler}/día</p>
-                            </div>
-                          </label>
-                        ))}
+                        {inflables.map(inflable => {
+                          const inflableEstado = getDynamicInflableEstado(inflable.id, formData.fecha_evento);
+                          const isOcupado = inflableEstado === "Ocupado";
+                          const isSelected = formData.inflableIds.includes(inflable.id);
+                          return (
+                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-[#1F3C8B] bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                              <input type="checkbox" checked={isSelected} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-[#1F3C8B]" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.tipoNombre}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.codigo} · S/{inflable.precioAlquiler}/día</p>
+                              </div>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${isOcupado ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                {inflableEstado}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2809,10 +3060,97 @@ export function FichasPage() {
                 </div>
               </div>
 
-              {/* ── FINANCIAL FIELDS ──────────────────────────── */}
+              {/* Cliente */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Cotización y Descuento</h4>
-                <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
+                  <select
+                    value={formData.cliente_id}
+                    onChange={(e) => handleExistingClientChange(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Seleccionar cliente (opcional)</option>
+                    {availableClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.nombre}
+                        {client.razon_social ? ` - ${client.razon_social}` : ""}
+                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Ubicación */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
+                    <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
+                      <option value="">Seleccionar distrito</option>
+                      {distritos.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Horarios */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label><input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} /></div>
+                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label><input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Comentarios */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Edit className="w-4 h-4 text-gray-400" /> Comentarios</h4>
+                <textarea name="comentarios" value={formData.comentarios} onChange={handleInputChange} rows={3} placeholder="Notas especiales o instrucciones" className={inputClass} />
+              </div>
+
+              {/* ── PRECIOS ───────────────────────────────────── */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Tipo de Evento *</label>
+                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
+                      <option value="cumpleanos">Cumpleaños</option>
+                      <option value="corporativo">Corporativo</option>
+                      <option value="delivery">Delivery</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                      <input
+                        type="number"
+                        name="costo_envio"
+                        value={formData.costo_envio || ""}
+                        onChange={handleInputChange}
+                        min={0}
+                        step={0.01}
+                        placeholder="0.00"
+                        className={`${inputClass} pl-9`}
+                      />
+                    </div>
+                    {tarifaCache && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
                     Modo: {cotizacionMode === "auto" ? "Autocalculado" : "Editable manual"}
                   </span>
@@ -2858,91 +3196,6 @@ export function FichasPage() {
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Los abonos se registran después de crear la ficha, desde el detalle del evento.</p>
-              </div>
-
-              {/* Cliente */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
-                  <select
-                    value={formData.cliente_id}
-                    onChange={(e) => handleExistingClientChange(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Seleccionar cliente (opcional)</option>
-                    {availableClients.map((client) => (
-                      <option key={client.id} value={client.id}>
-                        {client.nombre}
-                        {client.razon_social ? ` - ${client.razon_social}` : ""}
-                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
-                </div>
-              </div>
-
-              {/* Ubicación */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
-                    <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
-                      <option value="">Seleccionar distrito</option>
-                      {distritos.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Tipo de Evento *</label>
-                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
-                      <option value="cumpleanos">Cumpleaños</option>
-                      <option value="corporativo">Corporativo</option>
-                      <option value="delivery">Delivery</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
-                      <input
-                        type="number"
-                        name="costo_envio"
-                        value={formData.costo_envio || ""}
-                        onChange={handleInputChange}
-                        min={0}
-                        step={0.01}
-                        placeholder="0.00"
-                        className={`${inputClass} pl-9`}
-                      />
-                    </div>
-                    {tarifaCache && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
-                    )}
-                  </div>
-                  <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
-                </div>
-              </div>
-
-              {/* Horarios */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label><input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label><input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} /></div>
-                </div>
-              </div>
-
-              {/* Comentarios */}
-              <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Edit className="w-4 h-4 text-gray-400" /> Comentarios</h4>
-                <textarea name="comentarios" value={formData.comentarios} onChange={handleInputChange} rows={3} placeholder="Notas especiales o instrucciones" className={inputClass} />
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">

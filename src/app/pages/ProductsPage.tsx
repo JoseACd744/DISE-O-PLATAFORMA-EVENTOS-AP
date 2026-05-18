@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
 import { Pagination } from "../components/Pagination";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
 import { useBrand } from "../contexts/BrandContext";
 
 const ITEMS_PER_PAGE = 15;
+
+type CarritoTipo = { id: number; nombre: string };
 
 type CalendarFicha = {
   id: number;
@@ -17,6 +20,7 @@ type CalendarFicha = {
   horaEntrega: string;
   horaRecojo: string;
   personalIds: number[];
+  carritoIds: number[];
 };
 
 type CalendarEntry = {
@@ -26,6 +30,7 @@ type CalendarEntry = {
   horaEntrega: string;
   horaRecojo: string;
   personalCount: number;
+  carritoCount: number;
 };
 
 function getDaysInMonth(year: number, month: number) {
@@ -155,6 +160,7 @@ export function ProductsPage() {
     deletePaquete,
     carritos,
     addCarrito,
+    updateCarrito,
     updateCarritoEstado,
     deleteCarrito,
     personales,
@@ -191,12 +197,29 @@ export function ProductsPage() {
   const [showAddCarrito, setShowAddCarrito] = useState(false);
   const [carritoFormSubmitting, setCarritoFormSubmitting] = useState(false);
   const [newCarrito, setNewCarrito] = useState({
-    modelo: "Blanco" as Carrito["modelo"],
+    modelo: "",
     codigo: "",
+    tipoId: 0,
     descripcion: "",
-    cantidadTotal: 1,
     estado: "disponible" as Carrito["estado"],
   });
+  const [showEditCarrito, setShowEditCarrito] = useState(false);
+  const [editingCarritoId, setEditingCarritoId] = useState<number | null>(null);
+  const [editCarritoForm, setEditCarritoForm] = useState({
+    modelo: "",
+    codigo: "",
+    tipoId: 0,
+    descripcion: "",
+    estado: "disponible" as Carrito["estado"],
+  });
+  const [editCarritoSubmitting, setEditCarritoSubmitting] = useState(false);
+
+  // Tipos de carrito
+  const [carritoTipos, setCarritoTipos] = useState<CarritoTipo[]>([]);
+  const [carritoTiposLoading, setCarritoTiposLoading] = useState(false);
+  const [showNuevoTipoInput, setShowNuevoTipoInput] = useState(false);
+  const [nuevoTipoNombre, setNuevoTipoNombre] = useState("");
+  const [nuevoTipoSubmitting, setNuevoTipoSubmitting] = useState(false);
 
   // Personal modal
   const emptyPersonalForm = {
@@ -219,6 +242,26 @@ export function ProductsPage() {
   const [personalCalendarYear, setPersonalCalendarYear] = useState(new Date().getFullYear());
   const [selectedPersonalCalendarId, setSelectedPersonalCalendarId] = useState(0);
   const [selectedPersonalCalendarDate, setSelectedPersonalCalendarDate] = useState<string | null>(null);
+  const [carritoCalendarMonth, setCarritoCalendarMonth] = useState(new Date().getMonth());
+  const [carritoCalendarYear, setCarritoCalendarYear] = useState(new Date().getFullYear());
+  const [selectedCarritoCalendarId, setSelectedCarritoCalendarId] = useState(0);
+  const [selectedCarritoCalendarDate, setSelectedCarritoCalendarDate] = useState<string | null>(null);
+  const [showCarritoCalendarDayModal, setShowCarritoCalendarDayModal] = useState(false);
+  const [selectedCarritoCalendarDayDate, setSelectedCarritoCalendarDayDate] = useState<string | null>(null);
+  const [carritoCalendarLoading, setCarritoCalendarLoading] = useState(false);
+  const [carritoCalendarError, setCarritoCalendarError] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteDialogSubmitting, setDeleteDialogSubmitting] = useState(false);
+  const [deleteDialogError, setDeleteDialogError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { kind: "product"; product: FlatProduct }
+    | { kind: "category"; categoryId: number; categoryName: string; productCount: number }
+    | { kind: "paquete"; paquete: Paquete }
+    | { kind: "carrito"; carrito: Carrito }
+    | { kind: "recurso"; recurso: Recurso }
+    | { kind: "personal"; personal: Personal }
+    | null
+  >(null);
   const [showPersonalCalendarDayModal, setShowPersonalCalendarDayModal] = useState(false);
   const [selectedPersonalCalendarDayDate, setSelectedPersonalCalendarDayDate] = useState<string | null>(null);
   const [personalCalendarLoading, setPersonalCalendarLoading] = useState(false);
@@ -314,8 +357,9 @@ export function ProductsPage() {
   };
 
   const handleDeletePersonal = async (p: Personal) => {
-    if (!window.confirm(`¿Eliminar a ${p.nombre_completo}? Esta acción no se puede deshacer.`)) return;
-    await deletePersonal(p.id);
+    setDeleteTarget({ kind: "personal", personal: p });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
   };
 
   const filteredPersonales = personales.filter((p) =>
@@ -366,6 +410,7 @@ export function ProductsPage() {
         horaEntrega: ficha.horaEntrega,
         horaRecojo: ficha.horaRecojo,
         personalCount: ficha.personalIds.length,
+        carritoCount: ficha.carritoIds.length,
       });
       return acc;
     }, {});
@@ -404,6 +449,110 @@ export function ProductsPage() {
     });
   };
 
+  // ── Carrito calendar computed values ────────────────────────────
+
+  const selectedCarritoCalendar = selectedCarritoCalendarId > 0
+    ? carritos.find((c) => c.id === selectedCarritoCalendarId) || null
+    : null;
+
+  const getDynamicCarritoEstadoCalendar = (carritoId: number): "disponible" | "ocupado" => {
+    const today = new Date().toISOString().split("T")[0];
+    const busyToday = fichasCalendario.some(
+      (f) => f.carritoIds.includes(carritoId) && normalizeDateString(f.fechaEvento || f.fecha) === today
+    );
+    return busyToday ? "ocupado" : "disponible";
+  };
+
+  const carritoCalendarEvents = useMemo(() => {
+    return fichasCalendario
+      .filter((f) =>
+        selectedCarritoCalendarId === 0
+          ? f.carritoIds.length > 0
+          : f.carritoIds.includes(selectedCarritoCalendarId)
+      )
+      .sort((a, b) => a.fechaEvento.localeCompare(b.fechaEvento));
+  }, [fichasCalendario, selectedCarritoCalendarId]);
+
+  const carritoCalendarByDate = useMemo(() => {
+    return carritoCalendarEvents.reduce<Record<string, CalendarEntry[]>>((acc, ficha) => {
+      const dateKey = ficha.fechaEvento;
+      if (!dateKey) return acc;
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push({
+        fichaId: ficha.id,
+        clienteNombre: ficha.clienteNombre,
+        distrito: ficha.distrito,
+        horaEntrega: ficha.horaEntrega,
+        horaRecojo: ficha.horaRecojo,
+        personalCount: ficha.personalIds.length,
+        carritoCount: ficha.carritoIds.length,
+      });
+      return acc;
+    }, {});
+  }, [carritoCalendarEvents]);
+
+  const selectedCarritoCalendarDateEvents = selectedCarritoCalendarDate
+    ? carritoCalendarByDate[selectedCarritoCalendarDate] || []
+    : [];
+
+  const carritoCalendarMonthLabel = new Date(carritoCalendarYear, carritoCalendarMonth, 1).toLocaleDateString("es-PE", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const carritoCalendarToday = new Date().toISOString().split("T")[0];
+
+  const goToPreviousCarritoCalendarMonth = () => {
+    setSelectedCarritoCalendarDate(null);
+    setCarritoCalendarMonth((month) => {
+      if (month === 0) {
+        setCarritoCalendarYear((year) => year - 1);
+        return 11;
+      }
+      return month - 1;
+    });
+  };
+
+  const goToNextCarritoCalendarMonth = () => {
+    setSelectedCarritoCalendarDate(null);
+    setCarritoCalendarMonth((month) => {
+      if (month === 11) {
+        setCarritoCalendarYear((year) => year + 1);
+        return 0;
+      }
+      return month + 1;
+    });
+  };
+
+  const loadCarritoCalendarData = async () => {
+    if (!brand) return;
+    setCarritoCalendarLoading(true);
+    setCarritoCalendarError("");
+    try {
+      const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
+      const details = await Promise.all(list.map((item) => apiRequest<any>(`/fichas/${item.id}`)));
+      const mapped: CalendarFicha[] = details.map((f) => {
+        const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);
+        return {
+          id: f.id,
+          fecha: fechaNormalizada,
+          fechaEvento: fechaNormalizada,
+          clienteNombre: f.cliente_nombre || "",
+          distrito: f.distrito || "",
+          horaEntrega: f.hora_entrega || "",
+          horaRecojo: f.hora_recojo || "",
+          personalIds: Array.isArray(f.personalIds) ? f.personalIds : [],
+          carritoIds: Array.isArray(f.carritoIds) ? f.carritoIds : [],
+        };
+      });
+      setFichasCalendario(mapped);
+    } catch (err) {
+      setCarritoCalendarError(err instanceof Error ? err.message : "No se pudo cargar el calendario de carritos");
+    } finally {
+      setCarritoCalendarLoading(false);
+    }
+  };
+
   const loadPersonalCalendarData = async () => {
     if (!brand) return;
 
@@ -417,7 +566,8 @@ export function ProductsPage() {
       const mapped: CalendarFicha[] = details.map((f) => {
         const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);
         const personalIds = Array.isArray(f.personalIds) ? f.personalIds : [];
-        
+        const carritoIds = Array.isArray(f.carritoIds) ? f.carritoIds : [];
+
         return {
           id: f.id,
           fecha: fechaNormalizada,
@@ -426,7 +576,8 @@ export function ProductsPage() {
           distrito: f.distrito || "",
           horaEntrega: f.hora_entrega || "",
           horaRecojo: f.hora_recojo || "",
-          personalIds: personalIds,
+          personalIds,
+          carritoIds,
         };
       });
 
@@ -442,6 +593,12 @@ export function ProductsPage() {
   useEffect(() => {
     if (activeTab !== "personal") return;
     void loadPersonalCalendarData();
+  }, [activeTab, brand]);
+
+  useEffect(() => {
+    if (activeTab !== "carritos") return;
+    void loadCarritoCalendarData();
+    void loadCarritoTipos();
   }, [activeTab, brand]);
 
   useEffect(() => {
@@ -658,10 +815,42 @@ export function ProductsPage() {
     setShowAddProduct(true);
   };
 
+  const loadCarritoTipos = async () => {
+    setCarritoTiposLoading(true);
+    try {
+      const data = await apiRequest<CarritoTipo[]>("/carritos/tipos");
+      setCarritoTipos(data);
+    } finally {
+      setCarritoTiposLoading(false);
+    }
+  };
+
+  const handleAddNuevoTipo = async (targetForm: "add" | "edit") => {
+    const nombre = nuevoTipoNombre.trim();
+    if (!nombre || nuevoTipoSubmitting) return;
+    setNuevoTipoSubmitting(true);
+    try {
+      const created = await apiRequest<CarritoTipo>("/carritos/tipos", {
+        method: "POST",
+        body: JSON.stringify({ nombre }),
+      });
+      setCarritoTipos((prev) => [...prev, created]);
+      if (targetForm === "add") {
+        setNewCarrito((prev) => ({ ...prev, tipoId: created.id }));
+      } else {
+        setEditCarritoForm((prev) => ({ ...prev, tipoId: created.id }));
+      }
+      setNuevoTipoNombre("");
+      setShowNuevoTipoInput(false);
+    } finally {
+      setNuevoTipoSubmitting(false);
+    }
+  };
+
   const handleAddCarrito = async () => {
     const codigo = newCarrito.codigo.trim();
-    const descripcion = newCarrito.descripcion.trim();
-    if (!codigo || !descripcion || newCarrito.cantidadTotal <= 0) return;
+    const modelo = newCarrito.modelo.trim();
+    if (!codigo || !modelo || newCarrito.tipoId === 0) return;
     if (formLocksRef.current.carrito || carritoFormSubmitting) return;
 
     formLocksRef.current.carrito = true;
@@ -669,24 +858,58 @@ export function ProductsPage() {
 
     try {
       await addCarrito({
-        modelo: newCarrito.modelo,
+        modelo,
         codigo,
-        descripcion,
-        cantidadTotal: newCarrito.cantidadTotal,
+        tipoId: newCarrito.tipoId,
+        tipoNombre: carritoTipos.find((t) => t.id === newCarrito.tipoId)?.nombre ?? "",
+        descripcion: newCarrito.descripcion.trim(),
         estado: newCarrito.estado,
       });
 
       setShowAddCarrito(false);
-      setNewCarrito({
-        modelo: "Blanco",
-        codigo: "",
-        descripcion: "",
-        cantidadTotal: 1,
-        estado: "disponible",
-      });
+      setNewCarrito({ modelo: "", codigo: "", tipoId: 0, descripcion: "", estado: "disponible" });
     } finally {
       formLocksRef.current.carrito = false;
       setCarritoFormSubmitting(false);
+    }
+  };
+
+  const handleOpenEditCarrito = async (carrito: Carrito) => {
+    setEditingCarritoId(carrito.id);
+    setEditCarritoForm({
+      modelo: carrito.modelo,
+      codigo: carrito.codigo,
+      tipoId: carrito.tipoId,
+      descripcion: carrito.descripcion,
+      estado: carrito.estado,
+    });
+    if (carritoTipos.length === 0) await loadCarritoTipos();
+    setShowNuevoTipoInput(false);
+    setNuevoTipoNombre("");
+    setShowEditCarrito(true);
+  };
+
+  const handleSaveEditCarrito = async () => {
+    if (editingCarritoId === null) return;
+    const codigo = editCarritoForm.codigo.trim();
+    const modelo = editCarritoForm.modelo.trim();
+    if (!codigo || !modelo || editCarritoForm.tipoId === 0) return;
+    if (editCarritoSubmitting) return;
+
+    setEditCarritoSubmitting(true);
+    try {
+      await updateCarrito(editingCarritoId, {
+        modelo,
+        codigo,
+        tipoId: editCarritoForm.tipoId,
+        tipoNombre: carritoTipos.find((t) => t.id === editCarritoForm.tipoId)?.nombre ?? "",
+        descripcion: editCarritoForm.descripcion.trim(),
+        estado: editCarritoForm.estado,
+      });
+      setShowEditCarrito(false);
+      setEditingCarritoId(null);
+    } finally {
+      setEditCarritoSubmitting(false);
     }
   };
 
@@ -694,19 +917,15 @@ export function ProductsPage() {
     contenido.reduce((s, i) => s + i.cantidad, 0);
 
   const handleDeleteProduct = async (product: FlatProduct) => {
-    const confirmed = window.confirm(`¿Eliminar el producto ${product.producto}? Esta acción no se puede deshacer.`);
-    if (!confirmed) return;
-
-    await deleteProduct(product.id);
+    setDeleteTarget({ kind: "product", product });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
   };
 
   const handleDeleteCategory = async (categoryId: number, categoryName: string, productCount: number) => {
-    const confirmed = window.confirm(
-      `¿Eliminar la categoría ${categoryName}?${productCount > 0 ? ` También se eliminarán sus ${productCount} productos.` : ""}`
-    );
-    if (!confirmed) return;
-
-    await deleteCategory(categoryId);
+    setDeleteTarget({ kind: "category", categoryId, categoryName, productCount });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
   };
 
   const handleRecursoStockAdjustment = (recurso: Recurso) => {
@@ -834,14 +1053,112 @@ export function ProductsPage() {
   };
 
   const handleDeleteRecurso = async (r: Recurso) => {
-    if (!window.confirm(`¿Eliminar el recurso "${r.recurso}"? Esta acción no se puede deshacer.`)) return;
-    await deleteRecurso(r.id);
+    setDeleteTarget({ kind: "recurso", recurso: r });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeletePaquete = async (paquete: Paquete) => {
+    setDeleteTarget({ kind: "paquete", paquete });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteCarrito = async (carrito: Carrito) => {
+    setDeleteTarget({ kind: "carrito", carrito });
+    setDeleteDialogError("");
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteTarget = async () => {
+    if (!deleteTarget) return;
+
+    setDeleteDialogSubmitting(true);
+    setDeleteDialogError("");
+
+    try {
+      switch (deleteTarget.kind) {
+        case "product":
+          await deleteProduct(deleteTarget.product.id);
+          break;
+        case "category":
+          await deleteCategory(deleteTarget.categoryId);
+          break;
+        case "paquete":
+          await deletePaquete(deleteTarget.paquete.id);
+          break;
+        case "carrito":
+          await deleteCarrito(deleteTarget.carrito.id);
+          break;
+        case "recurso":
+          await deleteRecurso(deleteTarget.recurso.id);
+          break;
+        case "personal":
+          await deletePersonal(deleteTarget.personal.id);
+          break;
+      }
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteDialogError(error instanceof Error ? error.message : "No se pudo eliminar el elemento.");
+    } finally {
+      setDeleteDialogSubmitting(false);
+    }
   };
 
 
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteDialogSubmitting(false);
+          }
+        }}
+        title={
+          deleteTarget?.kind === "category"
+            ? `Eliminar categoría ${deleteTarget.categoryName}`
+            : deleteTarget?.kind === "product"
+              ? `Eliminar producto ${deleteTarget.product.producto}`
+              : deleteTarget?.kind === "paquete"
+                ? `Eliminar paquete ${deleteTarget.paquete.nombre}`
+                : deleteTarget?.kind === "carrito"
+                  ? `Eliminar carrito ${deleteTarget.carrito.codigo}`
+                  : deleteTarget?.kind === "recurso"
+                    ? `Eliminar recurso ${deleteTarget.recurso.recurso}`
+                    : deleteTarget?.kind === "personal"
+                      ? `Eliminar a ${deleteTarget.personal.nombre_completo}`
+                      : "Eliminar elemento"
+        }
+        description={
+          deleteTarget?.kind === "category"
+            ? `¿Seguro que quieres eliminar esta categoría?${deleteTarget.productCount > 0 ? ` También se eliminarán sus ${deleteTarget.productCount} productos.` : ""} Esta acción no se puede deshacer.`
+            : deleteTarget?.kind === "product"
+              ? "¿Seguro que quieres eliminar este producto? Esta acción no se puede deshacer."
+              : deleteTarget?.kind === "paquete"
+                ? "¿Seguro que quieres eliminar este paquete? Esta acción no se puede deshacer."
+                : deleteTarget?.kind === "carrito"
+                  ? "¿Seguro que quieres eliminar este carrito? Esta acción no se puede deshacer."
+                  : deleteTarget?.kind === "recurso"
+                    ? "¿Seguro que quieres eliminar este recurso? Esta acción no se puede deshacer."
+                    : deleteTarget?.kind === "personal"
+                      ? "¿Seguro que quieres eliminar a esta persona? Esta acción no se puede deshacer."
+                      : "¿Seguro que quieres eliminar este elemento? Esta acción no se puede deshacer."
+        }
+        confirmLabel="Eliminar"
+        loadingLabel="Eliminando..."
+        loading={deleteDialogSubmitting}
+        onConfirm={confirmDeleteTarget}
+      />
+      {deleteDialogError ? (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
+          {deleteDialogError}
+        </div>
+      ) : null}
       <div className="mb-6 md:mb-8">
         <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Catálogo de Productos</h1>
         <p className="text-gray-600 dark:text-gray-400">
@@ -1154,7 +1471,7 @@ export function ProductsPage() {
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => deletePaquete(paq.id)}
+                      onClick={() => handleDeletePaquete(paq)}
                       className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1212,91 +1529,354 @@ export function ProductsPage() {
       {activeTab === "carritos" && (
         <>
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex-1 w-full lg:max-w-md relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar carrito por modelo o código..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
-                />
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg text-gray-900 dark:text-white">Carritos</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Gestión y disponibilidad de carritos por fecha.</p>
               </div>
               <button
-                onClick={() => setShowAddCarrito(true)}
-                className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                onClick={() => { setShowAddCarrito(true); setShowNuevoTipoInput(false); setNuevoTipoNombre(""); if (carritoTipos.length === 0) void loadCarritoTipos(); }}
+                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
                 Nuevo Carrito
               </button>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredCarritos.map((carrito) => {
-                const getEstadoConfig = (estado: Carrito["estado"]) => {
-                  switch (estado) {
-                    case "disponible":
-                      return { bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", label: "Disponible" };
-                    case "en-uso":
-                      return { bg: "bg-blue-100 dark:bg-blue-900/30", text: "text-blue-700 dark:text-blue-400", label: "En Uso" };
-                    case "mantenimiento":
-                      return { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Mantenimiento" };
-                  }
-                };
-                const estadoConfig = getEstadoConfig(carrito.estado);
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por modelo o código..."
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+              />
+            </div>
 
-                return (
-                  <div key={carrito.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                          <ShoppingCart className="w-5 h-5 text-[#EF8022]" />
-                          {carrito.modelo}
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">{carrito.codigo}</p>
-                      </div>
-                      <button
-                        onClick={() => deleteCarrito(carrito.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+            {/* 2-column layout: carrito list + calendar */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+              {/* Columna izquierda: lista de carritos */}
+              <div className="lg:col-span-1">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sticky top-20">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                    Carritos ({filteredCarritos.length})
+                  </h3>
+                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                    {filteredCarritos.length === 0 ? (
+                      <p className="text-xs text-gray-400">Sin carritos registrados</p>
+                    ) : (
+                      filteredCarritos.map((c) => {
+                        const isSelected = selectedCarritoCalendarId === c.id;
+                        const estadoHoy = getDynamicCarritoEstadoCalendar(c.id);
+                        const estadoSelectColors: Record<Carrito["estado"], string> = {
+                          disponible: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+                          "en-uso": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+                          mantenimiento: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+                        };
+                        return (
+                          <div
+                            key={c.id}
+                            className={`rounded-lg border transition-all ${
+                              isSelected
+                                ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10"
+                                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
+                            }`}
+                          >
+                            {/* Header clickeable para seleccionar en calendario */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCarritoCalendarId(isSelected ? 0 : c.id);
+                                setSelectedCarritoCalendarDate(null);
+                              }}
+                              className="w-full text-left px-3 pt-2.5 pb-1"
+                            >
+                              <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                                {c.codigo} — {c.modelo}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{c.tipoNombre}</p>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                                  estadoHoy === "disponible"
+                                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                    : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                }`}>
+                                  {estadoHoy === "disponible" ? "Libre hoy" : "Ocupado hoy"}
+                                </span>
+                              </div>
+                            </button>
 
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{carrito.descripcion}</p>
-
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cantidad Total</span>
-                        <span className="text-2xl text-gray-900 dark:text-white font-semibold">{carrito.cantidadTotal}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">Estado</span>
-                      <select
-                        value={carrito.estado}
-                        onChange={(e) => updateCarritoEstado(carrito.id, e.target.value as Carrito["estado"])}
-                        className={`px-3 py-1.5 rounded-full text-xs ${estadoConfig.bg} ${estadoConfig.text} border-none focus:outline-none focus:ring-2 focus:ring-[#EF8022]`}
-                      >
-                        <option value="disponible">Disponible</option>
-                        <option value="en-uso">En Uso</option>
-                        <option value="mantenimiento">Mantenimiento</option>
-                      </select>
-                    </div>
+                            {/* Controles */}
+                            <div className="flex items-center justify-between gap-1 px-3 pb-2.5 pt-1 border-t border-gray-100 dark:border-gray-700 mt-1">
+                              <select
+                                value={c.estado}
+                                onChange={(e) => updateCarritoEstado(c.id, e.target.value as Carrito["estado"])}
+                                onClick={(e) => e.stopPropagation()}
+                                className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-[#EF8022] ${estadoSelectColors[c.estado]}`}
+                              >
+                                <option value="disponible">Disponible</option>
+                                <option value="en-uso">En Uso</option>
+                                <option value="mantenimiento">Mantenimiento</option>
+                              </select>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditCarrito(c)}
+                                  className="p-1 rounded text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                  title="Editar carrito"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCarrito(c)}
+                                  className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                  title="Eliminar carrito"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-                );
-              })}
+                </div>
+              </div>
+
+              {/* Columna derecha: calendario */}
+              <div className="lg:col-span-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 p-4 sm:p-5">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <h3 className="text-base text-gray-900 dark:text-white">Calendario de Disponibilidad</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {selectedCarritoCalendarId > 0
+                          ? `Eventos de ${selectedCarritoCalendar?.codigo} — ${selectedCarritoCalendar?.modelo}`
+                          : "Vista de ocupación global"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadCarritoCalendarData()}
+                      className="px-3 py-1.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-xs whitespace-nowrap"
+                    >
+                      Recargar
+                    </button>
+                  </div>
+                  {carritoCalendarError && (
+                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                      {carritoCalendarError}
+                    </div>
+                  )}
+                  {carritoCalendarLoading && (
+                    <p className="text-xs text-gray-400 mb-2">Cargando...</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={goToPreviousCarritoCalendarMonth}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Mes anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="text-sm text-gray-900 dark:text-white capitalize font-medium">
+                    {carritoCalendarMonthLabel}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goToNextCarritoCalendarMonth}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Mes siguiente"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-[10px] text-center text-gray-500 dark:text-gray-400 mb-2">
+                  {DAY_HEADERS.map((day) => (
+                    <div key={day} className="py-1 font-medium uppercase tracking-wide">{day}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 mb-4">
+                  {Array.from({ length: getFirstDayOfMonth(carritoCalendarYear, carritoCalendarMonth) }).map((_, i) => (
+                    <div key={`empty-${i}`} className="aspect-square rounded-lg border border-transparent" />
+                  ))}
+                  {Array.from({ length: getDaysInMonth(carritoCalendarYear, carritoCalendarMonth) }, (_, index) => {
+                    const day = index + 1;
+                    const dateStr = formatCalendarDate(new Date(carritoCalendarYear, carritoCalendarMonth, day));
+                    const entries = carritoCalendarByDate[dateStr] || [];
+                    const isToday = dateStr === carritoCalendarToday;
+                    const isSelected = dateStr === selectedCarritoCalendarDate;
+
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => {
+                          if (entries.length > 0) {
+                            setSelectedCarritoCalendarDayDate(dateStr);
+                            setShowCarritoCalendarDayModal(true);
+                          }
+                        }}
+                        className={`aspect-square rounded-lg border p-1.5 text-left transition-all flex flex-col gap-1 overflow-hidden ${
+                          isSelected
+                            ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
+                            : isToday
+                              ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
+                              : entries.length > 0
+                                ? "border-[#EF8022]/40 bg-white dark:bg-gray-800 hover:border-[#EF8022] hover:shadow-md"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
+                        }`}
+                      >
+                        <span className={`text-xs font-bold ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                          {day}
+                        </span>
+                        {entries.length > 0 && (
+                          <div className="space-y-0.5 flex-1 overflow-y-auto">
+                            {entries.slice(0, 2).map((entry, idx) => (
+                              <div key={idx} className="bg-[#EF8022]/90 rounded px-1.5 py-0.5 text-white">
+                                <p className="text-[10px] font-semibold truncate leading-tight">{entry.clienteNombre}</p>
+                                {entry.horaEntrega && (
+                                  <p className="text-[8px] opacity-90">{entry.horaEntrega}</p>
+                                )}
+                              </div>
+                            ))}
+                            {entries.length > 2 && (
+                              <div className="text-[9px] text-[#EF8022] font-medium px-1">
+                                +{entries.length - 2} más
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedCarritoCalendarDate && (
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 mt-3">
+                    <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
+                      Eventos del {new Date(`${selectedCarritoCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" })}
+                    </h4>
+                    {selectedCarritoCalendarDateEvents.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {selectedCarritoCalendarDateEvents.map((entry) => (
+                          <div key={entry.fichaId} className="rounded border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50">
+                            <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{entry.clienteNombre}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400">Hora: {entry.horaEntrega || entry.horaRecojo || "—"} · {entry.carritoCount} carrito(s)</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Sin eventos registrados</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
 
-          {filteredCarritos.length === 0 && (
-            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-              <ShoppingCart className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">
-                {carritos.length === 0 ? "No hay carritos registrados" : "No se encontraron carritos"}
-              </p>
+          {/* Modal de Detalles del Día — Carritos */}
+          {showCarritoCalendarDayModal && selectedCarritoCalendarDayDate && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+                <button
+                  onClick={() => setShowCarritoCalendarDayModal(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="mb-6">
+                  <h3 className="text-2xl text-gray-900 dark:text-white mb-2">
+                    {new Date(`${selectedCarritoCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {carritoCalendarByDate[selectedCarritoCalendarDayDate]?.length || 0} evento(s) registrado(s)
+                  </p>
+                </div>
+
+                {carritoCalendarByDate[selectedCarritoCalendarDayDate]?.length > 0 ? (
+                  <div className="space-y-4">
+                    {carritoCalendarByDate[selectedCarritoCalendarDayDate].map((entry) => {
+                      const ficha = fichasCalendario.find((f) => f.id === entry.fichaId);
+                      const carritosAsignados = ficha?.carritoIds
+                        ? carritos.filter((c) => ficha.carritoIds.includes(c.id))
+                        : [];
+
+                      return (
+                        <div key={entry.fichaId} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 p-4">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex-1">
+                              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{entry.clienteNombre}</h4>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {entry.distrito && `📍 ${entry.distrito}`}
+                              </p>
+                            </div>
+                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] text-sm font-medium">
+                              {entry.carritoCount} carrito(s)
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                            <div className="grid grid-cols-2 gap-3">
+                              {entry.horaEntrega && (
+                                <div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Hora Entrega</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{entry.horaEntrega}</p>
+                                </div>
+                              )}
+                              {entry.horaRecojo && (
+                                <div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Hora Recojo</p>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{entry.horaRecojo}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {carritosAsignados.length > 0 && (
+                              <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Carritos Asignados</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {carritosAsignados.map((c) => (
+                                    <span key={c.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20 text-xs font-medium">
+                                      🛒 {c.codigo} — {c.modelo}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    Sin eventos registrados para esta fecha
+                  </p>
+                )}
+
+                <button
+                  onClick={() => setShowCarritoCalendarDayModal(false)}
+                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] transition-colors font-medium"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -2201,16 +2781,14 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Modelo *</label>
-                  <select
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre de la unidad *</label>
+                  <input
+                    type="text"
                     value={newCarrito.modelo}
-                    onChange={(e) => setNewCarrito({ ...newCarrito, modelo: e.target.value as Carrito["modelo"] })}
+                    onChange={(e) => setNewCarrito({ ...newCarrito, modelo: e.target.value })}
+                    placeholder="Ej: Carrito Helado #1"
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  >
-                    <option value="Blanco">Blanco</option>
-                    <option value="Clásico">Clásico</option>
-                    <option value="Delgado">Delgado</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
@@ -2218,14 +2796,46 @@ export function ProductsPage() {
                     type="text"
                     value={newCarrito.codigo}
                     onChange={(e) => setNewCarrito({ ...newCarrito, codigo: e.target.value })}
-                    placeholder="Ej: CRT-001"
+                    placeholder="Ej: CH-001"
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
+                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Nuevo tipo
+                  </button>
+                </div>
+                {showNuevoTipoInput && (
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={nuevoTipoNombre}
+                      onChange={(e) => setNuevoTipoNombre(e.target.value)}
+                      placeholder="Ej: Carrito Algodón"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAddNuevoTipo("add"); }}}
+                    />
+                    <button type="button" onClick={() => void handleAddNuevoTipo("add")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] disabled:opacity-50">
+                      {nuevoTipoSubmitting ? "..." : "Guardar"}
+                    </button>
+                  </div>
+                )}
+                <select
+                  value={newCarrito.tipoId}
+                  onChange={(e) => setNewCarrito({ ...newCarrito, tipoId: Number(e.target.value) })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                >
+                  <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
+                  {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
                 <textarea
                   value={newCarrito.descripcion}
                   onChange={(e) => setNewCarrito({ ...newCarrito, descripcion: e.target.value })}
@@ -2235,29 +2845,17 @@ export function ProductsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad Total *</label>
-                  <input
-                    type="number"
-                    value={newCarrito.cantidadTotal}
-                    onChange={(e) => setNewCarrito({ ...newCarrito, cantidadTotal: Number(e.target.value) })}
-                    min={1}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado inicial</label>
-                  <select
-                    value={newCarrito.estado}
-                    onChange={(e) => setNewCarrito({ ...newCarrito, estado: e.target.value as Carrito["estado"] })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-                  >
-                    <option value="disponible">Disponible</option>
-                    <option value="en-uso">En Uso</option>
-                    <option value="mantenimiento">Mantenimiento</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado inicial</label>
+                <select
+                  value={newCarrito.estado}
+                  onChange={(e) => setNewCarrito({ ...newCarrito, estado: e.target.value as Carrito["estado"] })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                >
+                  <option value="disponible">Disponible</option>
+                  <option value="en-uso">En Uso</option>
+                  <option value="mantenimiento">Mantenimiento</option>
+                </select>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -2266,6 +2864,107 @@ export function ProductsPage() {
                 </button>
                 <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   {carritoFormSubmitting ? "Guardando..." : "Guardar Carrito"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Carrito Modal ───────────────────────────────── */}
+      {showEditCarrito && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
+            <button onClick={() => setShowEditCarrito(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Editar Carrito</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre de la unidad *</label>
+                  <input
+                    type="text"
+                    value={editCarritoForm.modelo}
+                    onChange={(e) => setEditCarritoForm({ ...editCarritoForm, modelo: e.target.value })}
+                    placeholder="Ej: Carrito Helado #1"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+                  <input
+                    type="text"
+                    value={editCarritoForm.codigo}
+                    onChange={(e) => setEditCarritoForm({ ...editCarritoForm, codigo: e.target.value })}
+                    placeholder="Ej: CH-001"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
+                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Nuevo tipo
+                  </button>
+                </div>
+                {showNuevoTipoInput && (
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={nuevoTipoNombre}
+                      onChange={(e) => setNuevoTipoNombre(e.target.value)}
+                      placeholder="Ej: Carrito Algodón"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAddNuevoTipo("edit"); }}}
+                    />
+                    <button type="button" onClick={() => void handleAddNuevoTipo("edit")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] disabled:opacity-50">
+                      {nuevoTipoSubmitting ? "..." : "Guardar"}
+                    </button>
+                  </div>
+                )}
+                <select
+                  value={editCarritoForm.tipoId}
+                  onChange={(e) => setEditCarritoForm({ ...editCarritoForm, tipoId: Number(e.target.value) })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                >
+                  <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
+                  {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
+                <textarea
+                  value={editCarritoForm.descripcion}
+                  onChange={(e) => setEditCarritoForm({ ...editCarritoForm, descripcion: e.target.value })}
+                  placeholder="Ej: Carrito para eventos corporativos"
+                  rows={2}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                <select
+                  value={editCarritoForm.estado}
+                  onChange={(e) => setEditCarritoForm({ ...editCarritoForm, estado: e.target.value as Carrito["estado"] })}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                >
+                  <option value="disponible">Disponible</option>
+                  <option value="en-uso">En Uso</option>
+                  <option value="mantenimiento">Mantenimiento</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowEditCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleSaveEditCarrito} disabled={editCarritoSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {editCarritoSubmitting ? "Guardando..." : "Guardar Cambios"}
                 </button>
               </div>
             </div>

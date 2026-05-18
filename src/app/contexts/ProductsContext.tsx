@@ -69,29 +69,43 @@ export interface PaqueteInput {
 
 export interface Carrito {
   id: number;
-  modelo: "Blanco" | "Clásico" | "Delgado";
+  modelo: string;
   codigo: string;
+  tipoId: number;
+  tipoNombre: string;
   descripcion: string;
-  cantidadTotal: number;
   precioAlquiler?: number;
+  imagenUrl?: string;
   estado: "disponible" | "en-uso" | "mantenimiento";
 }
 
 export interface Inflable {
   id: number;
-  nombre: string;
-  descripcion: string;
-  cantidadTotal: number;
-  precioAlquiler: number;
+  tipoId: number;
+  tipoNombre: string;
+  codigo: string;
+  estado: "disponible" | "en-uso" | "mantenimiento";
   dimensiones: string;
   edadMinima: string;
+  precioAlquiler: number;
+  imagenUrl: string;
+}
+
+export interface InflableTipo {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  dimensiones: string;
+  edadMinima: string;
+  precioAlquiler: number;
   imagenUrl: string;
   imagenes: Array<{ id: number | null; url: string }>;
+  cantidadUnidades: number;
 }
 
 export interface InflableImage {
   id: number;
-  inflableId: number;
+  tipoId: number;
   imageUrl: string;
 }
 
@@ -179,15 +193,19 @@ interface ProductsContextType {
 
   carritos: Carrito[];
   addCarrito: (carrito: Omit<Carrito, "id">) => Promise<void>;
+  updateCarrito: (id: number, carrito: Omit<Carrito, "id">) => Promise<void>;
   updateCarritoEstado: (id: number, estado: Carrito["estado"]) => Promise<void>;
   deleteCarrito: (id: number) => Promise<void>;
 
   inflables: Inflable[];
   addInflable: (inflable: Omit<Inflable, "id">) => Promise<void>;
-  getInflableImages: (inflableId: number) => Promise<InflableImage[]>;
-  addInflableImage: (inflableId: number, imageUrl: string) => Promise<void>;
-  deleteInflableImage: (inflableId: number, imageId: number) => Promise<void>;
   deleteInflable: (id: number) => Promise<void>;
+  addInflableTipo: (tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => Promise<void>;
+  updateInflableTipo: (id: number, tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => Promise<void>;
+  deleteInflableTipo: (id: number) => Promise<void>;
+  getInflableImages: (tipoId: number) => Promise<InflableImage[]>;
+  addInflableImage: (tipoId: number, imageUrl: string) => Promise<void>;
+  deleteInflableImage: (tipoId: number, imageId: number) => Promise<void>;
 
   personales: Personal[];
   addPersonal: (personal: Omit<Personal, "id" | "nombre" | "celular">) => Promise<void>;
@@ -402,8 +420,23 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         modelo: carrito.modelo,
         codigo: carrito.codigo,
+        tipo_id: carrito.tipoId,
         descripcion: carrito.descripcion,
-        cantidad_total: carrito.cantidadTotal,
+        precio_alquiler: Number(carrito.precioAlquiler || 0),
+        estado: carrito.estado,
+      }),
+    });
+    await reloadData();
+  };
+
+  const updateCarrito = async (id: number, carrito: Omit<Carrito, "id">) => {
+    await apiRequest(`/carritos/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        modelo: carrito.modelo,
+        codigo: carrito.codigo,
+        tipo_id: carrito.tipoId,
+        descripcion: carrito.descripcion,
         precio_alquiler: Number(carrito.precioAlquiler || 0),
         estado: carrito.estado,
       }),
@@ -428,48 +461,78 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await apiRequest("/inflables", {
       method: "POST",
       body: JSON.stringify({
-        nombre: inflable.nombre,
-        descripcion: inflable.descripcion,
-        cantidad_total: inflable.cantidadTotal,
-        precio_alquiler: inflable.precioAlquiler,
-        dimensiones: inflable.dimensiones,
-        edad_minima: inflable.edadMinima,
-        imagen_url: inflable.imagenUrl,
-        imagenes: inflable.imagenes.map((image) => image.url),
+        tipo_id: inflable.tipoId,
+        codigo: inflable.codigo,
+        estado: inflable.estado,
       }),
     });
     await reloadData();
   };
 
-  const getInflableImages = async (inflableId: number): Promise<InflableImage[]> => {
+  const deleteInflable = async (id: number) => {
+    await apiRequest(`/inflables/${id}`, { method: "DELETE" });
+    await reloadData();
+  };
+
+  const addInflableTipo = async (tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => {
+    await apiRequest("/inflables/tipos", {
+      method: "POST",
+      body: JSON.stringify({
+        nombre: tipo.nombre,
+        descripcion: tipo.descripcion,
+        precio_alquiler: tipo.precioAlquiler,
+        dimensiones: tipo.dimensiones,
+        edad_minima: tipo.edadMinima,
+        imagen_url: tipo.imagenUrl,
+        imagenes: tipo.imagenes.map((img) => img.url),
+      }),
+    });
+    await reloadData();
+  };
+
+  const updateInflableTipo = async (id: number, tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => {
+    await apiRequest(`/inflables/tipos/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        nombre: tipo.nombre,
+        descripcion: tipo.descripcion,
+        precio_alquiler: tipo.precioAlquiler,
+        dimensiones: tipo.dimensiones,
+        edad_minima: tipo.edadMinima,
+        imagen_url: tipo.imagenUrl,
+      }),
+    });
+    await reloadData();
+  };
+
+  const deleteInflableTipo = async (id: number) => {
+    await apiRequest(`/inflables/tipos/${id}`, { method: "DELETE" });
+    await reloadData();
+  };
+
+  const getInflableImages = async (tipoId: number): Promise<InflableImage[]> => {
     const images = await apiRequest<Array<{
       id: number;
-      inflable_id: number;
+      tipo_id: number;
       image_url: string;
-    }>>(`/inflables/${inflableId}/images`);
-
+    }>>(`/inflables/tipos/${tipoId}/images`);
     return images.map((image) => ({
       id: image.id,
-      inflableId: image.inflable_id,
+      tipoId: image.tipo_id,
       imageUrl: image.image_url,
     }));
   };
 
-  const addInflableImage = async (inflableId: number, imageUrl: string) => {
-    await apiRequest(`/inflables/${inflableId}/images`, {
+  const addInflableImage = async (tipoId: number, imageUrl: string) => {
+    await apiRequest(`/inflables/tipos/${tipoId}/images`, {
       method: "POST",
       body: JSON.stringify({ image_url: imageUrl }),
     });
     await reloadData();
   };
 
-  const deleteInflableImage = async (inflableId: number, imageId: number) => {
-    await apiRequest(`/inflables/${inflableId}/images/${imageId}`, { method: "DELETE" });
-    await reloadData();
-  };
-
-  const deleteInflable = async (id: number) => {
-    await apiRequest(`/inflables/${id}`, { method: "DELETE" });
+  const deleteInflableImage = async (tipoId: number, imageId: number) => {
+    await apiRequest(`/inflables/tipos/${tipoId}/images/${imageId}`, { method: "DELETE" });
     await reloadData();
   };
 
@@ -553,14 +616,18 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         deletePaquete,
         carritos,
         addCarrito,
+        updateCarrito,
         updateCarritoEstado,
         deleteCarrito,
         inflables,
         addInflable,
+        deleteInflable,
+        addInflableTipo,
+        updateInflableTipo,
+        deleteInflableTipo,
         getInflableImages,
         addInflableImage,
         deleteInflableImage,
-        deleteInflable,
         personales,
         addPersonal,
         updatePersonal,
