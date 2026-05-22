@@ -901,6 +901,14 @@ export function FichasPage() {
     return d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
   };
 
+  const formatearContenidoPaquete = (contenido: { productoNombre: string; cantidad: number }[]) => {
+    if (contenido.length === 0) return "";
+    const parts = contenido.map(item => `${item.cantidad} ${item.productoNombre}`);
+    if (parts.length === 1) return parts[0];
+    const last = parts.pop()!;
+    return `${parts.join(", ")} y ${last}`;
+  };
+
   const handleGenerarProforma = (ficha: Ficha) => {
     const total = getTotal(ficha);
     const abonado = getTotalAbonado(ficha);
@@ -942,9 +950,12 @@ export function FichasPage() {
       const paqueteCatalogo = contextPaquetes.find(cp => cp.id === p.paqueteId);
       const precioUnitario = paqueteCatalogo?.precioUnitario ?? 0;
       const subtotal = precioUnitario * p.cantidad;
+      const contenidoStr = formatearContenidoPaquete(paqueteCatalogo?.contenido ?? []);
       return {
         item: index + 1,
         descripcion: p.paqueteNombre,
+        contenidoStr,
+        paqueteNombre: p.paqueteNombre,
         cantidad: p.cantidad,
         precioUnitario,
         subtotal,
@@ -1030,7 +1041,8 @@ export function FichasPage() {
       const filasJugueton = [
         ...lineasPaquetes.map((l, idx) => ({
           producto: `Paquete ${idx + 1}`,
-          descripcion: l.descripcion,
+          descripcion: escapeHtml(l.paqueteNombre),
+          contenidoStr: l.contenidoStr,
           cantidad: l.cantidad,
           precio: l.subtotal,
         })),
@@ -1078,14 +1090,24 @@ export function FichasPage() {
       });
 
       const filasTablaJugueton = filasJugueton
-        .map((row) => `
-          <tr>
-            <td>${escapeHtml(row.producto)}</td>
-            <td>${row.descripcion}</td>
-            <td class="text-center">${row.cantidad}</td>
-            <td class="text-right">${row.precio > 0 ? formatMoney(row.precio) : "-"}</td>
-          </tr>
-        `)
+        .map((row) => {
+          const mainRow = `
+            <tr>
+              <td>${escapeHtml(row.producto)}</td>
+              <td>${row.descripcion}</td>
+              <td class="text-center">${row.cantidad}</td>
+              <td class="text-right">${row.precio > 0 ? formatMoney(row.precio) : "-"}</td>
+            </tr>
+          `;
+          const cs = (row as { contenidoStr?: string }).contenidoStr;
+          const subRow = cs ? `
+            <tr>
+              <td style="border-top:none; background:#fff;"></td>
+              <td colspan="3" style="border-top:none; background:#fff; color:#6b7280; font-size:0.85em; font-style:italic; padding-top:2px; padding-bottom:6px;">${escapeHtml(cs)}</td>
+            </tr>
+          ` : "";
+          return mainRow + subRow;
+        })
         .join("");
 
       const htmlJugueton = `
@@ -1387,7 +1409,8 @@ export function FichasPage() {
       const filasDonofrio = [
       ...lineasPaquetes.map((l) => ({
         cantidad: l.cantidad,
-        descripcion: l.descripcion,
+        descripcion: l.paqueteNombre,
+        contenidoStr: l.contenidoStr,
         pu: l.precioUnitario,
         total: l.subtotal,
         destacado: true,
@@ -1443,16 +1466,24 @@ export function FichasPage() {
     ];
 
     const filasTablaDonofrio = filasDonofrio
-      .map(
-        (row) => `
+      .map((row) => {
+        const mainRow = `
           <tr class="${row.destacado ? "row-highlight" : ""}">
             <td class="cell-right">${row.cantidad}</td>
             <td>${escapeHtml(row.descripcion)}</td>
             <td class="cell-right">${row.pu > 0 ? formatMoney(row.pu) : ""}</td>
             <td class="cell-right">${row.total > 0 ? formatMoney(row.total) : ""}</td>
           </tr>
-        `
-      )
+        `;
+        const cs = (row as { contenidoStr?: string }).contenidoStr;
+        const subRow = cs ? `
+          <tr>
+            <td style="border-top:none; background:#fff;"></td>
+            <td colspan="3" style="border-top:none; background:#fff; color:#6b7280; font-size:0.85em; font-style:italic; padding-top:2px; padding-bottom:5px;">${escapeHtml(cs)}</td>
+          </tr>
+        ` : "";
+        return mainRow + subRow;
+      })
       .join("");
 
     const html = `
@@ -2191,7 +2222,7 @@ export function FichasPage() {
       </div>
 
       {/* Financial + Operational Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-4 mb-6 md:mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4 mb-6 md:mb-8">
         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-500 dark:text-gray-400">Eventos</span></div>
           <p className="text-2xl text-gray-900 dark:text-white">{loading ? "..." : fichas.length}</p>
@@ -2199,6 +2230,10 @@ export function FichasPage() {
         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-500 dark:text-gray-400">Venta Total</span></div>
           <p className="text-2xl text-gray-900 dark:text-white">{formatMoney(stats.ventaTotal)}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-purple-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Total Final</span></div>
+          <p className="text-2xl text-purple-600 dark:text-purple-400">{formatMoney(stats.ventaTotal - stats.descuentos)}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 mb-2"><Receipt className="w-4 h-4 text-green-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Cobrado</span></div>

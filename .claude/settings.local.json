@@ -7,7 +7,14 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\" -Force)",
       "Bash(Select-Object Name, LastWriteTime)",
       "Bash(Format-Table -AutoSize)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\" -Recurse -Depth 2 | Select-Object FullName, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) { \"DIR\" } else { \"FILE\" }}} | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\", \"\"\\) + \" \\(\" + $_.Type + \"\\)\" })"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\" -Recurse -Depth 2 | Select-Object FullName, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) { \"DIR\" } else { \"FILE\" }}} | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\JOSE\\\\Documents\\\\GitHub\\\\DISE-O-PLATAFORMA-EVENTOS-AP\\\\src\", \"\"\\) + \" \\(\" + $_.Type + \"\\)\" })",
+      "Bash(node -e \"const pkg = require\\('./node_modules/react-day-picker/package.json'\\); console.log\\(pkg.version\\)\")",
+      "WebFetch(domain:www.mapcn.dev)",
+      "Bash(npx shadcn@latest add @mapcn/map)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm view *)",
+      "Bash(echo '{\"$schema\":\"https://ui.shadcn.com/schema.json\",\"style\":\"default\",\"rsc\":false,\"tsx\":true,\"tailwind\":{\"config\":\"\",\"css\":\"src/index.css\",\"baseColor\":\"neutral\",\"cssVariables\":true},\"aliases\":{\"components\":\"@/app/components\",\"utils\":\"@/app/lib/utils\",\"ui\":\"@/app/components/ui\",\"lib\":\"@/app/lib\",\"hooks\":\"@/app/hooks\"}}')",
+      "Bash(npx shadcn@latest add @mapcn/map --yes)"
     ]
   }
 }
