@@ -12,13 +12,15 @@ import type {
 type ApiCategory = {
   id: number;
   nombre: string;
-  productos?: Array<{
-    id: number;
-    producto: string;
-    sku: string;
-    precio?: number | null;
-    brand?: "donofrio" | "jugueton" | null;
-  }>;
+};
+
+type ApiProductFlat = {
+  id: number;
+  categoria_id: number;
+  producto: string;
+  sku: string;
+  precio?: number | null;
+  brand?: "donofrio" | "jugueton" | null;
 };
 
 type ApiRecurso = {
@@ -84,17 +86,25 @@ type ApiPersonal = {
   estado: "disponible" | "ocupado" | "descanso" | "en-ruta";
 };
 
-export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
+// Construye las categorías uniendo /products/categories (id, nombre) con /products
+// (que sí confirma incluir `brand`), en vez de depender de los productos anidados
+// que devuelve /products/categories.
+export function mapApiCategoriesFromFlatProducts(
+  apiCategories: ApiCategory[],
+  apiProducts: ApiProductFlat[]
+): Category[] {
   return apiCategories.map((category) => ({
     id: category.id,
     categoria: category.nombre,
-    productos: (category.productos || []).map((product) => ({
-      id: product.id,
-      producto: product.producto,
-      sku: product.sku,
-      precio: Number(product.precio || 0),
-      brand: product.brand || "donofrio",
-    })),
+    productos: apiProducts
+      .filter((product) => product.categoria_id === category.id)
+      .map((product) => ({
+        id: product.id,
+        producto: product.producto,
+        sku: product.sku,
+        precio: Number(product.precio || 0),
+        brand: product.brand || "donofrio",
+      })),
   }));
 }
 

@@ -29,7 +29,8 @@
       "Bash(sed -i 's#logoUrl: \"/images/eventos_ap\\\\.png\"#logoUrl: \"/images/donofrio.jpg\"#; s#currentBrand?\\\\.logoUrl || \"/images/eventos_ap\\\\.png\"#currentBrand?.logoUrl || \"/images/donofrio.jpg\"#g' src/app/layouts/DashboardLayout.tsx)",
       "Bash(sed -i '12s#/images/eventos_ap\\\\.png#/images/donofrio.jpg#' src/app/pages/BrandSelectPage.tsx)",
       "Bash(python3 -c ' *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(awk 'NR==1400 || NR==1410 || NR==1415 || NR==1420 || NR==1425 {print NR\": \"$0}' src/app/pages/FichasPage.tsx)"
     ]
   }
 }

@@ -2,7 +2,7 @@
 import { apiRequest } from "../lib/api";
 import {
   mapApiCarritos,
-  mapApiCategories,
+  mapApiCategoriesFromFlatProducts,
   mapApiInflables,
   mapApiPaquetes,
   mapApiPersonal,
@@ -237,8 +237,9 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [recursos, setRecursos] = useState<Recurso[]>([]);
 
   const reloadData = async () => {
-    const [categoriesData, paquetesData, carritosData, inflablesData, personalData, recursosData] = await Promise.all([
+    const [categoriesData, productsData, paquetesData, carritosData, inflablesData, personalData, recursosData] = await Promise.all([
       apiRequest<unknown[]>("/products/categories"),
+      apiRequest<unknown[]>("/products"),
       apiRequest<unknown[]>("/paquetes"),
       apiRequest<unknown[]>("/carritos"),
       apiRequest<unknown[]>("/inflables"),
@@ -246,7 +247,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       apiRequest<unknown[]>("/recursos"),
     ]);
 
-    setCategories(mapApiCategories(categoriesData as never));
+    setCategories(mapApiCategoriesFromFlatProducts(categoriesData as never, productsData as never));
     setPaquetes(mapApiPaquetes(paquetesData as never));
     setCarritos(mapApiCarritos(carritosData as never));
     setInflables(mapApiInflables(inflablesData as never));

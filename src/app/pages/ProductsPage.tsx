@@ -9,6 +9,7 @@ import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
 
 const ITEMS_PER_PAGE = 15;
+const PAQUETES_PER_PAGE = 12;
 
 const TIPOS_POR_MARCA: Record<"donofrio" | "jugueton", string[]> = {
   jugueton: ["infantil", "linea-white"],
@@ -686,8 +687,16 @@ export function ProductsPage() {
       p.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Group paquetes by tipo for display (only when showing all)
-  const paquetesByTipo = filteredPaquetes.reduce<Record<string, Paquete[]>>((groups, paq) => {
+  // Pagination
+  const displayItems = activeTab === "productos" ? filteredProducts : filteredPaquetes;
+  const itemsPerPage = activeTab === "paquetes" ? PAQUETES_PER_PAGE : ITEMS_PER_PAGE;
+  const totalPages = Math.ceil(displayItems.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedPaquetes = filteredPaquetes.slice(startIndex, startIndex + PAQUETES_PER_PAGE);
+
+  // Group paquetes de la página actual por tipo (solo para mostrar el encabezado de sección)
+  const paquetesByTipo = paginatedPaquetes.reduce<Record<string, Paquete[]>>((groups, paq) => {
     const key = paq.tipo || "sin-tipo";
     if (!groups[key]) groups[key] = [];
     groups[key].push(paq);
@@ -703,12 +712,6 @@ export function ProductsPage() {
     if (ib === -1) return -1;
     return ia - ib;
   });
-
-  // Pagination
-  const displayItems = activeTab === "productos" ? filteredProducts : filteredPaquetes;
-  const totalPages = Math.ceil(displayItems.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const filteredCarritos = carritos.filter(
     (c) =>
@@ -1516,7 +1519,7 @@ export function ProductsPage() {
             {allTipos.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setPaqueteTipoFilter("todos")}
+                  onClick={() => { setPaqueteTipoFilter("todos"); setCurrentPage(1); }}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     paqueteTipoFilter === "todos"
                       ? "bg-[#EF8022] text-white"
@@ -1531,7 +1534,7 @@ export function ProductsPage() {
                   return (
                     <button
                       key={tipo}
-                      onClick={() => setPaqueteTipoFilter(tipo)}
+                      onClick={() => { setPaqueteTipoFilter(tipo); setCurrentPage(1); }}
                       className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         paqueteTipoFilter === tipo
                           ? "bg-[#EF8022] text-white"
@@ -1627,6 +1630,16 @@ export function ProductsPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {filteredPaquetes.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={filteredPaquetes.length}
+              itemsPerPage={PAQUETES_PER_PAGE}
+            />
           )}
         </>
       )}

@@ -80,7 +80,7 @@ export function DashboardLayout() {
   const currentBrand = brand ? brandConfig[brand] : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 flex">
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -92,7 +92,8 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-30
-        w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col
+        w-64 h-full lg:h-screen overflow-y-auto
+        bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0
       `}>

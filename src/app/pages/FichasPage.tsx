@@ -4,6 +4,7 @@ import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { DateRangePicker } from "../components/DateRangePicker";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
 import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
@@ -64,9 +65,7 @@ interface Ficha {
   direccion: string;
   referencia?: string;
   hora_entrega: string;
-  hora_entrega_fin?: string;
   hora_recojo: string;
-  hora_recojo_fin?: string;
   paquetes: FichaPaquete[];
   productosSueltos: FichaProductoSuelto[];
   carritoIds?: number[];
@@ -99,9 +98,7 @@ interface FichaFormData {
   direccion: string;
   referencia: string;
   hora_entrega: string;
-  hora_entrega_fin: string;
   hora_recojo: string;
-  hora_recojo_fin: string;
   comentarios: string;
   cliente_nombre: string;
   cliente_celular: string;
@@ -118,6 +115,8 @@ interface FichaFormData {
   recursos: Array<{ recursoId: number; cantidad: number }>;
 }
 
+const FICHAS_PER_PAGE = 10;
+
 const getInitialFormData = (): FichaFormData => ({
   fecha_evento: new Date().toISOString().slice(0, 10),
   fecha_reserva: new Date().toISOString().slice(0, 10),
@@ -128,9 +127,7 @@ const getInitialFormData = (): FichaFormData => ({
   direccion: "",
   referencia: "",
   hora_entrega: "",
-  hora_entrega_fin: "",
   hora_recojo: "",
-  hora_recojo_fin: "",
   comentarios: "",
   cliente_nombre: "",
   cliente_celular: "",
@@ -188,11 +185,6 @@ function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["tran
   if (transporte === "corporativo") return tarifa.costo_corporativo;
   if (transporte === "delivery") return tarifa.costo_delivery;
   return tarifa.costo_cumpleanos;
-}
-
-function formatHoraRango(inicio?: string, fin?: string): string {
-  if (!inicio) return "-";
-  return fin ? `${inicio} - ${fin}` : inicio;
 }
 
 function labelTransporte(t?: string): string {
@@ -628,6 +620,7 @@ export function FichasPage() {
   const [deleteFichaSubmitting, setDeleteFichaSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
   const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -811,9 +804,7 @@ export function FichasPage() {
         direccion: f.direccion || "",
         referencia: f.referencia || "",
         hora_entrega: f.hora_entrega || "",
-        hora_entrega_fin: f.hora_entrega_fin || "",
         hora_recojo: f.hora_recojo || "",
-        hora_recojo_fin: f.hora_recojo_fin || "",
         paquetes: (f.paquetes || []).map((p: any) => ({
           paqueteId: p.paquete_id || 0,
           paqueteNombre: p.paquete_nombre || "",
@@ -932,6 +923,15 @@ export function FichasPage() {
     else if (dateRange?.to) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) <= new Date(dateRange.to);
     return matchesSearch && matchesDistrito && matchesFecha && matchesEstado && matchesBrand;
   });
+
+  // Paginación de la grilla de fichas
+  const totalFichasPages = Math.max(1, Math.ceil(filteredFichas.length / FICHAS_PER_PAGE));
+  const fichasStartIndex = (currentPage - 1) * FICHAS_PER_PAGE;
+  const paginatedFichas = filteredFichas.slice(fichasStartIndex, fichasStartIndex + FICHAS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, brand]);
 
   // Financial stats
   const stats = useMemo(() => {
@@ -1419,9 +1419,9 @@ export function FichasPage() {
 
             <div class="hora-box">
               <span>ENTREGA:</span>
-              <strong>${escapeHtml(formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin))}</strong>
+              <strong>${escapeHtml(ficha.hora_entrega || "-")}</strong>
               <span>RECOJO:</span>
-              <strong>${escapeHtml(formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin))}</strong>
+              <strong>${escapeHtml(ficha.hora_recojo || "-")}</strong>
             </div>
 
             <table>
@@ -2130,9 +2130,7 @@ export function FichasPage() {
       direccion: ficha.direccion || "",
       referencia: ficha.referencia || "",
       hora_entrega: ficha.hora_entrega || "",
-      hora_entrega_fin: ficha.hora_entrega_fin || "",
       hora_recojo: ficha.hora_recojo || "",
-      hora_recojo_fin: ficha.hora_recojo_fin || "",
       comentarios: ficha.comentarios || "",
       cliente_nombre: ficha.cliente_nombre || "",
       cliente_celular: ficha.cliente_celular || "",
@@ -2201,9 +2199,7 @@ export function FichasPage() {
       direccion: formData.direccion,
       referencia: formData.referencia,
       hora_entrega: formData.hora_entrega || null,
-      hora_entrega_fin: formData.hora_entrega_fin || null,
       hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
-      hora_recojo_fin: formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
       comentarios: formData.comentarios,
       cliente_id: formData.cliente_id || null,
       cliente_nombre: formData.cliente_nombre,
@@ -2506,7 +2502,7 @@ export function FichasPage() {
 
       {/* Fichas Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredFichas.map(ficha => {
+        {paginatedFichas.map(ficha => {
           const estado = getEstadoPago(ficha);
           const total = getTotal(ficha);
           const abonado = getTotalAbonado(ficha);
@@ -2628,7 +2624,7 @@ export function FichasPage() {
               {/* Footer */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}{ficha.hora_recojo ? ` / ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}</span></div>
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.hora_entrega}{ficha.hora_recojo ? ` - ${ficha.hora_recojo}` : ""}</span></div>
                   {(ficha.carritoIds?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
                   )}
@@ -2648,6 +2644,18 @@ export function FichasPage() {
         })}
       </div>
 
+      {filteredFichas.length > 0 && (
+        <div className="mt-6">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalFichasPages}
+            onPageChange={setCurrentPage}
+            totalItems={filteredFichas.length}
+            itemsPerPage={FICHAS_PER_PAGE}
+          />
+        </div>
+      )}
+
       {/* Reporte de unidades de helado por ficha */}
       {filteredFichas.length > 0 && (
         <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -2655,9 +2663,9 @@ export function FichasPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Total unidades en el filtro actual: {filteredFichas.reduce((sum, f) => sum + getUnidadesHelado(f), 0)}
           </p>
-          <div className="overflow-x-auto">
+          <div className="max-h-96 overflow-y-auto overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 bg-white dark:bg-gray-800">
                 <tr className="border-b border-gray-200 dark:border-gray-700">
                   <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Ficha</th>
                   <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
@@ -2928,8 +2936,8 @@ export function FichasPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
+                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_entrega || "-"}</p></div>
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_recojo || "-"}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
@@ -3423,20 +3431,12 @@ export function FichasPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
-                    <div className="flex items-center gap-2">
-                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
-                      <span className="text-gray-400 text-sm">a</span>
-                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} className={inputClass} />
-                    </div>
+                    <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
                   </div>
                   {formData.transporte !== "delivery" && (
                     <div>
                       <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
-                      <div className="flex items-center gap-2">
-                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
-                        <span className="text-gray-400 text-sm">a</span>
-                        <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} className={inputClass} />
-                      </div>
+                      <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
                     </div>
                   )}
                 </div>
