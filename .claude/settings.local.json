@@ -14,7 +14,15 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npm view *)",
       "Bash(echo '{\"$schema\":\"https://ui.shadcn.com/schema.json\",\"style\":\"default\",\"rsc\":false,\"tsx\":true,\"tailwind\":{\"config\":\"\",\"css\":\"src/index.css\",\"baseColor\":\"neutral\",\"cssVariables\":true},\"aliases\":{\"components\":\"@/app/components\",\"utils\":\"@/app/lib/utils\",\"ui\":\"@/app/components/ui\",\"lib\":\"@/app/lib\",\"hooks\":\"@/app/hooks\"}}')",
-      "Bash(npx shadcn@latest add @mapcn/map --yes)"
+      "Bash(npx shadcn@latest add @mapcn/map --yes)",
+      "Bash(grep -v \"^[0-9]*:\\\\s*//\")",
+      "Skill(run)",
+      "Bash(grep -i -E \"\\\\.tsx$|\\\\.ts$\")",
+      "Bash(xargs grep -l -i \"usuario\\\\|createUser\\\\|edit.*user\")",
+      "Bash(git status *)",
+      "Bash(grep -n -B10 -A25 \"carritos/\\\\${unitId}/reservas\")",
+      "Bash(curl -s -o /tmp/out.json -w \"%{http_code}\\\\n\" \"https://eventos-ap-backend-production.up.railway.app/api/products/categories\")",
+      "Read(//tmp/**)"
     ]
   }
 }

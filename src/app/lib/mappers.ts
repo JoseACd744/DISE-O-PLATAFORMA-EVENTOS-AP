@@ -17,6 +17,7 @@ type ApiCategory = {
     producto: string;
     sku: string;
     precio?: number | null;
+    brand?: "donofrio" | "jugueton" | null;
   }>;
 };
 
@@ -34,6 +35,8 @@ type ApiPaquete = {
   id: number;
   nombre: string;
   precio_unitario: number;
+  tipo: string;
+  brand: "donofrio" | "jugueton";
   contenido?: Array<{
     producto_sku: string;
     producto_nombre: string;
@@ -90,6 +93,7 @@ export function mapApiCategories(apiCategories: ApiCategory[]): Category[] {
       producto: product.producto,
       sku: product.sku,
       precio: Number(product.precio || 0),
+      brand: product.brand || "donofrio",
     })),
   }));
 }
@@ -119,6 +123,8 @@ export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
     id: paquete.id,
     nombre: paquete.nombre,
     precioUnitario: Number(paquete.precio_unitario || 0),
+    tipo: paquete.tipo || "",
+    brand: paquete.brand,
     contenido: (paquete.contenido || []).map((item) => ({
       productoSku: item.producto_sku,
       productoNombre: item.producto_nombre,

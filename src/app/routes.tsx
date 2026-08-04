@@ -8,11 +8,13 @@ import { DriverHomePage } from "./pages/DriverHomePage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { PagosPage } from "./pages/PagosPage";
 import { LogisticsPage } from "./pages/LogisticsPage";
 import {
   GuardedFichasPage,
   GuardedInflablesPage,
   GuardedRoutesMapPage,
+  GuardedAssetsPage,
 } from "./pages/GuardedPages";
 
 export const router = createBrowserRouter([
@@ -61,8 +63,16 @@ export const router = createBrowserRouter([
         Component: GuardedInflablesPage,
       },
       {
+        path: "activos",
+        Component: GuardedAssetsPage,
+      },
+      {
         path: "reportes",
         Component: ReportsPage,
+      },
+      {
+        path: "pagos",
+        Component: PagosPage,
       },
     ],
   },

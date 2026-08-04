@@ -4,6 +4,7 @@ import { Pagination } from "../components/Pagination";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
+import { canManageClients } from "../lib/auth";
 
 interface Client {
   id: string;
@@ -26,6 +27,7 @@ const ITEMS_PER_PAGE = 10;
 type BrandFilter = "todos" | "donofrio" | "jugueton";
 
 export function ClientsPage() {
+  const canManage = canManageClients();
   const { brand } = useBrand();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,6 +51,7 @@ export function ClientsPage() {
     city: "",
     canal: "Referidos" as Client["canal"],
     status: "active" as "active" | "inactive",
+    creadoPor: (brand || "donofrio") as "donofrio" | "jugueton",
   });
 
   const filteredClients = clients.filter((client) => {
@@ -148,12 +151,12 @@ export function ClientsPage() {
           ciudad: newClient.city,
           canal: newClient.canal,
           status: newClient.status,
-          creado_por: (brand || "donofrio") as "donofrio" | "jugueton",
+          creado_por: newClient.creadoPor,
         }),
       });
 
       setShowAddModal(false);
-      setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active" });
+      setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active", creadoPor: (brand || "donofrio") as "donofrio" | "jugueton" });
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
@@ -262,13 +265,15 @@ export function ClientsPage() {
             Base de datos compartida - filtra por marca creadora
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
-        >
-          <Plus className="w-5 h-5" />
-          Nuevo Cliente
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
+          >
+            <Plus className="w-5 h-5" />
+            Nuevo Cliente
+          </button>
+        )}
       </div>
 
       {/* Search, Brand Filter and Stats */}
@@ -361,13 +366,13 @@ export function ClientsPage() {
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Pedidos</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Último Pedido</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
-                <th className="px-6 py-4 text-center text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                {canManage && <th className="px-6 py-4 text-center text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan={canManage ? 9 : 8} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     Cargando clientes...
                   </td>
                 </tr>
@@ -437,22 +442,24 @@ export function ClientsPage() {
                       {client.status === "active" ? "Activo" : "Inactivo"}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => setEditingClient({ ...client })}
-                        className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClient(client.id)}
-                        className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+                  {canManage && (
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => setEditingClient({ ...client })}
+                          className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClient(client.id)}
+                          className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -488,13 +495,34 @@ export function ClientsPage() {
               <X className="w-5 h-5" />
             </button>
             <h2 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Cliente</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Se asignará automáticamente a{" "}
-              <span className={brand === "donofrio" ? "text-[#1F3C8B]" : "text-[#EF8022]"}>
-                {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
-              </span>
-            </p>
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca *</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewClient({ ...newClient, creadoPor: "donofrio" })}
+                    className={`flex-1 px-4 py-2.5 rounded-lg border text-sm transition-colors ${
+                      newClient.creadoPor === "donofrio"
+                        ? "bg-[#1F3C8B] text-white border-[#1F3C8B]"
+                        : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    D'Onofrio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewClient({ ...newClient, creadoPor: "jugueton" })}
+                    className={`flex-1 px-4 py-2.5 rounded-lg border text-sm transition-colors ${
+                      newClient.creadoPor === "jugueton"
+                        ? "bg-[#EF8022] text-white border-[#EF8022]"
+                        : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    Juguetón
+                  </button>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
                 <input

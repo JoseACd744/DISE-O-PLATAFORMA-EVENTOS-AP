@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router";
-import { Package, LayoutDashboard, Users, Map, LogOut, FileText, Moon, Sun, BarChart3, Wind, ArrowLeftRight, Truck, Menu } from "lucide-react";
+import { Box, Package, LayoutDashboard, Users, Map, LogOut, FileText, Moon, Sun, BarChart3, Wind, ArrowLeftRight, Truck, Menu, Coffee, Receipt } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useBrand } from "../contexts/BrandContext";
@@ -48,9 +48,11 @@ export function DashboardLayout() {
     { path: "/dashboard/clientes", label: "Clientes", icon: Users, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/productos", label: "Productos", icon: Package, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/inflables", label: "Inflables", icon: Wind, brands: ["jugueton"] },
+    { path: "/dashboard/activos", label: "Activos", icon: Box, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/fichas", label: "Fichas", icon: FileText, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/logistica", label: "Logística", icon: Truck, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/rutas", label: "Rutas", icon: Map, brands: ["donofrio", "jugueton"] },
+    { path: "/dashboard/pagos",    label: "Pagos",    icon: Receipt,  brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/reportes", label: "Reportes", icon: BarChart3, brands: ["donofrio", "jugueton"] },
   ];
 

@@ -6,8 +6,14 @@ import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
 import { useBrand } from "../contexts/BrandContext";
+import { canManageResources } from "../lib/auth";
 
 const ITEMS_PER_PAGE = 15;
+
+const TIPOS_POR_MARCA: Record<"donofrio" | "jugueton", string[]> = {
+  jugueton: ["infantil", "linea-white"],
+  donofrio: ["minis", "vacilon", "premium", "verano", "box-loncheras"],
+};
 
 type CarritoTipo = { id: number; nombre: string };
 
@@ -135,6 +141,7 @@ function ProductSelector({
 // ── Main component ───────────────────────────────────────────────
 
 export function ProductsPage() {
+  const canManage = canManageResources();
   const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos" | "personal">("productos");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
@@ -181,13 +188,18 @@ export function ProductsPage() {
     precio: 0,
   });
 
+  // Package filter
+  const [paqueteTipoFilter, setPaqueteTipoFilter] = useState("todos");
+
   // Package modal
   const [showAddPaquete, setShowAddPaquete] = useState(false);
   const [editingPaquete, setEditingPaquete] = useState<Paquete | null>(null);
-  const [paqueteFormErrors, setPaqueteFormErrors] = useState({ nombre: false });
+  const [paqueteFormErrors, setPaqueteFormErrors] = useState({ nombre: false, tipo: false });
   const [paqueteFormSubmitting, setPaqueteFormSubmitting] = useState(false);
   const [newPaquete, setNewPaquete] = useState({
     nombre: "",
+    brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
+    tipo: "",
     precioUnitario: 0,
     precioEditadoManualmente: false,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
@@ -646,8 +658,14 @@ export function ProductsPage() {
     movements: RecursoStockMovement[];
   }>({ loading: false, error: "", movements: [] });
 
+  // Productos de la marca activa únicamente
+  const productsDeLaMarca = allProducts.filter((p) => p.brand === brand);
+
+  // Categorías con al menos un producto de la marca activa (las categorías en sí son compartidas)
+  const categoriesDeLaMarca = categories.filter((c) => c.productos.some((p) => p.brand === brand));
+
   // Filter products
-  const filteredProducts = allProducts.filter((product) => {
+  const filteredProducts = productsDeLaMarca.filter((product) => {
     const matchesSearch =
       product.producto.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchTerm.toLowerCase());
@@ -655,11 +673,36 @@ export function ProductsPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Filter paquetes
-  const filteredPaquetes = paquetes.filter(
+  // Paquetes de la marca activa únicamente
+  const paquetesDeLaMarca = paquetes.filter((p) => p.brand === brand);
+
+  // All unique tipos across paquetes de la marca activa (for filter buttons)
+  const allTipos = [...new Set(paquetesDeLaMarca.map((p) => p.tipo).filter(Boolean))].sort();
+
+  // Filter paquetes by tipo button and search term
+  const filteredPaquetes = paquetesDeLaMarca.filter(
     (p) =>
+      (paqueteTipoFilter === "todos" || p.tipo === paqueteTipoFilter) &&
       p.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Group paquetes by tipo for display (only when showing all)
+  const paquetesByTipo = filteredPaquetes.reduce<Record<string, Paquete[]>>((groups, paq) => {
+    const key = paq.tipo || "sin-tipo";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(paq);
+    return groups;
+  }, {});
+
+  const allTipoOrder = [...TIPOS_POR_MARCA.donofrio, ...TIPOS_POR_MARCA.jugueton];
+  const sortedTipos = Object.keys(paquetesByTipo).sort((a, b) => {
+    const ia = allTipoOrder.indexOf(a);
+    const ib = allTipoOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
 
   // Pagination
   const displayItems = activeTab === "productos" ? filteredProducts : filteredPaquetes;
@@ -684,7 +727,7 @@ export function ProductsPage() {
     setCurrentPage(1);
   };
 
-  const categoryNames = ["Todas", ...categories.map((cat) => cat.categoria)];
+  const categoryNames = ["Todas", ...new Set(productsDeLaMarca.map((p) => p.categoria))];
 
   const getPrecioPaqueteCalculado = (items: PaqueteItem[]) => {
     return items.reduce((total, item) => {
@@ -719,6 +762,7 @@ export function ProductsPage() {
         producto: newProduct.producto,
         sku: newProduct.sku,
         precio: Number(newProduct.precio || 0),
+        brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
       };
 
       if (editingProduct) {
@@ -745,9 +789,11 @@ export function ProductsPage() {
   const closePaqueteModal = () => {
     setShowAddPaquete(false);
     setEditingPaquete(null);
-    setPaqueteFormErrors({ nombre: false });
+    setPaqueteFormErrors({ nombre: false, tipo: false });
     setNewPaquete({
       nombre: "",
+      brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
+      tipo: "",
       precioUnitario: 0,
       precioEditadoManualmente: false,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
@@ -758,32 +804,37 @@ export function ProductsPage() {
     setEditingPaquete(paq);
     setNewPaquete({
       nombre: paq.nombre,
+      brand: paq.brand,
+      tipo: paq.tipo,
       precioUnitario: paq.precioUnitario,
       precioEditadoManualmente: true,
       contenidoItems: paq.contenido.length > 0
         ? paq.contenido
         : [{ productoSku: "", productoNombre: "", cantidad: 0 }],
     });
-    setPaqueteFormErrors({ nombre: false });
+    setPaqueteFormErrors({ nombre: false, tipo: false });
     setShowAddPaquete(true);
   };
 
   // Add/Edit paquete via context
   const handleSavePaquete = async () => {
-    if (!newPaquete.nombre.trim()) {
-      setPaqueteFormErrors({ nombre: true });
+    const errors = { nombre: !newPaquete.nombre.trim(), tipo: !newPaquete.tipo };
+    if (errors.nombre || errors.tipo) {
+      setPaqueteFormErrors(errors);
       return;
     }
     if (formLocksRef.current.paquete || paqueteFormSubmitting) return;
 
     formLocksRef.current.paquete = true;
     setPaqueteFormSubmitting(true);
-    setPaqueteFormErrors({ nombre: false });
+    setPaqueteFormErrors({ nombre: false, tipo: false });
     try {
       const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
       const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
       const payload = {
         nombre: newPaquete.nombre.trim(),
+        brand: newPaquete.brand,
+        tipo: newPaquete.tipo,
         precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
         contenido: contenidoValido,
       };
@@ -1136,7 +1187,7 @@ export function ProductsPage() {
         }
         description={
           deleteTarget?.kind === "category"
-            ? `¿Seguro que quieres eliminar esta categoría?${deleteTarget.productCount > 0 ? ` También se eliminarán sus ${deleteTarget.productCount} productos.` : ""} Esta acción no se puede deshacer.`
+            ? `¿Seguro que quieres eliminar esta categoría?${deleteTarget.productCount > 0 ? ` También se eliminarán sus ${deleteTarget.productCount} productos (de ambas marcas, si aplica).` : ""} Esta acción no se puede deshacer.`
             : deleteTarget?.kind === "product"
               ? "¿Seguro que quieres eliminar este producto? Esta acción no se puede deshacer."
               : deleteTarget?.kind === "paquete"
@@ -1252,7 +1303,7 @@ export function ProductsPage() {
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Paquetes</span>
           </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{paquetes.length}</p>
+          <p className="text-3xl text-gray-900 dark:text-white">{paquetesDeLaMarca.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
@@ -1278,17 +1329,17 @@ export function ProductsPage() {
 
       </div>
 
-      {activeTab === "productos" && categories.length > 0 && (
+      {activeTab === "productos" && categoriesDeLaMarca.length > 0 && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg text-gray-900 dark:text-white">Categorías registradas</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">Puedes eliminar una categoría desde aquí.</p>
             </div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">{categories.length} categorías</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{categoriesDeLaMarca.length} categorías</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {categories.map((category) => {
+            {categoriesDeLaMarca.map((category) => {
               const productCount = category.productos.length;
               return (
                 <div
@@ -1297,14 +1348,16 @@ export function ProductsPage() {
                 >
                   <span className="text-gray-900 dark:text-white">{category.categoria}</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{productCount} prod.</span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(category.id, category.categoria, productCount)}
-                    className="rounded-full p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-                    title="Eliminar categoría"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCategory(category.id, category.categoria, productCount)}
+                      className="rounded-full p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                      title="Eliminar categoría"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1339,23 +1392,25 @@ export function ProductsPage() {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                <button
-                  onClick={() => {
-                    setEditingProduct(null);
-                    setNewProduct({
-                      categoria: "",
-                      nuevaCategoria: "",
-                      producto: "",
-                      sku: "",
-                      precio: 0
-                    });
-                    setShowAddProduct(true);
-                  }}
-                  className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
-                >
-                  <Plus className="w-5 h-5" />
-                  Nuevo Producto
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setNewProduct({
+                        categoria: "",
+                        nuevaCategoria: "",
+                        producto: "",
+                        sku: "",
+                        precio: 0
+                      });
+                      setShowAddProduct(true);
+                    }}
+                    className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Nuevo Producto
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1369,7 +1424,7 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
-                    <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                    {canManage && <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1385,26 +1440,28 @@ export function ProductsPage() {
                         {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => handleEditProduct(product)}
-                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:text-[#EF8022] hover:bg-[#EF8022]/10"
-                            title="Editar producto"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProduct(product)}
-                            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
-                            title="Eliminar producto"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
+                      {canManage && (
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleEditProduct(product)}
+                              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:text-[#EF8022] hover:bg-[#EF8022]/10"
+                              title="Editar producto"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProduct(product)}
+                              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+                              title="Eliminar producto"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1435,7 +1492,7 @@ export function ProductsPage() {
       {activeTab === "paquetes" && (
         <>
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-4">
               <div className="flex-1 w-full lg:max-w-md relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -1446,80 +1503,129 @@ export function ProductsPage() {
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
                 />
               </div>
-              <button
-                onClick={() => setShowAddPaquete(true)}
-                className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-5 h-5" />
-                Nuevo Paquete
-              </button>
+              {canManage && (
+                <button
+                  onClick={() => setShowAddPaquete(true)}
+                  className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                >
+                  <Plus className="w-5 h-5" />
+                  Nuevo Paquete
+                </button>
+              )}
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredPaquetes.map((paq) => (
-              <div key={paq.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-gray-900 dark:text-white mb-1">{paq.nombre}</h3>
-                  </div>
-                  <div className="flex items-center gap-1">
+            {allTipos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setPaqueteTipoFilter("todos")}
+                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    paqueteTipoFilter === "todos"
+                      ? "bg-[#EF8022] text-white"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  Todos
+                  <span className="ml-1.5 opacity-70">({paquetesDeLaMarca.length})</span>
+                </button>
+                {allTipos.map((tipo) => {
+                  const count = paquetesDeLaMarca.filter((p) => p.tipo === tipo).length;
+                  return (
                     <button
-                      onClick={() => handleEditPaquete(paq)}
-                      className="p-1.5 text-gray-400 hover:text-[#EF8022] dark:hover:text-[#EF8022] transition-colors"
+                      key={tipo}
+                      onClick={() => setPaqueteTipoFilter(tipo)}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                        paqueteTipoFilter === tipo
+                          ? "bg-[#EF8022] text-white"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
                     >
-                      <Pencil className="w-4 h-4" />
+                      {tipo}
+                      <span className="ml-1.5 opacity-70">({count})</span>
                     </button>
-                    <button
-                      onClick={() => handleDeletePaquete(paq)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
-                    Contenido {paq.contenido.length > 0 && `(${paq.contenido.length} productos)`}
-                  </p>
-                  <div className="space-y-1.5">
-                    {paq.contenido.length === 0 ? (
-                      <p className="text-sm text-gray-400 italic">A definir por el cliente</p>
-                    ) : (
-                      paq.contenido.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-700 dark:text-gray-300">{item.productoNombre}</span>
-                          {item.cantidad > 0 && (
-                            <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">x{item.cantidad}</span>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {paq.contenido.length > 1 && (
-                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-right">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Total: {getTotalHelados(paq.contenido)} helados
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Precio</span>
-                  <span className="text-xl text-[#EF8022]">
-                    {paq.precioUnitario > 0 ? `S/ ${paq.precioUnitario}` : "A cotizar"}
-                  </span>
-                </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
 
-          {filteredPaquetes.length === 0 && (
+          {filteredPaquetes.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <Layers className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <p className="text-gray-500 dark:text-gray-400">No se encontraron paquetes</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {sortedTipos.map((tipo) => (
+                <div key={tipo}>
+                  {paqueteTipoFilter === "todos" && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-xs uppercase tracking-widest text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
+                        {tipo}
+                      </span>
+                      <span className="text-xs text-gray-400">({paquetesByTipo[tipo].length})</span>
+                      <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {paquetesByTipo[tipo].map((paq) => (
+                      <div key={paq.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow">
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-gray-900 dark:text-white">{paq.nombre}</h3>
+                          {canManage && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleEditPaquete(paq)}
+                                className="p-1.5 text-gray-400 hover:text-[#EF8022] dark:hover:text-[#EF8022] transition-colors"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePaquete(paq)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
+                            Contenido {paq.contenido.length > 0 && `(${paq.contenido.length} productos)`}
+                          </p>
+                          <div className="space-y-1.5">
+                            {paq.contenido.length === 0 ? (
+                              <p className="text-sm text-gray-400 italic">A definir por el cliente</p>
+                            ) : (
+                              paq.contenido.map((item, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-sm">
+                                  <span className="text-gray-700 dark:text-gray-300">{item.productoNombre}</span>
+                                  {item.cantidad > 0 && (
+                                    <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">x{item.cantidad}</span>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          {paq.contenido.length > 1 && (
+                            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 text-right">
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                Total: {getTotalHelados(paq.contenido)} helados
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">Precio</span>
+                          <span className="text-xl text-[#EF8022]">
+                            {paq.precioUnitario > 0 ? `S/ ${paq.precioUnitario}` : "A cotizar"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </>
@@ -1534,13 +1640,15 @@ export function ProductsPage() {
                 <h2 className="text-lg text-gray-900 dark:text-white">Carritos</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Gestión y disponibilidad de carritos por fecha.</p>
               </div>
-              <button
-                onClick={() => { setShowAddCarrito(true); setShowNuevoTipoInput(false); setNuevoTipoNombre(""); if (carritoTipos.length === 0) void loadCarritoTipos(); }}
-                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Carrito
-              </button>
+              {canManage && (
+                <button
+                  onClick={() => { setShowAddCarrito(true); setShowNuevoTipoInput(false); setNuevoTipoNombre(""); if (carritoTipos.length === 0) void loadCarritoTipos(); }}
+                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nuevo Carrito
+                </button>
+              )}
             </div>
 
             <div className="relative mb-4">
@@ -1609,34 +1717,42 @@ export function ProductsPage() {
 
                             {/* Controles */}
                             <div className="flex items-center justify-between gap-1 px-3 pb-2.5 pt-1 border-t border-gray-100 dark:border-gray-700 mt-1">
-                              <select
-                                value={c.estado}
-                                onChange={(e) => updateCarritoEstado(c.id, e.target.value as Carrito["estado"])}
-                                onClick={(e) => e.stopPropagation()}
-                                className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-[#EF8022] ${estadoSelectColors[c.estado]}`}
-                              >
-                                <option value="disponible">Disponible</option>
-                                <option value="en-uso">En Uso</option>
-                                <option value="mantenimiento">Mantenimiento</option>
-                              </select>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditCarrito(c)}
-                                  className="p-1 rounded text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
-                                  title="Editar carrito"
+                              {canManage ? (
+                                <select
+                                  value={c.estado}
+                                  onChange={(e) => updateCarritoEstado(c.id, e.target.value as Carrito["estado"])}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-[#EF8022] ${estadoSelectColors[c.estado]}`}
                                 >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCarrito(c)}
-                                  className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                  title="Eliminar carrito"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                                  <option value="disponible">Disponible</option>
+                                  <option value="en-uso">En Uso</option>
+                                  <option value="mantenimiento">Mantenimiento</option>
+                                </select>
+                              ) : (
+                                <span className={`text-[10px] px-2 py-1 rounded-full ${estadoSelectColors[c.estado]}`}>
+                                  {c.estado === "disponible" ? "Disponible" : c.estado === "en-uso" ? "En Uso" : "Mantenimiento"}
+                                </span>
+                              )}
+                              {canManage && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditCarrito(c)}
+                                    className="p-1 rounded text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                    title="Editar carrito"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCarrito(c)}
+                                    className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                    title="Eliminar carrito"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -1893,12 +2009,14 @@ export function ProductsPage() {
                 <h2 className="text-lg text-gray-900 dark:text-white">Recursos</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Sillas, mesas y otros recursos con control de stock.</p>
               </div>
-              <button
-                onClick={() => { setRecursoForm(emptyRecursoForm); setRecursoFormError(""); setShowRecursoModal(true); }}
-                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
-              >
-                <Plus className="w-4 h-4" /> Nuevo Recurso
-              </button>
+              {canManage && (
+                <button
+                  onClick={() => { setRecursoForm(emptyRecursoForm); setRecursoFormError(""); setShowRecursoModal(true); }}
+                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                >
+                  <Plus className="w-4 h-4" /> Nuevo Recurso
+                </button>
+              )}
             </div>
 
             {recursos.length === 0 ? (
@@ -1937,11 +2055,17 @@ export function ProductsPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            <button type="button" onClick={() => handleRecursoStockMovement(r, "entrada")} className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400">+ Entrada</button>
-                            <button type="button" onClick={() => handleRecursoStockMovement(r, "salida")} className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">- Salida</button>
-                            <button type="button" onClick={() => handleRecursoStockAdjustment(r)} className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400">Ajustar</button>
+                            {canManage && (
+                              <>
+                                <button type="button" onClick={() => handleRecursoStockMovement(r, "entrada")} className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400">+ Entrada</button>
+                                <button type="button" onClick={() => handleRecursoStockMovement(r, "salida")} className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">- Salida</button>
+                                <button type="button" onClick={() => handleRecursoStockAdjustment(r)} className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400">Ajustar</button>
+                              </>
+                            )}
                             <button type="button" onClick={() => handleShowRecursoStockMovements(r)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"><History className="h-3 w-3" />Historial</button>
-                            <button type="button" onClick={() => handleDeleteRecurso(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            {canManage && (
+                              <button type="button" onClick={() => handleDeleteRecurso(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1964,13 +2088,15 @@ export function ProductsPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Choferes y personal de apoyo para eventos.</p>
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Los choferes se crean en la página de rutas.</p>
               </div>
-              <button
-                onClick={openAddPersonal}
-                className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Personal
-              </button>
+              {canManage && (
+                <button
+                  onClick={openAddPersonal}
+                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nuevo Personal
+                </button>
+              )}
             </div>
 
             <div className="relative mb-4">
@@ -2181,7 +2307,7 @@ export function ProductsPage() {
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Teléfono</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Rol</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
-                      <th className="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
+                      {canManage && <th className="px-4 py-3 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -2202,27 +2328,29 @@ export function ProductsPage() {
                             {getDynamicPersonalEstado(p.id)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openEditPersonal(p)}
-                              disabled={p.rol === "chofer"}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={p.rol === "chofer" ? "Editar en Logística" : "Editar"}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeletePersonal(p)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
+                        {canManage && (
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditPersonal(p)}
+                                disabled={p.rol === "chofer"}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={p.rol === "chofer" ? "Editar en Logística" : "Editar"}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePersonal(p)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -2663,6 +2791,27 @@ export function ProductsPage() {
                   <p className="mt-1 text-xs text-red-500">El nombre del paquete es obligatorio.</p>
                 )}
               </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de paquete *</label>
+                <select
+                  value={newPaquete.tipo}
+                  onChange={(e) => {
+                    setNewPaquete({ ...newPaquete, tipo: e.target.value });
+                    if (e.target.value) setPaqueteFormErrors((prev) => ({ ...prev, tipo: false }));
+                  }}
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                    paqueteFormErrors.tipo ? "border-red-500 dark:border-red-500" : "border-gray-300 dark:border-gray-600"
+                  }`}
+                >
+                  <option value="">Seleccionar tipo...</option>
+                  {(TIPOS_POR_MARCA[newPaquete.brand] ?? []).map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {paqueteFormErrors.tipo && (
+                  <p className="mt-1 text-xs text-red-500">El tipo es obligatorio.</p>
+                )}
+              </div>
               <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-300">Precio total del paquete (auto)</span>
@@ -2710,7 +2859,7 @@ export function ProductsPage() {
                   {newPaquete.contenidoItems.map((item, idx) => (
                     <div key={idx} className="flex gap-2 items-start">
                       <ProductSelector
-                        allProducts={allProducts}
+                        allProducts={allProducts.filter((p) => p.brand === newPaquete.brand)}
                         selectedSku={item.productoSku}
                         onSelect={(sku, nombre) => {
                           const items = [...newPaquete.contenidoItems];

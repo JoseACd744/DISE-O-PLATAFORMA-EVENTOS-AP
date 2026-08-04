@@ -55,6 +55,25 @@ export function isDriverUser() {
   return isDriverRole(getUserRole());
 }
 
+export function isVendedorRole(role?: string) {
+  if (!role) return false;
+  return role.toLowerCase() === "vendedor";
+}
+
+export function isVendedorUser() {
+  return isVendedorRole(getUserRole());
+}
+
+/** True if the current user can create/edit/delete on pages other than Fichas. */
+export function canManageResources() {
+  return isAdminUser();
+}
+
+/** True if the current user can create/edit/delete clients for both brands. */
+export function canManageClients() {
+  return isAdminUser() || getAuthUser()?.brand === "jugueton";
+}
+
 export function isAuthenticated() {
   return Boolean(getAuthToken());
 }

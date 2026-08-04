@@ -15,13 +15,15 @@ import {
   AlertTriangle,
   ShoppingCart,
   Bell,
-  FileText,
   Clock,
   CheckCircle2,
   Upload,
+  Pencil,
 } from "lucide-react";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { useBrand } from "../contexts/BrandContext";
 import { apiRequest, API_BASE_URL } from "../lib/api";
+import { canManageResources } from "../lib/auth";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,10 +48,11 @@ interface Reserva {
   notas: string;
 }
 
-type CarritoModelo = "Blanco" | "Clásico" | "Delgado";
+type CarritoModelo = string;
 
 interface Carrito {
-  id: number;
+  id: number;       // tipo_id
+  unitIds: number[]; // IDs de las unidades físicas de este tipo
   modelo: CarritoModelo;
   codigo: string;
   descripcion: string;
@@ -60,7 +63,8 @@ interface Carrito {
 
 interface ReservaCarrito {
   id: number;
-  carritoId: number;
+  carritoId: number;  // tipo_id del grupo
+  unitId: number;     // id de la unidad física real (para DELETE)
   clienteNombre: string;
   fecha: string;
   cantidad: number;
@@ -94,7 +98,8 @@ const EMOJI_MAP: Record<string, string> = {
 };
 
 const CARRITO_EMOJI: Record<string, string> = {
-  blanco: "🤍", clasico: "🛒", delgado: "📦",
+  blanco: "🤍", clasico: "🛒", delgado: "📦", nuevo: "✨",
+  BLANCO: "🤍", CLASICO: "🛒", DELGADO: "📦", NUEVO: "✨",
 };
 
 function getDaysInMonth(year: number, month: number) {
@@ -146,6 +151,8 @@ function extractStoragePathFromUrl(value: string) {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function InflablesPage() {
+  const canManage = canManageResources();
+  const { brand } = useBrand();
   // State
   const [inflables, setInflables] = useState<InflableType[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
@@ -156,8 +163,8 @@ export function InflablesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<InflableType | null>(null);
   const [selectedCarrito, setSelectedCarrito] = useState<Carrito | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(2);
-  const [calendarYear, setCalendarYear] = useState(2026);
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showNewReserva, setShowNewReserva] = useState(false);
   const [showNewInflable, setShowNewInflable] = useState(false);
@@ -182,11 +189,19 @@ export function InflablesPage() {
   const [newReserva, setNewReserva] = useState({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
   const [newInflable, setNewInflable] = useState({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
   const [showNewUnidad, setShowNewUnidad] = useState(false);
-  const [newUnidad, setNewUnidad] = useState({ tipoId: 0, codigo: "", estado: "disponible" as "disponible" | "en-uso" | "mantenimiento" });
+  const [newUnidad, setNewUnidad] = useState({ tipoId: 0, codigo: "", estado: "disponible" as "disponible" | "en-uso" | "mantenimiento", fechaAdquisicion: "" });
   const [unidadSubmitting, setUnidadSubmitting] = useState(false);
   const [inflableImagen, setInflableImagen] = useState({ url: "", path: "", name: "" });
   const [isUploadingImagen, setIsUploadingImagen] = useState(false);
   const [uploadImagenError, setUploadImagenError] = useState("");
+  const [showEditInflable, setShowEditInflable] = useState(false);
+  const [editInflableData, setEditInflableData] = useState<InflableType | null>(null);
+  const [editInflableForm, setEditInflableForm] = useState({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+  const [editInflableImagen, setEditInflableImagen] = useState({ url: "", path: "", name: "" });
+  const [isUploadingEditImagen, setIsUploadingEditImagen] = useState(false);
+  const [isCleaningEditImagen, setIsCleaningEditImagen] = useState(false);
+  const [uploadEditImagenError, setUploadEditImagenError] = useState("");
+  const [editInflableSubmitting, setEditInflableSubmitting] = useState(false);
   const [newAlerta, setNewAlerta] = useState<{ recursoTipo: TipoRecurso; recursoId: number; severidad: SeveridadAlerta; titulo: string; descripcion: string; reportadoPor: string }>({
     recursoTipo: "inflable", recursoId: 0, severidad: "advertencia", titulo: "", descripcion: "", reportadoPor: "",
   });
@@ -200,15 +215,23 @@ export function InflablesPage() {
   const todayStr = new Date().toISOString().split("T")[0];
 
   const loadData = async () => {
+    if (!brand) return;
     setError("");
     try {
-      const [inflablesApi, carritosApi, maintenanceApi] = await Promise.all([
+      const [inflablesTiposApi, carritosApi, maintenanceApi, fichasListApi, inflablesUnitsApi] = await Promise.all([
         apiRequest<any[]>("/inflables/tipos"),
         apiRequest<any[]>("/carritos"),
         apiRequest<any[]>("/maintenance"),
+        apiRequest<any[]>(`/fichas?brand=${brand}`),
+        apiRequest<any[]>("/inflables"),
       ]);
 
-      const inflablesMapped: InflableType[] = inflablesApi.map((i) => ({
+      // El listado de /fichas no incluye inflableIds/carritoIds; se obtiene el detalle de cada ficha
+      const fichasApi = (await Promise.all(
+        fichasListApi.map((item) => apiRequest<any>(`/fichas/${item.id}`).catch(() => null))
+      )).filter((f): f is any => f !== null);
+
+      const inflablesMapped: InflableType[] = inflablesTiposApi.map((i) => ({
         id: i.id,
         nombre: i.nombre,
         descripcion: i.descripcion || "",
@@ -219,22 +242,42 @@ export function InflablesPage() {
         imagen: i.imagen_url || "generic",
       }));
 
-      const carritosMapped: Carrito[] = carritosApi.map((c) => ({
-        id: c.id,
-        modelo: c.modelo,
-        codigo: c.codigo,
-        descripcion: c.descripcion || "",
-        cantidadTotal: c.cantidad_total || 0,
-        precioAlquiler: Number(c.precio_alquiler || 0),
-        imagen: c.imagen_url || String(c.modelo || "").toLowerCase(),
+      // Mapping unitId -> tipoId
+      const inflableUnitToTipo = new Map<number, number>();
+      inflablesUnitsApi.forEach((u: any) => { if (u.tipo_id) inflableUnitToTipo.set(u.id, u.tipo_id); });
+      
+      const carritoUnitToTipo = new Map<number, number>();
+      carritosApi.forEach((c: any) => { 
+        const tId = c.tipo_id ?? c.id;
+        if (tId) carritoUnitToTipo.set(c.id, tId); 
+      });
+
+      // Agrupar unidades físicas por tipo_id para mostrar stock por tipo
+      const tipoGroups = new Map<number, any[]>();
+      carritosApi.forEach((c: any) => {
+        const key: number = c.tipo_id ?? c.id;
+        if (!tipoGroups.has(key)) tipoGroups.set(key, []);
+        tipoGroups.get(key)!.push(c);
+      });
+
+      const carritosMapped: Carrito[] = Array.from(tipoGroups.entries()).map(([tipoId, units]) => ({
+        id: tipoId,
+        unitIds: units.map((u: any) => u.id),
+        modelo: (units[0].tipo_nombre || units[0].modelo || "Sin tipo") as CarritoModelo,
+        codigo: units.map((u: any) => u.codigo).join(", "),
+        descripcion: units[0].descripcion || "",
+        cantidadTotal: units.length,
+        precioAlquiler: Number(units[0].precio_alquiler || 0),
+        imagen: units[0].imagen_url || (units[0].tipo_nombre || units[0].modelo || "").toLowerCase(),
       }));
 
       const [reservasInflablesChunks, reservasCarritosChunks] = await Promise.all([
         Promise.all(inflablesMapped.map((i) => apiRequest<any[]>(`/inflables/tipos/${i.id}/reservas`).catch(() => []))),
-        Promise.all(carritosMapped.map((c) => apiRequest<any[]>(`/carritos/${c.id}/reservas`).catch(() => []))),
+        Promise.all(carritosApi.map((c: any) => apiRequest<any[]>(`/carritos/${c.id}/reservas`).catch(() => []))),
       ]);
 
-      const reservasInflablesMapped: Reserva[] = reservasInflablesChunks.flatMap((chunk) =>
+      // Reservas manuales de inflables
+      const manualReservasInflables: Reserva[] = reservasInflablesChunks.flatMap((chunk) =>
         chunk.map((r) => ({
           id: r.id,
           inflableId: r.inflable_id,
@@ -246,17 +289,60 @@ export function InflablesPage() {
         }))
       );
 
-      const reservasCarritosMapped: ReservaCarrito[] = reservasCarritosChunks.flatMap((chunk) =>
-        chunk.map((r) => ({
+      // Reservas provenientes de Fichas (inflables)
+      const fichaReservasInflables: Reserva[] = fichasApi.flatMap((f) => {
+        const fecha = (f.fecha_evento || f.fecha || "").split("T")[0];
+        if (!fecha || !f.inflableIds || f.inflableIds.length === 0) return [];
+        return f.inflableIds.map((unitId: number, idx: number) => {
+          const tipoId = inflableUnitToTipo.get(unitId);
+          if (!tipoId) return null;
+          return {
+            id: -(f.id * 1000 + idx + 1), // ID único negativo
+            inflableId: tipoId,
+            clienteNombre: f.cliente_nombre || "Ficha #" + f.id,
+            fecha,
+            cantidad: 1,
+            evento: f.distrito || "Evento Ficha",
+            notas: "Ficha #" + f.id + (f.created_by_nombre ? ` (${f.created_by_nombre})` : ""),
+          };
+        }).filter(Boolean);
+      });
+
+      // Reservas manuales de carritos
+      const manualReservasCarritos: ReservaCarrito[] = reservasCarritosChunks.flatMap((chunk, i) => {
+        const unitId: number = carritosApi[i].id;
+        const tipoId: number = carritoUnitToTipo.get(unitId) ?? unitId;
+        return chunk.map((r: any) => ({
           id: r.id,
-          carritoId: r.carrito_id,
+          carritoId: tipoId,
+          unitId,
           clienteNombre: r.cliente_nombre || "",
           fecha: r.fecha,
           cantidad: r.cantidad || 0,
           evento: r.evento || "",
           notas: r.notas || "",
-        }))
-      );
+        }));
+      });
+
+      // Reservas provenientes de Fichas (carritos)
+      const fichaReservasCarritos: ReservaCarrito[] = fichasApi.flatMap((f) => {
+        const fecha = (f.fecha_evento || f.fecha || "").split("T")[0];
+        if (!fecha || !f.carritoIds || f.carritoIds.length === 0) return [];
+        return f.carritoIds.map((unitId: number, idx: number) => {
+          const tipoId = carritoUnitToTipo.get(unitId);
+          if (!tipoId) return null;
+          return {
+            id: -(f.id * 1000 + idx + 500), // ID único negativo diferente rango
+            carritoId: tipoId,
+            unitId: unitId,
+            clienteNombre: f.cliente_nombre || "Ficha #" + f.id,
+            fecha,
+            cantidad: 1,
+            evento: f.distrito || "Evento Ficha",
+            notas: "Ficha #" + f.id + (f.created_by_nombre ? ` (${f.created_by_nombre})` : ""),
+          };
+        }).filter(Boolean);
+      });
 
       const alertasMapped: AlertaMantenimiento[] = maintenanceApi.map((a) => ({
         id: a.id,
@@ -274,8 +360,8 @@ export function InflablesPage() {
 
       setInflables(inflablesMapped);
       setCarritos(carritosMapped);
-      setReservas(reservasInflablesMapped);
-      setReservasCarritos(reservasCarritosMapped);
+      setReservas([...manualReservasInflables, ...fichaReservasInflables]);
+      setReservasCarritos([...manualReservasCarritos, ...fichaReservasCarritos]);
       setAlertas(alertasMapped);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar inflables y carritos");
@@ -284,7 +370,7 @@ export function InflablesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [brand]);
 
   const filteredInflables = inflables.filter(i => i.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || i.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredCarritos = carritos.filter(c => c.modelo.toLowerCase().includes(searchTerm.toLowerCase()) || c.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -385,7 +471,9 @@ export function InflablesPage() {
     submitLocksRef.current.reservaCarrito = true;
     setReservaCarritoSubmitting(true);
     try {
-      await apiRequest(`/carritos/${newResCarrito.carritoId}/reservas`, {
+      // carritoId es tipo_id; usar la primera unidad física disponible del grupo
+      const unitId = carrito.unitIds[0];
+      await apiRequest(`/carritos/${unitId}/reservas`, {
         method: "POST",
         body: JSON.stringify({
           cliente_nombre: newResCarrito.clienteNombre,
@@ -484,6 +572,108 @@ export function InflablesPage() {
     return ok;
   };
 
+  const handleOpenEditInflable = (inflable: InflableType) => {
+    setEditInflableData(inflable);
+    setEditInflableForm({
+      nombre: inflable.nombre,
+      descripcion: inflable.descripcion,
+      precioAlquiler: inflable.precioAlquiler,
+      dimensiones: inflable.dimensiones,
+      edadMinima: inflable.edadMinima,
+    });
+    setEditInflableImagen({ url: inflable.imagen.startsWith("http") ? inflable.imagen : "", path: "", name: "" });
+    setUploadEditImagenError("");
+    setShowEditInflable(true);
+  };
+
+  const handleEditInflableImagenUpload = async (file: File) => {
+    setIsUploadingEditImagen(true);
+    setUploadEditImagenError("");
+    try {
+      if (editInflableImagen.path) {
+        const cleaned = await deleteUploadedImagen(editInflableImagen.path);
+        if (!cleaned) throw new Error("No se pudo eliminar la imagen anterior. Intenta de nuevo.");
+        setEditInflableImagen({ url: "", path: "", name: "" });
+      }
+
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "inflables");
+
+      const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: fd });
+      if (!response.ok) {
+        const ct = response.headers.get("content-type") || "";
+        const errorData = ct.includes("application/json") ? await response.json() : { error: `HTTP ${response.status}` };
+        throw new Error((errorData as any).error || "Error al subir la imagen");
+      }
+
+      const data = await response.json();
+      const rawUrl = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";
+      const rawPath = data?.path || data?.filePath || data?.data?.path || extractStoragePathFromUrl(rawUrl);
+
+      if (!rawUrl) throw new Error("La API respondió sin URL del archivo subido");
+      if (!rawPath) throw new Error("La API respondió sin path del archivo subido");
+
+      const normalizedUrl = typeof rawUrl === "string" && rawUrl.startsWith("/")
+        ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
+        : rawUrl;
+
+      setEditInflableImagen({ url: normalizedUrl, path: rawPath, name: file.name });
+    } catch (err) {
+      setUploadEditImagenError(err instanceof Error ? err.message : "Error al subir la imagen");
+    } finally {
+      setIsUploadingEditImagen(false);
+    }
+  };
+
+  const cleanupEditInflableImagen = async (): Promise<boolean> => {
+    if (!editInflableImagen.path) return true;
+    setIsCleaningEditImagen(true);
+    const ok = await deleteUploadedImagen(editInflableImagen.path);
+    setIsCleaningEditImagen(false);
+    if (ok) setEditInflableImagen({ url: "", path: "", name: "" });
+    return ok;
+  };
+
+  const handleUpdateInflable = async () => {
+    if (!editInflableData || !editInflableForm.nombre || !editInflableForm.descripcion || !editInflableForm.precioAlquiler) return;
+    if (editInflableSubmitting) return;
+    setEditInflableSubmitting(true);
+    setUploadEditImagenError("");
+    try {
+      const imageUrl = editInflableImagen.url || editInflableData.imagen;
+      await apiRequest(`/inflables/tipos/${editInflableData.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          nombre: editInflableForm.nombre,
+          descripcion: editInflableForm.descripcion,
+          precio_alquiler: editInflableForm.precioAlquiler,
+          dimensiones: editInflableForm.dimensiones,
+          edad_minima: editInflableForm.edadMinima,
+          imagen_url: imageUrl,
+        }),
+      });
+      setEditInflableImagen(prev => ({ ...prev, path: "" }));
+      setShowEditInflable(false);
+      setEditInflableData(null);
+      setUploadEditImagenError("");
+      await loadData();
+    } catch (err) {
+      let cleanupFailed = false;
+      if (editInflableImagen.path) {
+        setIsCleaningEditImagen(true);
+        const cleaned = await deleteUploadedImagen(editInflableImagen.path);
+        setIsCleaningEditImagen(false);
+        cleanupFailed = !cleaned;
+        if (cleaned) setEditInflableImagen({ url: "", path: "", name: "" });
+      }
+      const base = err instanceof Error ? err.message : "No se pudo actualizar el inflable";
+      setUploadEditImagenError(cleanupFailed ? `${base}. Además, no se pudo eliminar la imagen subida.` : base);
+    } finally {
+      setEditInflableSubmitting(false);
+    }
+  };
+
   const handleAddInflable = async () => {
     if (!newInflable.nombre || !newInflable.descripcion || !newInflable.precioAlquiler || !inflableImagen.url) return;
     if (submitLocksRef.current.inflable || inflableSubmitting) return;
@@ -539,10 +729,11 @@ export function InflablesPage() {
           tipo_id: newUnidad.tipoId,
           codigo: newUnidad.codigo.trim(),
           estado: newUnidad.estado,
+          fecha_adquisicion: newUnidad.fechaAdquisicion || null,
         }),
       });
       setShowNewUnidad(false);
-      setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible" });
+      setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible", fechaAdquisicion: "" });
       await loadData();
     } finally {
       submitLocksRef.current.unidad = false;
@@ -568,7 +759,7 @@ export function InflablesPage() {
       } else if (deleteTarget.kind === "reservaCarrito") {
         const reserva = reservasCarritos.find((item) => item.id === deleteTarget.id);
         if (!reserva) return;
-        await apiRequest(`/carritos/${reserva.carritoId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
+        await apiRequest(`/carritos/${reserva.unitId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
       } else {
         await apiRequest(`/inflables/tipos/${deleteTarget.id}`, { method: "DELETE" });
         if (selectedType?.id === deleteTarget.id) setSelectedType(null);
@@ -597,7 +788,7 @@ export function InflablesPage() {
         body: JSON.stringify({
           recurso_tipo: newAlerta.recursoTipo,
           recurso_id: newAlerta.recursoId,
-          recurso_nombre: recurso.nombre || (recurso as Carrito).modelo,
+          recurso_nombre: (recurso as InflableType).nombre || (recurso as Carrito).modelo,
           severidad: newAlerta.severidad,
           estado: "pendiente",
           titulo: newAlerta.titulo,
@@ -713,53 +904,85 @@ export function InflablesPage() {
               </div>
               <div className="flex gap-3 w-full lg:w-auto items-center">
                 <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-[#EF8022]">Fichas de Eventos</span></p>
-                <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible" }); setShowNewUnidad(true); }} className="border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
-                  <Plus className="w-4 h-4" /> Nueva Unidad
-                </button>
-                <button onClick={() => setShowNewInflable(true)} className="bg-[#1F3C8B] text-white px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
-                  <Plus className="w-4 h-4" /> Nuevo Tipo
-                </button>
+                {canManage && (
+                  <>
+                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); setShowNewUnidad(true); }} className="border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                      <Plus className="w-4 h-4" /> Nueva Unidad
+                    </button>
+                    <button onClick={() => setShowNewInflable(true)} className="bg-[#1F3C8B] text-white px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                      <Plus className="w-4 h-4" /> Nuevo Tipo
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             {/* Inflables list */}
-            <div className="xl:col-span-1 space-y-3">
-              <h2 className="text-lg text-gray-900 dark:text-white mb-2">Tipos de Inflables</h2>
+            <div className="xl:col-span-1 flex flex-col gap-3">
+              <h2 className="text-lg text-gray-900 dark:text-white">
+                Tipos de Inflables
+                <span className="ml-2 text-sm text-gray-400 font-normal">({filteredInflables.length})</span>
+              </h2>
+              <div className="space-y-3 overflow-y-auto max-h-[calc(100vh-300px)] pr-1 xl:sticky xl:top-4">
               {filteredInflables.map(inflable => {
-                const reservedToday = getReservedCount(inflable.id, todayStr);
-                const availToday = inflable.cantidadUnidades - reservedToday;
+                const dateForAvail = selectedDate || todayStr;
+                const reservedOnDate = getReservedCount(inflable.id, dateForAvail);
+                const availOnDate = inflable.cantidadUnidades - reservedOnDate;
                 const isSelected = selectedType?.id === inflable.id;
                 const maxSev = getMaxSeverity("inflable", inflable.id);
                 const activeAlertCount = getActiveAlerts("inflable", inflable.id).length;
+                const isUsedOnSelectedDate = !!selectedDate && reservedOnDate > 0;
 
                 return (
                   <div key={inflable.id} onClick={() => setSelectedType(isSelected ? null : inflable)}
-                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md relative ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
-                    {/* Maintenance Alert Icon */}
-                    {maxSev && (
-                      <div className={`absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] ${maxSev === "critica" ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" : maxSev === "advertencia" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"}`}>
-                        {maxSev === "critica" ? <AlertCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                        {activeAlertCount} alerta{activeAlertCount > 1 ? "s" : ""}
-                      </div>
-                    )}
-
-                    <div className="flex items-start gap-3">
-                      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg shrink-0">
-                        {EMOJI_MAP[inflable.imagen] || "🎈"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm text-gray-900 dark:text-white mb-1">{inflable.nombre}</h3>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2 line-clamp-2">{inflable.descripcion}</p>
-                        <div className="grid grid-cols-2 gap-1.5 text-[10px] mb-2">
-                          <div><span className="text-gray-400">Dimensiones</span><p className="text-gray-800 dark:text-gray-200">{inflable.dimensiones}</p></div>
-                          <div><span className="text-gray-400">Edades</span><p className="text-gray-800 dark:text-gray-200">{inflable.edadMinima}</p></div>
+                    className={`border rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-md relative flex h-40 ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : isUsedOnSelectedDate ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    
+                    {/* Image Section - Half of the card */}
+                    <div className="w-1/2 bg-gray-100 dark:bg-gray-700 relative overflow-hidden group">
+                      {inflable.imagen.startsWith("http") ? (
+                        <img src={inflable.imagen} alt={inflable.nombre} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-5xl">
+                          {EMOJI_MAP[inflable.imagen] || "🎈"}
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#EF8022]">S/ {inflable.precioAlquiler}/día</span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${availToday > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>
-                            {availToday}/{inflable.cantidadUnidades} unid.
+                      )}
+                      
+                      {/* Maintenance Alert Icon - Floated over image */}
+                      {maxSev && (
+                        <div className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] backdrop-blur-md shadow-sm ${maxSev === "critica" ? "bg-red-500/90 text-white" : maxSev === "advertencia" ? "bg-amber-500/90 text-white" : "bg-blue-500/90 text-white"}`}>
+                          {maxSev === "critica" ? <AlertCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                          {activeAlertCount}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content Section - Other half */}
+                    <div className="w-1/2 p-4 flex flex-col justify-between min-w-0">
+                      <div className="flex justify-between items-start gap-1">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={inflable.nombre}>{inflable.nombre}</h3>
+                        {canManage && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleOpenEditInflable(inflable); }}
+                            className="p-1 rounded hover:bg-[#1F3C8B]/10 text-gray-400 hover:text-[#1F3C8B] dark:hover:text-blue-400 transition-colors shrink-0"
+                            title="Editar inflable"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[9px]">Precio Alquiler</span>
+                          <span className="text-sm font-bold text-[#EF8022]">S/ {inflable.precioAlquiler}</span>
+                        </div>
+                        
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[9px]">Disponibilidad</span>
+                          <span className={`text-[10px] w-fit px-2 py-0.5 rounded-full font-medium ${availOnDate > 0 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>
+                            {availOnDate}/{inflable.cantidadUnidades} unidades
                           </span>
                         </div>
                       </div>
@@ -767,14 +990,12 @@ export function InflablesPage() {
                   </div>
                 );
               })}
+              </div>
             </div>
 
-            {/* Calendar + Detail */}
+            {/* Calendar */}
             <div className="xl:col-span-2 space-y-6">
               {renderCalendar(calendarYear, calendarMonth, setCalendarYear, setCalendarMonth, calendarReservationMap, calendarMaxCap, selectedDate, setSelectedDate, todayStr, selectedType?.nombre)}
-
-              {/* Day Detail */}
-              {renderInflableDayDetail(selectedDate, todayStr, getReservasByDate, reservas, inflables, getReservedCount, handleDeleteReserva, EMOJI_MAP)}
             </div>
           </div>
         </>
@@ -932,7 +1153,7 @@ export function InflablesPage() {
                               <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
                               <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Evento</th>
                               <th className="text-center py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cant.</th>
-                              <th className="text-center py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase"></th>
+                              {canManage && <th className="text-center py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase"></th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -944,7 +1165,9 @@ export function InflablesPage() {
                                   <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{r.clienteNombre}</td>
                                   <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">{r.evento}</span></td>
                                   <td className="py-3 px-3 text-center text-gray-900 dark:text-white">{r.cantidad}</td>
-                                  <td className="py-3 px-3 text-center"><button onClick={e => { e.stopPropagation(); handleDeleteReservaCarrito(r.id); }} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                                  {canManage && (
+                                    <td className="py-3 px-3 text-center"><button onClick={e => { e.stopPropagation(); handleDeleteReservaCarrito(r.id); }} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -981,9 +1204,11 @@ export function InflablesPage() {
                   </button>
                 ))}
               </div>
-              <button onClick={() => setShowNewAlerta(true)} className="bg-red-500 text-white px-5 py-2.5 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
-                <Plus className="w-4 h-4" /> Reportar Problema
-              </button>
+              {canManage && (
+                <button onClick={() => setShowNewAlerta(true)} className="bg-red-500 text-white px-5 py-2.5 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                  <Plus className="w-4 h-4" /> Reportar Problema
+                </button>
+              )}
             </div>
           </div>
 
@@ -1027,7 +1252,7 @@ export function InflablesPage() {
                         {alerta.fechaResolucion && <span className="text-green-500">Resuelto: {alerta.fechaResolucion}</span>}
                       </div>
 
-                      {alerta.estado !== "resuelta" && (
+                      {alerta.estado !== "resuelta" && canManage && (
                         <div className="flex gap-1.5">
                           {alerta.estado === "pendiente" && (
                             <button onClick={() => handleUpdateAlertaEstado(alerta.id, "en-proceso")}
@@ -1065,7 +1290,7 @@ export function InflablesPage() {
                 <option value={0}>Seleccionar inflable...</option>
                 {inflables.map(inf => {
                   const alertSev = getMaxSeverity("inflable", inf.id);
-                  return <option key={inf.id} value={inf.id}>{alertSev === "critica" ? "⚠️ " : ""}{inf.nombre} — {inf.cantidadTotal} uds (S/ {inf.precioAlquiler}/día)</option>;
+                  return <option key={inf.id} value={inf.id}>{alertSev === "critica" ? "⚠️ " : ""}{inf.nombre} — {inf.cantidadUnidades} uds (S/ {inf.precioAlquiler}/día)</option>;
                 })}
               </select>
               {newReserva.inflableId > 0 && getMaxSeverity("inflable", newReserva.inflableId) === "critica" && (
@@ -1079,7 +1304,7 @@ export function InflablesPage() {
                 const inf = inflables.find(i => i.id === newReserva.inflableId)!;
                 const reserved = getReservedCount(inf.id, newReserva.fecha);
                 const avail = inf.cantidadUnidades - reserved;
-                return <p className={`text-xs mt-1 ${avail > 0 ? "text-gray-500" : "text-red-500"}`}>{avail > 0 ? `${avail} de ${inf.cantidadTotal} disponible(s)` : "No hay disponibilidad"}</p>;
+                return <p className={`text-xs mt-1 ${avail > 0 ? "text-gray-500" : "text-red-500"}`}>{avail > 0 ? `${avail} de ${inf.cantidadUnidades} disponible(s)` : "No hay disponibilidad"}</p>;
               })()}
             </div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
@@ -1106,7 +1331,7 @@ export function InflablesPage() {
                 <option value={0}>Seleccionar carrito...</option>
                 {carritos.map(c => {
                   const alertSev = getMaxSeverity("carrito", c.id);
-                  return <option key={c.id} value={c.id}>{alertSev === "critica" ? "⚠️ " : ""}{c.modelo} ({c.codigo}) — {c.cantidadTotal} uds (S/ {c.precioAlquiler}/día)</option>;
+                  return <option key={c.id} value={c.id}>{alertSev === "critica" ? "⚠️ " : ""}{c.modelo} — {c.cantidadTotal} uds (S/ {c.precioAlquiler}/día)</option>;
                 })}
               </select>
               {newResCarrito.carritoId > 0 && getMaxSeverity("carrito", newResCarrito.carritoId) === "critica" && (
@@ -1223,7 +1448,89 @@ export function InflablesPage() {
                 <option value="mantenimiento">Mantenimiento</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de adquisición</label>
+              <input type="date" value={newUnidad.fechaAdquisicion} onChange={e => setNewUnidad({ ...newUnidad, fechaAdquisicion: e.target.value })} className={inputClass} />
+            </div>
             <ModalButtons onCancel={() => setShowNewUnidad(false)} onConfirm={handleAddUnidad} label="Guardar Unidad" submitting={unidadSubmitting} />
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Edit Inflable Modal */}
+      {showEditInflable && editInflableData && (
+        <ModalWrapper onClose={async () => {
+          if (editInflableSubmitting || isUploadingEditImagen || isCleaningEditImagen) return;
+          const ok = await cleanupEditInflableImagen();
+          if (!ok) { setUploadEditImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+          setShowEditInflable(false);
+          setEditInflableData(null);
+          setUploadEditImagenError("");
+        }}>
+          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+            <Pencil className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+            Editar Inflable
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+              <input type="text" value={editInflableForm.nombre} onChange={e => setEditInflableForm({ ...editInflableForm, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
+              <textarea value={editInflableForm.descripcion} onChange={e => setEditInflableForm({ ...editInflableForm, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio/día (S/) *</label>
+              <input type="number" min={0} value={editInflableForm.precioAlquiler || ""} onChange={e => setEditInflableForm({ ...editInflableForm, precioAlquiler: Number(e.target.value) })} placeholder="350" className={inputClass} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label>
+                <input type="text" value={editInflableForm.dimensiones} onChange={e => setEditInflableForm({ ...editInflableForm, dimensiones: e.target.value })} placeholder="Ej: 6m x 4m x 3m" className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Rango de Edades</label>
+                <input type="text" value={editInflableForm.edadMinima} onChange={e => setEditInflableForm({ ...editInflableForm, edadMinima: e.target.value })} placeholder="Ej: 3 - 12 años" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Imagen</label>
+              <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
+                isUploadingEditImagen || isCleaningEditImagen
+                  ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
+                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#1F3C8B] hover:text-[#1F3C8B]"
+              }`}>
+                <Upload className="w-4 h-4" />
+                <span>{isUploadingEditImagen ? "Subiendo..." : isCleaningEditImagen ? "Limpiando imagen..." : editInflableImagen.name || "Subir nueva imagen"}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isUploadingEditImagen || isCleaningEditImagen}
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void handleEditInflableImagenUpload(f); }}
+                />
+              </label>
+              {uploadEditImagenError && <p className="mt-1 text-xs text-red-500">{uploadEditImagenError}</p>}
+              {editInflableImagen.url && (
+                <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <img src={editInflableImagen.url} alt="Vista previa" className="max-h-48 w-full object-contain bg-black/5" />
+                </div>
+              )}
+            </div>
+            <ModalButtons
+              onCancel={async () => {
+                if (editInflableSubmitting || isUploadingEditImagen || isCleaningEditImagen) return;
+                const ok = await cleanupEditInflableImagen();
+                if (!ok) { setUploadEditImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+                setShowEditInflable(false);
+                setEditInflableData(null);
+                setUploadEditImagenError("");
+              }}
+              onConfirm={handleUpdateInflable}
+              label="Guardar Cambios"
+              submitting={editInflableSubmitting || isCleaningEditImagen}
+            />
           </div>
         </ModalWrapper>
       )}
@@ -1365,77 +1672,6 @@ function renderCalendar(
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800"></div> Agotado</div>
         <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-[#1F3C8B]"></div> Hoy</div>
       </div>
-    </div>
-  );
-}
-
-// ── Inflable day detail renderer ───────────────────────────────────────────
-
-function renderInflableDayDetail(
-  selectedDate: string | null, todayStr: string,
-  getReservasByDate: (d: string) => Reserva[], reservas: Reserva[],
-  inflables: InflableType[], getReservedCount: (id: number, d: string) => number,
-  handleDeleteReserva: (id: number) => void, emojiMap: Record<string, string>
-) {
-  const dateToShow = selectedDate || todayStr;
-  const dayReservas = reservas.filter(r => r.fecha === dateToShow);
-
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-      <h3 className="text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-        <Eye className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
-        {selectedDate
-          ? `Reservas del ${new Date(selectedDate + "T12:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
-          : "Reservas de Hoy"}
-      </h3>
-      {dayReservas.length === 0 ? (
-        <div className="text-center py-8"><Calendar className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-500 dark:text-gray-400 text-sm">No hay reservas para este día</p></div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-            {inflables.map(inf => {
-              const reserved = getReservedCount(inf.id, dateToShow);
-              const avail = inf.cantidadUnidades - reserved;
-              return (
-                <div key={inf.id} className={`text-center p-3 rounded-lg border text-xs ${avail === 0 ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20" : reserved > 0 ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"}`}>
-                  <span className="text-lg">{emojiMap[inf.imagen]}</span>
-                  <p className="text-gray-700 dark:text-gray-300 truncate mt-1">{inf.nombre}</p>
-                  <p className={`mt-1 ${avail === 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>{avail}/{inf.cantidadUnidades}</p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Inflable</th>
-                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
-                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Evento</th>
-                  <th className="text-center py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cant.</th>
-                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Notas</th>
-                  <th className="text-center py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {dayReservas.map(r => {
-                  const inf = inflables.find(i => i.id === r.inflableId);
-                  return (
-                    <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="py-3 px-3"><div className="flex items-center gap-2"><span className="text-lg">{emojiMap[inf?.imagen || ""] || "🎈"}</span><span className="text-gray-900 dark:text-white">{inf?.nombre}</span></div></td>
-                      <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{r.clienteNombre}</td>
-                      <td className="py-3 px-3"><span className="inline-flex px-2 py-1 rounded-full text-xs bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">{r.evento}</span></td>
-                      <td className="py-3 px-3 text-center text-gray-900 dark:text-white">{r.cantidad}</td>
-                      <td className="py-3 px-3 text-gray-500 dark:text-gray-400 text-xs max-w-[140px] truncate">{r.notas || "—"}</td>
-                      <td className="py-3 px-3 text-center"><button onClick={e => { e.stopPropagation(); handleDeleteReserva(r.id); }} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
-import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map } from "lucide-react";
+import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map, FileText, Download } from "lucide-react";
 import { useBrand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { canManageResources } from "../lib/auth";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -26,11 +27,10 @@ interface Vehiculo {
   placa: string;
   modelo: string;
   marca: string; // marca del vehículo (Toyota, Hyundai, etc.)
-  capacidad: number; // en kg
   marcasAsignadas: ("donofrio" | "jugueton")[]; // brands it can serve
   estado: EstadoVehiculo;
   ultimoMantenimiento: string;
-  kmActual: number;
+  fechaVencimientoSoat: string | null;
 }
 
 interface Asignacion {
@@ -91,6 +91,7 @@ function MarcaBadge({ marca }: { marca: "donofrio" | "jugueton" }) {
 // ── Main Component ───────────────────────────────────────────────
 
 export function LogisticsPage() {
+  const canManage = canManageResources();
   const { brand } = useBrand();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"choferes" | "vehiculos" | "asignaciones">("choferes");
@@ -112,16 +113,20 @@ export function LogisticsPage() {
     | null
   >(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [showEditChofer, setShowEditChofer] = useState(false);
+  const [editChoferId, setEditChoferId] = useState<number | null>(null);
+  const [editChoferForm, setEditChoferForm] = useState({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
+  const [editChoferSubmitting, setEditChoferSubmitting] = useState(false);
   const logisticsLockRef = useRef({ chofer: false, vehiculo: false, asignacion: false });
 
   // Chofer form
   const [choferForm, setChoferForm] = useState({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
   // Vehiculo form
-  const [vehiculoForm, setVehiculoForm] = useState({ placa: "", modelo: "", marca: "", capacidad: 0, marcasAsignadas: ["donofrio"] as ("donofrio" | "jugueton")[], estado: "disponible" as EstadoVehiculo, ultimoMantenimiento: "", kmActual: 0 });
+  const [vehiculoForm, setVehiculoForm] = useState({ placa: "", modelo: "", marca: "", marcasAsignadas: ["donofrio"] as ("donofrio" | "jugueton")[], estado: "disponible" as EstadoVehiculo, ultimoMantenimiento: "", fechaVencimientoSoat: "" });
   // Asignacion form
   const [asignacionForm, setAsignacionForm] = useState({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [] as ("donofrio" | "jugueton")[], fichasIds: [] as number[] });
   const [fichasSearch, setFichasSearch] = useState("");
-  const [fichasSort, setFichasSort] = useState<"fecha" | "hora" | "distrito" | "cliente">("fecha");
+  const [fichasSort, setFichasSort] = useState<"hora" | "distrito" | "cliente">("hora");
 
   const isValidChoferPhone = (value: string) => {
     const trimmed = value.trim();
@@ -173,11 +178,10 @@ export function LogisticsPage() {
           placa: v.placa,
           modelo: v.modelo || "",
           marca: v.marca || "",
-          capacidad: v.capacidad_kg || 0,
           marcasAsignadas: v.marcas_asignadas || [],
           estado: v.estado,
           ultimoMantenimiento: v.ultimo_mantenimiento || "",
-          kmActual: v.km_actual || 0,
+          fechaVencimientoSoat: v.fecha_vencimiento_soat || null,
         }))
       );
 
@@ -322,15 +326,14 @@ export function LogisticsPage() {
           placa: vehiculoForm.placa,
           modelo: vehiculoForm.modelo,
           marca: vehiculoForm.marca,
-          capacidad_kg: vehiculoForm.capacidad,
           marcas_asignadas: vehiculoForm.marcasAsignadas,
           estado: vehiculoForm.estado,
           ultimo_mantenimiento: vehiculoForm.ultimoMantenimiento || null,
-          km_actual: vehiculoForm.kmActual || 0,
+          fecha_vencimiento_soat: vehiculoForm.fechaVencimientoSoat || null,
         }),
       });
       setShowAddVehiculo(false);
-      setVehiculoForm({ placa: "", modelo: "", marca: "", capacidad: 0, marcasAsignadas: ["donofrio"], estado: "disponible", ultimoMantenimiento: "", kmActual: 0 });
+      setVehiculoForm({ placa: "", modelo: "", marca: "", marcasAsignadas: ["donofrio"], estado: "disponible", ultimoMantenimiento: "", fechaVencimientoSoat: "" });
       await loadLogisticsData();
     } finally {
       logisticsLockRef.current.vehiculo = false;
@@ -377,6 +380,39 @@ export function LogisticsPage() {
     const vehiculo = vehiculos.find((item) => item.id === id);
     if (!vehiculo) return;
     setDeleteTarget({ kind: "vehiculo", id, placa: vehiculo.placa });
+  };
+
+  const handleOpenEditChofer = (chofer: Chofer) => {
+    setEditChoferId(chofer.id);
+    setEditChoferForm({ nombre: chofer.nombre, dni: chofer.dni, celular: chofer.celular, licencia: chofer.licencia || "A-IIb" });
+    setShowEditChofer(true);
+  };
+
+  const handleUpdateChofer = async () => {
+    const nombre = editChoferForm.nombre.trim();
+    const dni = editChoferForm.dni.trim();
+    const celular = editChoferForm.celular.trim();
+    const licencia = editChoferForm.licencia.trim();
+    if (!editChoferId || editChoferSubmitting) return;
+    if (!nombre) { setError("El nombre completo del chofer es obligatorio."); return; }
+    if (!/^\d{8}$/.test(dni)) { setError("El DNI del chofer debe tener 8 dígitos."); return; }
+    if (!isValidChoferPhone(celular)) { setError("El celular del chofer debe tener entre 7 y 15 dígitos."); return; }
+    if (!licencia) { setError("La licencia es obligatoria para chofer."); return; }
+    setError("");
+    setEditChoferSubmitting(true);
+    try {
+      await apiRequest(`/personal/${editChoferId}`, {
+        method: "PUT",
+        body: JSON.stringify({ nombre_completo: nombre, dni, celular, licencia }),
+      });
+      setShowEditChofer(false);
+      setEditChoferId(null);
+      await loadLogisticsData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar el chofer");
+    } finally {
+      setEditChoferSubmitting(false);
+    }
   };
 
   const confirmDeleteTarget = async () => {
@@ -473,20 +509,23 @@ export function LogisticsPage() {
           })}
         </div>
         {/* Search + Add row */}
+        <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               placeholder={activeTab === "choferes" ? "Buscar por nombre o DNI..." : activeTab === "vehiculos" ? "Buscar por placa o modelo..." : "Buscar asignación..."}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] text-sm" />
           </div>
-          <button onClick={() => {
-            if (activeTab === "choferes") setShowAddChofer(true);
-            else if (activeTab === "vehiculos") setShowAddVehiculo(true);
-            else setShowAddAsignacion(true);
-          }}
-            className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 text-sm whitespace-nowrap">
-            <Plus className="w-4 h-4" /> {activeTab === "choferes" ? "Nuevo Chofer" : activeTab === "vehiculos" ? "Nuevo Vehículo" : "Nueva Asignación"}
-          </button>
+          {canManage && (
+            <button onClick={() => {
+              if (activeTab === "choferes") setShowAddChofer(true);
+              else if (activeTab === "vehiculos") setShowAddVehiculo(true);
+              else setShowAddAsignacion(true);
+            }}
+              className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 text-sm whitespace-nowrap">
+              <Plus className="w-4 h-4" /> {activeTab === "choferes" ? "Nuevo Chofer" : activeTab === "vehiculos" ? "Nuevo Vehículo" : "Nueva Asignación"}
+            </button>
+          )}
         </div>
 
         {/* ── CHOFERES TAB ──────────────────────────────────── */}
@@ -501,7 +540,7 @@ export function LogisticsPage() {
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Licencia</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Estado</th>
                   <th className="text-center px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Rutas</th>
-                  <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>
+                  {canManage && <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -517,12 +556,14 @@ export function LogisticsPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{chofer.licencia}</td>
                     <td className="px-6 py-4"><EstadoChoferBadge estado={chofer.estado} /></td>
                     <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-white">{chofer.rutasCompletadas}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteChofer(chofer.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
+                    {canManage && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => handleOpenEditChofer(chofer)} className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteChofer(chofer.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -540,12 +581,11 @@ export function LogisticsPage() {
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-700/50">
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Vehículo</th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Capacidad</th>
+                  <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Vencimiento SOAT</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Marcas</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Estado</th>
                   <th className="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Último Mantenimiento</th>
-                  <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Km Actual</th>
-                  <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>
+                  {canManage && <th className="text-right px-6 py-3 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -562,17 +602,18 @@ export function LogisticsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{vehiculo.capacidad.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{vehiculo.fechaVencimientoSoat || "—"}</td>
                     <td className="px-6 py-4"><div className="flex gap-1">{vehiculo.marcasAsignadas.map(m => <MarcaBadge key={m} marca={m} />)}</div></td>
                     <td className="px-6 py-4"><EstadoVehiculoBadge estado={vehiculo.estado} /></td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{vehiculo.ultimoMantenimiento}</td>
-                    <td className="px-6 py-4 text-right text-sm text-gray-600 dark:text-gray-400 font-mono">{vehiculo.kmActual.toLocaleString()}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteVehiculo(vehiculo.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
+                    {canManage && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteVehiculo(vehiculo.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -612,6 +653,127 @@ export function LogisticsPage() {
                   },
                 });
               };
+
+              const handleGenerarHojaRuta = async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                try {
+                  const chofer = choferes.find(c => c.id === asig.choferId);
+                  const vehiculo = vehiculos.find(v => v.id === asig.vehiculoId);
+                  
+                  // Fetch full ficha details for each ID
+                  const fullFichas = await Promise.all(
+                    asig.fichasIds.map(id => apiRequest<any>(`/fichas/${id}`))
+                  );
+
+                  const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");
+                  if (!popup) return;
+
+                  const escapeHtml = (val: string) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+                  const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+
+                  const rowsHtml = fullFichas.map((f, idx) => {
+                    const total = Number(f.cotizacion || 0) * (1 - Number(f.descuento || 0) / 100);
+                    const abonado = (f.abonos || []).reduce((s: number, a: any) => s + Number(a.monto || 0), 0);
+                    const saldo = Math.max(0, total - abonado);
+                    
+                    const paquetesStr = (f.paquetes || []).map((p: any) => `${p.cantidad}x ${p.paquete_nombre}`).join(", ");
+                    const productosStr = (f.productosSueltos || []).map((p: any) => `${p.cantidad}x ${p.producto_nombre}`).join(", ");
+                    const itemsStr = [paquetesStr, productosStr].filter(Boolean).join(" | ");
+
+                    return `
+                      <tr>
+                        <td style="text-align:center;">${idx + 1}</td>
+                        <td>
+                          <strong>${escapeHtml(f.cliente_nombre)}</strong><br/>
+                          <small>${escapeHtml(f.cliente_celular)}</small>
+                        </td>
+                        <td>
+                          ${escapeHtml(f.direccion)}, ${escapeHtml(f.distrito)}<br/>
+                          <small>Ref: ${escapeHtml(f.referencia || "-")}</small>
+                        </td>
+                        <td style="text-align:center;">
+                          ${escapeHtml(f.hora_entrega)}<br/>
+                          <small>Recojo: ${escapeHtml(f.hora_recojo)}</small>
+                        </td>
+                        <td>${escapeHtml(itemsStr || "Sin items")}</td>
+                        <td style="text-align:right; font-weight:bold; color:${saldo > 0 ? "#e11d48" : "#16a34a"};">
+                          ${formatMoney(saldo)}
+                        </td>
+                      </tr>
+                    `;
+                  }).join("");
+
+                  const html = `
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <meta charset="UTF-8">
+                        <title>Hoja de Ruta - ${asig.ruta}</title>
+                        <style>
+                          body { font-family: sans-serif; color: #333; margin: 20px; font-size: 12px; }
+                          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #EF8022; padding-bottom: 10px; }
+                          .header h1 { margin: 0; color: #EF8022; font-size: 24px; }
+                          .meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
+                          .meta div b { display: block; color: #666; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+                          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                          th { background: #f2f2f2; font-weight: bold; }
+                          .actions { position: sticky; top: 0; background: white; padding: 10px; display: flex; justify-content: center; gap: 10px; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+                          button { padding: 8px 16px; cursor: pointer; background: #EF8022; color: white; border: none; border-radius: 4px; }
+                          button.secondary { background: #666; }
+                          @media print { .actions { display: none; } body { margin: 0; } }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="actions">
+                          <button onclick="window.print()">Imprimir / Guardar PDF</button>
+                          <button class="secondary" onclick="window.close()">Cerrar</button>
+                        </div>
+                        <div class="header">
+                          <div>
+                            <h1>Hoja de Ruta</h1>
+                            <p style="margin: 5px 0 0;">${escapeHtml(asig.ruta || "Ruta General")}</p>
+                          </div>
+                          <div style="text-align: right;">
+                            <p><b>Fecha:</b> ${asig.fecha}</p>
+                            <p><b>ID Asignación:</b> #${asig.id}</p>
+                          </div>
+                        </div>
+                        <div class="meta">
+                          <div><b>Chofer</b> ${escapeHtml(chofer?.nombre || "-")}<br/>DNI: ${chofer?.dni} · Cel: ${chofer?.celular}</div>
+                          <div><b>Vehículo</b> ${escapeHtml(vehiculo?.marca)} ${escapeHtml(vehiculo?.modelo)}<br/>Placa: ${vehiculo?.placa}</div>
+                          <div><b>Resumen</b> ${asig.fichasIds.length} entregas<br/>Marcas: ${asig.marcaEntregas.join(", ").toUpperCase()}</div>
+                        </div>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th style="width: 30px;">#</th>
+                              <th>Cliente</th>
+                              <th>Dirección</th>
+                              <th style="width: 100px;">Horario</th>
+                              <th>Items</th>
+                              <th style="width: 80px;">Saldo</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${rowsHtml}
+                          </tbody>
+                        </table>
+                        <div style="margin-top: 30px; border-top: 1px dashed #ccc; padding-top: 10px; color: #666;">
+                          <p><b>Comentarios de Ruta:</b> ________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________</p>
+                        </div>
+                      </body>
+                    </html>
+                  `;
+
+                  popup.document.open();
+                  popup.document.write(html);
+                  popup.document.close();
+                } catch (err) {
+                  alert("Error al generar la hoja de ruta");
+                }
+              };
+
               return (
                 <div key={asig.id}
                   onClick={enCurso ? handleVerEnMapa : undefined}
@@ -631,6 +793,13 @@ export function LogisticsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleGenerarHojaRuta}
+                        className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 rounded-lg transition-colors"
+                        title="Descargar Hoja de Ruta"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
                       <span className={`text-xs px-2.5 py-1 rounded-full ${e.bg} ${e.text}`}>{e.label}</span>
                       {enCurso && (
                         <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-blue-500 text-white">
@@ -700,6 +869,45 @@ export function LogisticsPage() {
           </div>
         )}
       </div>
+    </div>
+
+      {/* ── EDIT CHOFER MODAL ───────────────────────────────── */}
+      {showEditChofer && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setShowEditChofer(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><User className="w-5 h-5 text-[#EF8022]" /> Editar Chofer</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
+                  <input type="text" value={editChoferForm.nombre} onChange={e => setEditChoferForm(p => ({ ...p, nombre: e.target.value }))} className={inputClass} placeholder="Ej: Carlos Mendoza" /></div>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">DNI *</label>
+                  <input type="text" value={editChoferForm.dni} onChange={e => setEditChoferForm(p => ({ ...p, dni: e.target.value.replace(/\D/g, "").slice(0, 8) }))} maxLength={8} className={inputClass} placeholder="Ej: 45678923" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Celular *</label>
+                  <input type="tel" value={editChoferForm.celular} onChange={e => setEditChoferForm(p => ({ ...p, celular: e.target.value }))} className={inputClass} placeholder="Ej: 987 654 321" /></div>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Categoría Licencia *</label>
+                  <select value={editChoferForm.licencia} onChange={e => setEditChoferForm(p => ({ ...p, licencia: e.target.value }))} className={inputClass}>
+                    <option value="A-IIb">A-IIb (Camioneta)</option>
+                    <option value="A-IIIa">A-IIIa (Camión liviano)</option>
+                    <option value="A-IIIb">A-IIIb (Camión pesado)</option>
+                  </select></div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowEditChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                <button
+                  onClick={handleUpdateChofer}
+                  disabled={!editChoferForm.nombre.trim() || !/^\d{8}$/.test(editChoferForm.dni) || !isValidChoferPhone(editChoferForm.celular) || !editChoferForm.licencia.trim() || editChoferSubmitting}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editChoferSubmitting ? "Guardando..." : "Actualizar Chofer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── ADD CHOFER MODAL ────────────────────────────────── */}
       {showAddChofer && (
@@ -756,12 +964,16 @@ export function LogisticsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Modelo *</label>
                   <input type="text" value={vehiculoForm.modelo} onChange={e => setVehiculoForm(p => ({ ...p, modelo: e.target.value }))} className={inputClass} placeholder="Ej: Hilux 2023" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Capacidad (kg)</label>
-                  <input type="number" value={vehiculoForm.capacidad || ""} onChange={e => setVehiculoForm(p => ({ ...p, capacidad: Number(e.target.value) }))} className={inputClass} placeholder="1200" /></div>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Vencimiento SOAT</label>
+                  <input type="date" value={vehiculoForm.fechaVencimientoSoat} onChange={e => setVehiculoForm(p => ({ ...p, fechaVencimientoSoat: e.target.value }))} className={inputClass} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Km Actual</label>
-                  <input type="number" value={vehiculoForm.kmActual || ""} onChange={e => setVehiculoForm(p => ({ ...p, kmActual: Number(e.target.value) }))} className={inputClass} placeholder="45000" /></div>
+                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Estado</label>
+                   <select value={vehiculoForm.estado} onChange={e => setVehiculoForm(p => ({ ...p, estado: e.target.value as EstadoVehiculo }))} className={inputClass}>
+                     <option value="disponible">Disponible</option>
+                     <option value="en-ruta">En Ruta</option>
+                     <option value="mantenimiento">Mantenimiento</option>
+                   </select></div>
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Último Mantenimiento</label>
                   <input type="date" value={vehiculoForm.ultimoMantenimiento} onChange={e => setVehiculoForm(p => ({ ...p, ultimoMantenimiento: e.target.value }))} className={inputClass} /></div>
               </div>
@@ -824,7 +1036,7 @@ export function LogisticsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Fecha *</label>
-                  <input type="date" value={asignacionForm.fecha} onChange={e => setAsignacionForm(p => ({ ...p, fecha: e.target.value }))} className={inputClass} /></div>
+                  <input type="date" value={asignacionForm.fecha} onChange={e => setAsignacionForm(p => ({ ...p, fecha: e.target.value, fichasIds: [] }))} className={inputClass} /></div>
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">N.º de Entregas</label>
                   <input type="number" value={asignacionForm.entregas || ""} onChange={e => setAsignacionForm(p => ({ ...p, entregas: Number(e.target.value) }))} className={inputClass} min={0} /></div>
               </div>
@@ -861,7 +1073,6 @@ export function LogisticsPage() {
                     onChange={e => setFichasSort(e.target.value as typeof fichasSort)}
                     className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
-                    <option value="fecha">Fecha</option>
                     <option value="hora">Hora entrega</option>
                     <option value="distrito">Distrito</option>
                     <option value="cliente">Cliente</option>
@@ -871,13 +1082,13 @@ export function LogisticsPage() {
                 <div className="space-y-1.5 max-h-52 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2">
                   {[...fichasRutas]
                     .filter(f =>
-                      fichasSearch === "" ||
-                      f.clienteNombre.toLowerCase().includes(fichasSearch.toLowerCase()) ||
-                      f.distrito.toLowerCase().includes(fichasSearch.toLowerCase()) ||
-                      f.direccion.toLowerCase().includes(fichasSearch.toLowerCase())
+                      (f.fecha || "").split("T")[0] === asignacionForm.fecha &&
+                      (fichasSearch === "" ||
+                        f.clienteNombre.toLowerCase().includes(fichasSearch.toLowerCase()) ||
+                        f.distrito.toLowerCase().includes(fichasSearch.toLowerCase()) ||
+                        f.direccion.toLowerCase().includes(fichasSearch.toLowerCase()))
                     )
                     .sort((a, b) => {
-                      if (fichasSort === "fecha") return a.fecha.localeCompare(b.fecha);
                       if (fichasSort === "hora") return a.horaEntrega.localeCompare(b.horaEntrega);
                       if (fichasSort === "distrito") return a.distrito.localeCompare(b.distrito);
                       return a.clienteNombre.localeCompare(b.clienteNombre);
@@ -921,11 +1132,15 @@ export function LogisticsPage() {
                       </label>
                     );
                   })}
-                  {fichasSearch !== "" && fichasRutas.every(f =>
+                  {fichasRutas.filter(f => (f.fecha || "").split("T")[0] === asignacionForm.fecha).length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">No hay fichas para esta fecha</p>
+                  )}
+                  {fichasSearch !== "" && fichasRutas.filter(f =>
+                    (f.fecha || "").split("T")[0] === asignacionForm.fecha &&
                     !f.clienteNombre.toLowerCase().includes(fichasSearch.toLowerCase()) &&
                     !f.distrito.toLowerCase().includes(fichasSearch.toLowerCase()) &&
                     !f.direccion.toLowerCase().includes(fichasSearch.toLowerCase())
-                  ) && (
+                  ).length > 0 && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">Sin resultados para "{fichasSearch}"</p>
                   )}
                 </div>

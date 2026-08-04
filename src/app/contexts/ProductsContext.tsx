@@ -15,6 +15,7 @@ export interface Product {
   producto: string;
   sku: string;
   precio: number;
+  brand: "donofrio" | "jugueton";
 }
 
 export interface Recurso {
@@ -59,12 +60,16 @@ export interface Paquete {
   nombre: string;
   contenido: PaqueteItem[];
   precioUnitario: number;
+  tipo: string;
+  brand: "donofrio" | "jugueton";
 }
 
 export interface PaqueteInput {
   nombre: string;
   contenido: PaqueteItem[];
   precioUnitario: number;
+  tipo: string;
+  brand: "donofrio" | "jugueton";
 }
 
 export interface Carrito {
@@ -283,6 +288,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         producto: product.producto,
         sku: product.sku,
         precio: Number(product.precio || 0),
+        brand: product.brand,
       }),
     });
 
@@ -308,6 +314,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         producto: product.producto,
         precio: Number(product.precio || 0),
         sku: product.sku,
+        brand: product.brand,
       }),
     });
 
@@ -389,6 +396,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({
         nombre: paquete.nombre,
         precio_unitario: paquete.precioUnitario,
+        tipo: paquete.tipo,
+        brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
       }),
     });
@@ -403,6 +412,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         id,
         nombre: paquete.nombre,
         precio_unitario: paquete.precioUnitario,
+        tipo: paquete.tipo,
+        brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
       }),
     });

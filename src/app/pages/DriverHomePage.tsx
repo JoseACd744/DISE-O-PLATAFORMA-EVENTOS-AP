@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigation, MapPin, Clock3, CheckCircle2, PlayCircle, PauseCircle, AlertCircle } from "lucide-react";
+import { Navigation, MapPin, Clock3, CheckCircle2, PlayCircle, PauseCircle, AlertCircle, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
 import { getAuthUser } from "../lib/auth";
 
@@ -163,6 +163,121 @@ export function DriverHomePage() {
     }
   };
 
+  const handleGenerarHojaRuta = async (asig: Assignment) => {
+    try {
+      // Fetch full ficha details for each ID
+      const fullFichas = await Promise.all(
+        asig.fichas_ids.map(id => apiRequest<any>(`/fichas/${id}`))
+      );
+
+      const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");
+      if (!popup) return;
+
+      const escapeHtml = (val: string) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+
+      const rowsHtml = fullFichas.map((f, idx) => {
+        const total = Number(f.cotizacion || 0) * (1 - Number(f.descuento || 0) / 100);
+        const abonado = (f.abonos || []).reduce((s: number, a: any) => s + Number(a.monto || 0), 0);
+        const saldo = Math.max(0, total - abonado);
+        
+        const paquetesStr = (f.paquetes || []).map((p: any) => `${p.cantidad}x ${p.paquete_nombre}`).join(", ");
+        const productosStr = (f.productosSueltos || []).map((p: any) => `${p.cantidad}x ${p.producto_nombre}`).join(", ");
+        const itemsStr = [paquetesStr, productosStr].filter(Boolean).join(" | ");
+
+        return `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td>
+              <strong>${escapeHtml(f.cliente_nombre)}</strong><br/>
+              <small>${escapeHtml(f.cliente_celular)}</small>
+            </td>
+            <td>
+              ${escapeHtml(f.direccion)}, ${escapeHtml(f.distrito)}<br/>
+              <small>Ref: ${escapeHtml(f.referencia || "-")}</small>
+            </td>
+            <td style="text-align:center;">
+              ${escapeHtml(f.hora_entrega)}<br/>
+              <small>Recojo: ${escapeHtml(f.hora_recojo)}</small>
+            </td>
+            <td>${escapeHtml(itemsStr || "Sin items")}</td>
+            <td style="text-align:right; font-weight:bold; color:${saldo > 0 ? "#e11d48" : "#16a34a"};">
+              ${formatMoney(saldo)}
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Hoja de Ruta - ${asig.ruta}</title>
+            <style>
+              body { font-family: sans-serif; color: #333; margin: 20px; font-size: 12px; }
+              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #1F3C8B; padding-bottom: 10px; }
+              .header h1 { margin: 0; color: #1F3C8B; font-size: 24px; }
+              .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
+              .meta div b { display: block; color: #666; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background: #f2f2f2; font-weight: bold; }
+              .actions { position: sticky; top: 0; background: white; padding: 10px; display: flex; justify-content: center; gap: 10px; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+              button { padding: 8px 16px; cursor: pointer; background: #1F3C8B; color: white; border: none; border-radius: 4px; }
+              button.secondary { background: #666; }
+              @media print { .actions { display: none; } body { margin: 0; } }
+            </style>
+          </head>
+          <body>
+            <div class="actions">
+              <button onclick="window.print()">Imprimir / Guardar PDF</button>
+              <button class="secondary" onclick="window.close()">Cerrar</button>
+            </div>
+            <div class="header">
+              <div>
+                <h1>Hoja de Ruta</h1>
+                <p style="margin: 5px 0 0;">${escapeHtml(asig.ruta || "Ruta General")}</p>
+              </div>
+              <div style="text-align: right;">
+                <p><b>Fecha:</b> ${asig.fecha}</p>
+                <p><b>ID Asignación:</b> #${asig.id}</p>
+              </div>
+            </div>
+            <div class="meta">
+              <div><b>Chofer</b> ${escapeHtml(authUser?.nombre || "-")}</div>
+              <div><b>Vehículo</b> Placa: ${asig.vehiculo?.placa || "-"} · ${asig.vehiculo?.modelo || ""}</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 30px;">#</th>
+                  <th>Cliente</th>
+                  <th>Dirección</th>
+                  <th style="width: 100px;">Horario</th>
+                  <th>Items</th>
+                  <th style="width: 80px;">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            <div style="margin-top: 30px; border-top: 1px dashed #ccc; padding-top: 10px; color: #666;">
+              <p><b>Comentarios de Ruta:</b> ________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      popup.document.open();
+      popup.document.write(html);
+      popup.document.close();
+    } catch (err) {
+      alert("Error al generar la hoja de ruta");
+    }
+  };
+
   const summary = useMemo(() => {
     const inRoute = assignments.filter((a) => a.estado === "en-curso").length;
     const done = assignments.filter((a) => a.estado === "completada").length;
@@ -239,7 +354,16 @@ export function DriverHomePage() {
                     {assignment.fecha} · {assignment.vehiculo?.placa || "Sin vehiculo"}
                   </p>
                 </div>
-                <StatusPill status={assignment.estado} />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleGenerarHojaRuta(assignment)}
+                    className="p-1.5 text-gray-400 hover:text-[#1F3C8B] hover:bg-[#1F3C8B]/10 rounded-lg transition-colors"
+                    title="Descargar Hoja de Ruta"
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                  <StatusPill status={assignment.estado} />
+                </div>
               </div>
 
               <div className="space-y-2">

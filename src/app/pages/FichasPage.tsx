@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download } from "lucide-react";
+import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings } from "lucide-react";
 import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { DateRangePicker } from "../components/DateRangePicker";
@@ -7,6 +7,8 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
 import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
+import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
+import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
 
 // ── Financial types ──────────────────────────────────────────────
 
@@ -58,10 +60,13 @@ interface Ficha {
   distrito: string;
   transporte?: "cumpleanos" | "corporativo" | "delivery";
   costo_envio?: number;
+  descuento_movilidad?: number;
   direccion: string;
   referencia?: string;
   hora_entrega: string;
+  hora_entrega_fin?: string;
   hora_recojo: string;
+  hora_recojo_fin?: string;
   paquetes: FichaPaquete[];
   productosSueltos: FichaProductoSuelto[];
   carritoIds?: number[];
@@ -80,6 +85,8 @@ interface Ficha {
   abonos: Abono[];
   // Brand identifier
   brand: "donofrio" | "jugueton";
+  created_by?: string;
+  created_by_nombre?: string;
 }
 
 interface FichaFormData {
@@ -88,10 +95,13 @@ interface FichaFormData {
   distrito: string;
   transporte: "cumpleanos" | "corporativo" | "delivery";
   costo_envio: number;
+  descuento_movilidad: number;
   direccion: string;
   referencia: string;
   hora_entrega: string;
+  hora_entrega_fin: string;
   hora_recojo: string;
+  hora_recojo_fin: string;
   comentarios: string;
   cliente_nombre: string;
   cliente_celular: string;
@@ -114,10 +124,13 @@ const getInitialFormData = (): FichaFormData => ({
   distrito: "",
   transporte: "cumpleanos",
   costo_envio: 0,
+  descuento_movilidad: 0,
   direccion: "",
   referencia: "",
   hora_entrega: "",
+  hora_entrega_fin: "",
   hora_recojo: "",
+  hora_recojo_fin: "",
   comentarios: "",
   cliente_nombre: "",
   cliente_celular: "",
@@ -177,6 +190,11 @@ function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["tran
   return tarifa.costo_cumpleanos;
 }
 
+function formatHoraRango(inicio?: string, fin?: string): string {
+  if (!inicio) return "-";
+  return fin ? `${inicio} - ${fin}` : inicio;
+}
+
 function labelTransporte(t?: string): string {
   if (t === "cumpleanos") return "Cumpleaños";
   if (t === "corporativo") return "Corporativo";
@@ -188,7 +206,8 @@ function labelTransporte(t?: string): string {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-function getTotal(f: Ficha) { return f.cotizacion - f.descuento; }
+function getDescuentoMonto(f: Ficha) { return f.cotizacion * ((f.descuento || 0) / 100); }
+function getTotal(f: Ficha) { return f.cotizacion - getDescuentoMonto(f); }
 function getTotalAbonado(f: Ficha) { return f.abonos.reduce((s, a) => s + a.monto, 0); }
 function getSaldo(f: Ficha) { return getTotal(f) - getTotalAbonado(f); }
 function getEstadoPago(f: Ficha): EstadoPago {
@@ -250,6 +269,28 @@ function getBrandMeta(brand: Ficha["brand"]) {
         logoClass: "w-4 h-4 rounded-full object-cover",
         miniLogoInlineStyle: "width:18px; height:18px; border-radius:999px; object-fit:cover;",
       };
+}
+
+function TransporteBadge({ transporte }: { transporte?: string }) {
+  if (transporte === "corporativo") {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-700">
+        Corporativo
+      </span>
+    );
+  }
+  if (transporte === "delivery") {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 ring-1 ring-teal-200 dark:ring-teal-700">
+        Delivery
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 ring-1 ring-pink-200 dark:ring-pink-700">
+      Cumpleaños
+    </span>
+  );
 }
 
 function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
@@ -599,6 +640,18 @@ export function FichasPage() {
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
   const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
   const [clients, setClients] = useState<ExistingClient[]>([]);
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [isSavingNewClient, setIsSavingNewClient] = useState(false);
+  const [newClientError, setNewClientError] = useState("");
+  const [newClientForm, setNewClientForm] = useState({
+    nombre: "",
+    razonSocial: "",
+    dniRuc: "",
+    email: "",
+    telefono: "",
+    direccion: "",
+    ciudad: "",
+  });
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
@@ -610,9 +663,25 @@ export function FichasPage() {
   const [carritoConflicts, setCarritoConflicts] = useState<CarritoConflict[] | null>(null);
   const [inflableConflicts, setInflableConflicts] = useState<InflableConflict[] | null>(null);
   const [carritoCalendarId, setCarritoCalendarId] = useState<number | null>(null);
+  const [descuentoMaxPct, setDescuentoMaxPctState] = useState<number>(() => getDescuentoMaxPct());
+  const [editingDescuentoCap, setEditingDescuentoCap] = useState(false);
+  const [descuentoCapDraft, setDescuentoCapDraft] = useState("");
+
+  const isAdmin = isAdminUser();
+  const isVendedor = isVendedorUser();
+  const currentUserId = getAuthUser()?.id;
+  const canEditFicha = (ficha: Ficha) => !isVendedor || ficha.created_by === currentUserId;
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, allProducts, productNames, carritos, inflables, personales, recursos, reloadData } = useProducts();
+  const { paquetes: contextPaquetes, allProducts, carritos, inflables, personales, recursos, reloadData } = useProducts();
+
+  // Productos y nombres de la marca activa únicamente
+  const productsDeLaMarca = useMemo(() => allProducts.filter((p) => p.brand === brand), [allProducts, brand]);
+  const productNames = useMemo(() => {
+    const names = productsDeLaMarca.map((p) => p.producto);
+    const extra = brand === "donofrio" ? ["Termo de helado (5L)", "Termo de helado (10L)"] : [];
+    return [...new Set([...names, ...extra])];
+  }, [productsDeLaMarca, brand]);
 
   const refreshFichasAndCatalogs = async () => {
     await Promise.all([loadFichas(), reloadData()]);
@@ -689,7 +758,7 @@ export function FichasPage() {
     }, 0);
 
     const totalProductos = formData.productosSueltos.reduce((sum, producto) => {
-      const catalogo = allProducts.find((item) => item.producto === producto.productoNombre);
+      const catalogo = productsDeLaMarca.find((item) => item.producto === producto.productoNombre);
       return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(producto.cantidad)));
     }, 0);
 
@@ -710,10 +779,10 @@ export function FichasPage() {
       return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(recurso.cantidad)));
     }, 0);
 
-    const totalTransporte = toMoneyNumber(formData.costo_envio);
+    const totalTransporte = toMoneyNumber(formData.costo_envio) * (1 - (toMoneyNumber(formData.descuento_movilidad) / 100));
 
     return Math.max(0, totalPaquetes + totalProductos + totalCarritos + totalInflables + totalRecursos + totalTransporte);
-  }, [allProducts, brand, carritos, contextPaquetes, formData.carritoIds, formData.costo_envio, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, inflables, recursos]);
+  }, [productsDeLaMarca, brand, carritos, contextPaquetes, formData.carritoIds, formData.costo_envio, formData.descuento_movilidad, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, inflables, recursos]);
 
   useEffect(() => {
     if (cotizacionMode !== "auto") return;
@@ -738,10 +807,13 @@ export function FichasPage() {
         distrito: f.distrito || "",
         transporte: (f.transporte || f.tipo_transporte || "cumpleanos") as "cumpleanos" | "corporativo" | "delivery",
         costo_envio: Number(f.costo_envio || 0),
+        descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
         direccion: f.direccion || "",
         referencia: f.referencia || "",
         hora_entrega: f.hora_entrega || "",
+        hora_entrega_fin: f.hora_entrega_fin || "",
         hora_recojo: f.hora_recojo || "",
+        hora_recojo_fin: f.hora_recojo_fin || "",
         paquetes: (f.paquetes || []).map((p: any) => ({
           paqueteId: p.paquete_id || 0,
           paqueteNombre: p.paquete_nombre || "",
@@ -772,6 +844,8 @@ export function FichasPage() {
         cotizacion: toMoneyNumber(f.cotizacion),
         descuento: toMoneyNumber(f.descuento),
         brand: f.brand,
+        created_by: f.created_by || "",
+        created_by_nombre: f.created_by_nombre || "",
         abonos: (f.abonos || []).map((a: any) => ({
           id: a.id,
           fecha: a.fecha,
@@ -834,8 +908,9 @@ export function FichasPage() {
       })
       .catch(() => setTarifaCache(null));
   }, [formData.distrito, showAddModal]);
-  // Catálogo de paquetes ahora global (sin separación por marca)
+  // Catálogo de paquetes filtrado por la marca activa
   const paquetesDisponibles = contextPaquetes
+    .filter(p => p.brand === brand)
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
 
   const distritos = distritosOptions.length > 0
@@ -861,7 +936,7 @@ export function FichasPage() {
   // Financial stats
   const stats = useMemo(() => {
     const ventaTotal = fichas.reduce((s, f) => s + f.cotizacion, 0);
-    const descuentos = fichas.reduce((s, f) => s + f.descuento, 0);
+    const descuentos = fichas.reduce((s, f) => s + getDescuentoMonto(f), 0);
     const totalAbonado = fichas.reduce((s, f) => s + getTotalAbonado(f), 0);
     const saldoPendiente = fichas.reduce((s, f) => s + Math.max(0, getSaldo(f)), 0);
     const pagadas = fichas.filter(f => getEstadoPago(f) === "pagado").length;
@@ -963,7 +1038,7 @@ export function FichasPage() {
     });
 
     const lineasSueltos = ficha.productosSueltos.map((p, index) => {
-      const catalogo = allProducts.find((item) => item.producto === p.productoNombre);
+      const catalogo = productsDeLaMarca.find((item) => item.producto === p.productoNombre);
       const precioUnitario = catalogo?.precio ?? 0;
       return {
         item: lineasPaquetes.length + index + 1,
@@ -1343,8 +1418,10 @@ export function FichasPage() {
             </section>
 
             <div class="hora-box">
-              <span>HORA:</span>
-              <strong>${escapeHtml(ficha.hora_entrega)} - ${escapeHtml(ficha.hora_recojo)}</strong>
+              <span>ENTREGA:</span>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin))}</strong>
+              <span>RECOJO:</span>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin))}</strong>
             </div>
 
             <table>
@@ -1429,24 +1506,6 @@ export function FichasPage() {
         total: r.subtotal,
         destacado: r.subtotal > 0,
       })),
-      ...(carritoDetalle.length > 0
-        ? [{
-            cantidad: carritoDetalle.length,
-            descripcion: `Carritos: ${carritoDetalle.join(" | ")}`,
-            pu: 0,
-            total: 0,
-            destacado: false,
-          }]
-        : []),
-      ...(personalDetalle.length > 0
-        ? [{
-            cantidad: personalDetalle.length,
-            descripcion: `Personal: ${personalDetalle.join(" | ")}`,
-            pu: 0,
-            total: 0,
-            destacado: false,
-          }]
-        : []),
       {
         cantidad: 1,
         descripcion: `Costo de transporte a ${ficha.distrito}`,
@@ -1787,7 +1846,8 @@ export function FichasPage() {
       setCotizacionMode("manual");
       setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
     } else if (name === "descuento") {
-      setFormData((prev) => ({ ...prev, descuento: Number(value) || 0 }));
+      const clamped = Math.min(Math.max(Number(value) || 0, 0), descuentoMaxPct);
+      setFormData((prev) => ({ ...prev, descuento: clamped }));
     } else if (name === "transporte" && tarifaCache) {
       const newTransporte = value as FichaFormData["transporte"];
       setFormData((prev) => ({
@@ -1797,6 +1857,9 @@ export function FichasPage() {
       }));
     } else if (name === "costo_envio") {
       setFormData((prev) => ({ ...prev, costo_envio: Number(value) || 0 }));
+    } else if (name === "descuento_movilidad") {
+      const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
+      setFormData((prev) => ({ ...prev, descuento_movilidad: clamped }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -1806,6 +1869,43 @@ export function FichasPage() {
       void refreshFichasAndCatalogs().finally(() => {
         dateRefreshLockRef.current = false;
       });
+    }
+  };
+
+  useEffect(() => {
+    const fetchDiscountCap = async () => {
+      try {
+        const res = await apiRequest<{ value: number }>("/settings/descuento-max");
+        if (res && typeof res.value === "number") {
+          setDescuentoMaxPctState(res.value);
+          setDescuentoMaxPct(res.value);
+        }
+      } catch (err) {
+        console.error("Error loading discount cap:", err);
+      }
+    };
+    fetchDiscountCap();
+  }, []);
+
+  const handleStartEditDescuentoCap = () => {
+    setDescuentoCapDraft(String(descuentoMaxPct));
+    setEditingDescuentoCap(true);
+  };
+
+  const handleSaveDescuentoCap = async () => {
+    try {
+      const value = Math.min(100, Math.max(0, Number(descuentoCapDraft) || 0));
+      await apiRequest("/settings/descuento-max", {
+        method: "PUT",
+        body: JSON.stringify({ value }),
+      });
+      setDescuentoMaxPctState(value);
+      setDescuentoMaxPct(value);
+      setEditingDescuentoCap(false);
+      setFormData((prev) => ({ ...prev, descuento: Math.min(prev.descuento, value) }));
+    } catch (err) {
+      console.error("Error saving discount cap:", err);
+      setError("No se pudo guardar el tope de descuento global");
     }
   };
 
@@ -1823,6 +1923,55 @@ export function FichasPage() {
       cliente_celular: selectedClient.telefono || prev.cliente_celular,
       contacto_nombre: selectedClient.razon_social || prev.contacto_nombre,
     }));
+  };
+
+  const handleOpenNewClientModal = () => {
+    setNewClientForm({ nombre: "", razonSocial: "", dniRuc: "", email: "", telefono: "", direccion: "", ciudad: "" });
+    setNewClientError("");
+    setShowNewClientModal(true);
+  };
+
+  const handleCreateClientInline = async () => {
+    if (!newClientForm.nombre || !newClientForm.telefono) {
+      setNewClientError("Nombre y teléfono son obligatorios");
+      return;
+    }
+    if (isSavingNewClient) return;
+
+    setIsSavingNewClient(true);
+    setNewClientError("");
+    try {
+      const created = await apiRequest<{ id: string }>("/clients", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: newClientForm.nombre,
+          razon_social: newClientForm.razonSocial || null,
+          dni_ruc: newClientForm.dniRuc || null,
+          email: newClientForm.email || null,
+          telefono: newClientForm.telefono,
+          direccion: newClientForm.direccion || null,
+          ciudad: newClientForm.ciudad || null,
+          canal: "Referidos",
+          status: "active",
+          creado_por: brand,
+        }),
+      });
+
+      await loadClients();
+      if (created?.id) {
+        setFormData((prev) => ({
+          ...prev,
+          cliente_id: created.id,
+          cliente_nombre: newClientForm.nombre,
+          cliente_celular: newClientForm.telefono,
+        }));
+      }
+      setShowNewClientModal(false);
+    } catch (err) {
+      setNewClientError(err instanceof Error ? err.message : "No se pudo crear el cliente");
+    } finally {
+      setIsSavingNewClient(false);
+    }
   };
 
   const handleAddFormPaquete = () => {
@@ -1972,15 +2121,18 @@ export function FichasPage() {
 
   const handleOpenEditModal = (ficha: Ficha) => {
     setFormData({
-      fecha_evento: ficha.fecha_evento || ficha.fecha || "",
-      fecha_reserva: ficha.fecha_reserva || ficha.fecha || "",
+      fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
+      fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
       distrito: ficha.distrito || "",
       transporte: ficha.transporte || "cumpleanos",
       costo_envio: ficha.costo_envio || 0,
+      descuento_movilidad: ficha.descuento_movilidad || 0,
       direccion: ficha.direccion || "",
       referencia: ficha.referencia || "",
       hora_entrega: ficha.hora_entrega || "",
+      hora_entrega_fin: ficha.hora_entrega_fin || "",
       hora_recojo: ficha.hora_recojo || "",
+      hora_recojo_fin: ficha.hora_recojo_fin || "",
       comentarios: ficha.comentarios || "",
       cliente_nombre: ficha.cliente_nombre || "",
       cliente_celular: ficha.cliente_celular || "",
@@ -2048,8 +2200,10 @@ export function FichasPage() {
       transporte: formData.transporte,
       direccion: formData.direccion,
       referencia: formData.referencia,
-      hora_entrega: formData.hora_entrega,
-      hora_recojo: formData.hora_recojo,
+      hora_entrega: formData.hora_entrega || null,
+      hora_entrega_fin: formData.hora_entrega_fin || null,
+      hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
+      hora_recojo_fin: formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
       comentarios: formData.comentarios,
       cliente_id: formData.cliente_id || null,
       cliente_nombre: formData.cliente_nombre,
@@ -2059,13 +2213,15 @@ export function FichasPage() {
       cotizacion: Number(formData.cotizacion),
       descuento: toMoneyNumber(formData.descuento),
       costo_envio: toMoneyNumber(formData.costo_envio),
+      descuento_movilidad: toMoneyNumber(formData.descuento_movilidad),
       brand,
+      created_by: getAuthUser()?.id,
       paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
       productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
-      carritoIds: formData.carritoIds.filter((carritoId) => carritoId > 0),
-      inflableIds: brand === "jugueton" ? formData.inflableIds : [],
-      personalIds: formData.personalIds.filter((personalId) => personalId > 0),
-      recursos: formData.recursos.filter((recurso) => recurso.recursoId > 0),
+      carritoIds: formData.transporte === "delivery" ? [] : formData.carritoIds.filter((carritoId) => carritoId > 0),
+      inflableIds: formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [],
+      personalIds: formData.transporte === "delivery" ? [] : formData.personalIds.filter((personalId) => personalId > 0),
+      recursos: formData.transporte === "delivery" ? [] : formData.recursos.filter((recurso) => recurso.recursoId > 0),
     };
 
     try {
@@ -2221,6 +2377,63 @@ export function FichasPage() {
         <p className="text-gray-600 dark:text-gray-400">Gestiona eventos, pagos parciales y control financiero</p>
       </div>
 
+      {isAdmin && (
+        <div className="mb-6 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl border border-[#1F3C8B]/10 dark:border-blue-900/20 shadow-sm flex flex-col md:row items-start md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+              <Percent className="w-6 h-6 text-[#1F3C8B] dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Tope de Descuento Global</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">El porcentaje máximo que los vendedores pueden aplicar a las cotizaciones.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto self-end md:self-center">
+            {editingDescuentoCap ? (
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <div className="relative flex-1 md:flex-none">
+                  <input
+                    type="number"
+                    value={descuentoCapDraft}
+                    onChange={(e) => setDescuentoCapDraft(e.target.value)}
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    className="w-full md:w-24 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-transparent text-gray-900 dark:text-white focus:ring-2 focus:ring-[#1F3C8B] outline-none transition-all"
+                    autoFocus
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                </div>
+                <button
+                  onClick={handleSaveDescuentoCap}
+                  className="px-5 py-2 bg-[#1F3C8B] text-white rounded-xl hover:bg-[#19316f] transition-all shadow-sm font-medium"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => setEditingDescuentoCap(false)}
+                  className="px-5 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-800">
+                <span className="text-2xl font-bold text-[#1F3C8B] dark:text-blue-400">{descuentoMaxPct}%</span>
+                <button
+                  onClick={handleStartEditDescuentoCap}
+                  className="flex items-center gap-2 text-[#EF8022] hover:text-[#d9711c] font-medium text-sm transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Cambiar tope
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Financial + Operational Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4 mb-6 md:mb-8">
         <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -2307,14 +2520,17 @@ export function FichasPage() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {formatDate(ficha.fecha_reserva)}</span>
+                    <TransporteBadge transporte={ficha.transporte} />
                     <EstadoPagoBadge estado={estado} />
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
                       {brandMeta.label}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
                   <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{ficha.cliente_nombre}</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -2329,22 +2545,26 @@ export function FichasPage() {
                   >
                     <FileText className="w-5 h-5" />
                   </button>
-                  <button onClick={() => { setAbonoTargetFicha(ficha); setShowAbonoModal(true); }}
-                    className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
-                    title="Registrar abono">
-                    <CreditCard className="w-5 h-5" />
-                  </button>
+                  {canEditFicha(ficha) && (
+                    <button onClick={() => { setAbonoTargetFicha(ficha); setShowAbonoModal(true); }}
+                      className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                      title="Registrar abono">
+                      <CreditCard className="w-5 h-5" />
+                    </button>
+                  )}
                   <button onClick={() => openFichaDetail(ficha)}
                     className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
                   </button>
-                  <button
-                    onClick={() => handleDeleteFicha(ficha)}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                    title="Eliminar ficha"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  {canEditFicha(ficha) && (
+                    <button
+                      onClick={() => handleDeleteFicha(ficha)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      title="Eliminar ficha"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2384,8 +2604,8 @@ export function FichasPage() {
                 </div>
                 {ficha.descuento > 0 && (
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-red-500">Descuento</span>
-                    <span className="text-sm text-red-500">-{formatMoney(ficha.descuento)}</span>
+                    <span className="text-xs text-red-500">Descuento ({ficha.descuento}%)</span>
+                    <span className="text-sm text-red-500">-{formatMoney(getDescuentoMonto(ficha))}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between mb-3">
@@ -2406,15 +2626,22 @@ export function FichasPage() {
               </div>
 
               {/* Footer */}
-              <div className="flex items-center gap-4 text-sm pt-3 border-t border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.hora_entrega}-{ficha.hora_recojo}</span></div>
-                {(ficha.carritoIds?.length ?? 0) > 0 && (
-                  <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}{ficha.hora_recojo ? ` / ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}</span></div>
+                  {(ficha.carritoIds?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
+                  )}
+                  {ficha.brand === "jugueton" && (ficha.inflableIds?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1"><Wind className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.inflableIds!.length}i</span></div>
+                  )}
+                  <div className="flex items-center gap-1"><User className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{(ficha.personalIds ?? []).length}p</span></div>
+                </div>
+                {(ficha.created_by_nombre || ficha.created_by) && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 truncate max-w-[120px]" title={ficha.created_by_nombre || ficha.created_by}>
+                    {ficha.created_by_nombre || ficha.created_by}
+                  </span>
                 )}
-                {ficha.brand === "jugueton" && (ficha.inflableIds?.length ?? 0) > 0 && (
-                  <div className="flex items-center gap-1"><Wind className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.inflableIds!.length}i</span></div>
-                )}
-                <div className="flex items-center gap-1"><User className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{(ficha.personalIds ?? []).length}p</span></div>
               </div>
             </div>
           );
@@ -2435,6 +2662,7 @@ export function FichasPage() {
                   <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Ficha</th>
                   <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
                   <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Marca</th>
+                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Creado por</th>
                   <th className="text-right py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Unidades Helado</th>
                 </tr>
               </thead>
@@ -2452,6 +2680,7 @@ export function FichasPage() {
                             {meta.label}
                           </span>
                         </td>
+                        <td className="py-3 px-3 text-gray-500 dark:text-gray-400 text-xs">{ficha.created_by_nombre || ficha.created_by || "—"}</td>
                         <td className="py-3 px-3 text-right text-gray-900 dark:text-white">{getUnidadesHelado(ficha)}</td>
                       </tr>
                     );
@@ -2500,6 +2729,16 @@ export function FichasPage() {
                       {selectedFicha.contacto_celular && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" /><span className="text-gray-700 dark:text-gray-300">{selectedFicha.contacto_celular}</span></div>}
                     </>
                   )}
+                  {(selectedFicha.created_by_nombre || selectedFicha.created_by) && (
+                    <>
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-2 pt-2" />
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Registrado por</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{selectedFicha.created_by_nombre || selectedFicha.created_by}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2507,11 +2746,13 @@ export function FichasPage() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Resumen Financiero</h4>
-                  <button
-                    onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
-                    className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
-                    <Plus className="w-3 h-3" /> Registrar Abono
-                  </button>
+                  {canEditFicha(selectedFicha) && (
+                    <button
+                      onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
+                      className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Registrar Abono
+                    </button>
+                  )}
                 </div>
                 <div className="bg-gradient-to-r from-[#1F3C8B]/5 to-[#EF8022]/5 dark:from-[#1F3C8B]/10 dark:to-[#EF8022]/10 rounded-lg p-5">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -2520,8 +2761,8 @@ export function FichasPage() {
                       <p className="text-lg text-gray-900 dark:text-white">{formatMoney(selectedFicha.cotizacion)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento</p>
-                      <p className="text-lg text-red-500">{selectedFicha.descuento > 0 ? `-${formatMoney(selectedFicha.descuento)}` : "—"}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento {selectedFicha.descuento > 0 ? `(${selectedFicha.descuento}%)` : ""}</p>
+                      <p className="text-lg text-red-500">{selectedFicha.descuento > 0 ? `-${formatMoney(getDescuentoMonto(selectedFicha))}` : "—"}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a Pagar</p>
@@ -2687,12 +2928,17 @@ export function FichasPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_entrega}</p></div>
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_recojo}</p></div>
+                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
                 <p className="text-gray-900 dark:text-white">{labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${formatMoney(selectedFicha.costo_envio)}` : ""}</p>
+                {(selectedFicha.descuento_movilidad ?? 0) > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Descuento movilidad: {selectedFicha.descuento_movilidad}% — Total movilidad: {formatMoney(Math.max(0, toMoneyNumber(selectedFicha.costo_envio) * (1 - toMoneyNumber(selectedFicha.descuento_movilidad) / 100)))}
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 flex items-center gap-2">
@@ -2757,22 +3003,26 @@ export function FichasPage() {
               >
                 <FileText className="w-4 h-4" /> Generar Proforma
               </button>
-              <button onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
-                className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm">
-                <CreditCard className="w-4 h-4" /> Registrar Abono
-              </button>
-              <button
-                onClick={() => handleOpenEditModal(selectedFicha)}
-                className="flex-1 border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                <Edit className="w-4 h-4" /> Editar
-              </button>
-              <button
-                onClick={() => handleDeleteFicha(selectedFicha)}
-                className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                <Trash2 className="w-4 h-4" /> Eliminar
-              </button>
+              {canEditFicha(selectedFicha) && (
+                <>
+                  <button onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
+                    className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm">
+                    <CreditCard className="w-4 h-4" /> Registrar Abono
+                  </button>
+                  <button
+                    onClick={() => handleOpenEditModal(selectedFicha)}
+                    className="flex-1 border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Edit className="w-4 h-4" /> Editar
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFicha(selectedFicha)}
+                    className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" /> Eliminar
+                  </button>
+                </>
+              )}
               <button onClick={closeFichaDetail}
                 className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">
                 Cerrar
@@ -2812,6 +3062,26 @@ export function FichasPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Tipo de Evento — va primero para condicionar el resto del form */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Tipo de Evento *</h4>
+                <div className="flex gap-3">
+                  {(["cumpleanos", "corporativo", "delivery"] as const).map((tipo) => (
+                    <label key={tipo} className={`flex-1 flex items-center justify-center px-4 py-3 rounded-lg border cursor-pointer transition-colors text-sm ${
+                      formData.transporte === tipo
+                        ? "border-[#EF8022] bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20"
+                        : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    }`}>
+                      <input type="radio" name="transporte" value={tipo} checked={formData.transporte === tipo} onChange={handleInputChange} className="sr-only" />
+                      {tipo === "cumpleanos" ? "Cumpleaños" : tipo === "corporativo" ? "Corporativo" : "Delivery"}
+                    </label>
+                  ))}
+                </div>
+                {formData.transporte === "delivery" && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">Delivery: solo se registra hora de entrega, sin recursos ni personal.</p>
+                )}
+              </div>
+
               {/* Fecha */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Evento</h4>
@@ -2891,8 +3161,8 @@ export function FichasPage() {
                 <button type="button" onClick={handleAddProductoSuelto} className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar producto suelto</button>
               </div>
 
-              {/* Recursos, inflables, carritos y personal */}
-              <div>
+              {/* Recursos, inflables, carritos y personal — oculto para delivery */}
+              {formData.transporte !== "delivery" && <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Recursos</h4>
                 <div className="space-y-4">
                   <div>
@@ -3066,7 +3336,7 @@ export function FichasPage() {
                       <div className="space-y-3">
                         {formData.personalIds.map((personalId, idx) => {
                           const selectedIds = formData.personalIds.filter((_, i) => i !== idx).filter((id) => id > 0);
-                          const availablePersonales = personales.filter((personal) => personal.id === personalId || !selectedIds.includes(personal.id));
+                          const availablePersonales = personales.filter((personal) => personal.rol?.toLowerCase() !== "chofer" && (personal.id === personalId || !selectedIds.includes(personal.id)));
                           const selectedPersonal = personales.find((personal) => personal.id === personalId);
 
                           return (
@@ -3093,13 +3363,22 @@ export function FichasPage() {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.personalIds.filter((id) => id > 0).length}</p>
                   </div>
                 </div>
-              </div>
+              </div>}
 
               {/* Cliente */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
                 <div className="mb-4">
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cliente existente</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm text-gray-600 dark:text-gray-400">Cliente existente</label>
+                    <button
+                      type="button"
+                      onClick={handleOpenNewClientModal}
+                      className="text-xs text-[#EF8022] hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Nuevo cliente
+                    </button>
+                  </div>
                   <select
                     value={formData.cliente_id}
                     onChange={(e) => handleExistingClientChange(e.target.value)}
@@ -3142,8 +3421,24 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label><input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label><input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} /></div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
+                    <div className="flex items-center gap-2">
+                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                      <span className="text-gray-400 text-sm">a</span>
+                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} className={inputClass} />
+                    </div>
+                  </div>
+                  {formData.transporte !== "delivery" && (
+                    <div>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                      <div className="flex items-center gap-2">
+                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                        <span className="text-gray-400 text-sm">a</span>
+                        <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} className={inputClass} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3156,15 +3451,7 @@ export function FichasPage() {
               {/* ── PRECIOS ───────────────────────────────────── */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Tipo de Evento *</label>
-                    <select name="transporte" value={formData.transporte} onChange={handleInputChange} required className={inputClass}>
-                      <option value="cumpleanos">Cumpleaños</option>
-                      <option value="corporativo">Corporativo</option>
-                      <option value="delivery">Delivery</option>
-                    </select>
-                  </div>
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl">
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
                     <div className="relative">
@@ -3183,6 +3470,31 @@ export function FichasPage() {
                     {tarifaCache && (
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
                     )}
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Descuento Movilidad (%)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        name="descuento_movilidad"
+                        value={formData.descuento_movilidad || ""}
+                        onChange={handleInputChange}
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        placeholder="0"
+                        className={`${inputClass} pr-9`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total Movilidad</label>
+                    <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                      <span className="text-sm text-[#1F3C8B] dark:text-blue-400">
+                        {formatMoney(Math.max(0, toMoneyNumber(formData.costo_envio) * (1 - toMoneyNumber(formData.descuento_movilidad) / 100)))}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -3210,18 +3522,34 @@ export function FichasPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Descuento (S/)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
-                      <input type="number" name="descuento" value={formData.descuento || ""} onChange={handleInputChange} min={0} step={0.01}
-                        className={`${inputClass} pl-9`} placeholder="0.00" />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm text-gray-600 dark:text-gray-400">Descuento (%) <span className="text-gray-400">(máx. {descuentoMaxPct}%)</span></label>
+                      {isAdmin && !editingDescuentoCap && (
+                        <button type="button" onClick={handleStartEditDescuentoCap} className="text-xs text-[#EF8022] hover:underline">
+                          Editar tope
+                        </button>
+                      )}
                     </div>
+                    {isAdmin && editingDescuentoCap ? (
+                      <div className="flex items-center gap-2">
+                        <input type="number" value={descuentoCapDraft} onChange={(e) => setDescuentoCapDraft(e.target.value)} min={0} max={100} step={0.5}
+                          className={inputClass} placeholder="10" autoFocus />
+                        <button type="button" onClick={handleSaveDescuentoCap} className="px-3 py-2 rounded-lg bg-[#1F3C8B] text-white text-sm hover:bg-[#19316f]">Guardar</button>
+                        <button type="button" onClick={() => setEditingDescuentoCap(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input type="number" name="descuento" value={formData.descuento || ""} onChange={handleInputChange} min={0} max={descuentoMaxPct} step={0.5}
+                          className={`${inputClass} pr-9`} placeholder="0" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total a Pagar</label>
                     <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
                       <span className="text-lg text-[#1F3C8B] dark:text-blue-400">
-                        {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) - (Number(formData.descuento) || 0)))}
+                        {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) * (1 - (Number(formData.descuento) || 0) / 100)))}
                       </span>
                     </div>
                   </div>
@@ -3238,6 +3566,127 @@ export function FichasPage() {
                 <button type="button" onClick={handleCloseModal} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">Cancelar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Nuevo Cliente (sub-modal dentro de la Ficha) ───────── */}
+      {showNewClientModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-lg w-full relative">
+            <button
+              onClick={() => setShowNewClientModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Cliente</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Se asignará automáticamente a{" "}
+              <span className={brand === "donofrio" ? "text-[#1F3C8B]" : "text-[#EF8022]"}>
+                {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
+              </span>
+            </p>
+            {newClientError ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {newClientError}
+              </div>
+            ) : null}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={newClientForm.nombre}
+                  onChange={(e) => setNewClientForm({ ...newClientForm, nombre: e.target.value })}
+                  placeholder="Ej: Maria Lopez"
+                  className={inputClass}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razón Social (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClientForm.razonSocial}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, razonSocial: e.target.value })}
+                    placeholder="Ej: Inversiones Lopez SAC"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClientForm.dniRuc}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, dniRuc: e.target.value })}
+                    placeholder="Ej: 12345678"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newClientForm.email}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, email: e.target.value })}
+                    placeholder="correo@ejemplo.com"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
+                  <input
+                    type="tel"
+                    value={newClientForm.telefono}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, telefono: e.target.value })}
+                    placeholder="+51 987 654 321"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección</label>
+                  <input
+                    type="text"
+                    value={newClientForm.direccion}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, direccion: e.target.value })}
+                    placeholder="Av. Principal 123"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Distrito / Ciudad</label>
+                  <input
+                    type="text"
+                    value={newClientForm.ciudad}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, ciudad: e.target.value })}
+                    placeholder="Miraflores"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewClientModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateClientInline}
+                  disabled={isSavingNewClient}
+                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingNewClient ? "Guardando..." : "Guardar Cliente"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
