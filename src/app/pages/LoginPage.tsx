@@ -5,7 +5,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { isDriverRole, setAuthSession } from "../lib/auth";
 
 const LOGOS = {
-  eventosAp: "/images/eventos_ap.png",
+  eventosAp: "/images/eventos_ap_logo.jpg",
 };
 
 export function LoginPage() {

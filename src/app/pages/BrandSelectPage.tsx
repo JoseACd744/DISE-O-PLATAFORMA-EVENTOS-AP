@@ -9,8 +9,8 @@ const brands = [
   {
     id: "donofrio" as Brand,
     name: "D'Onofrio",
-    logo: "/images/eventos_ap.png",
-    logoClass: "w-14 h-8 object-contain rounded-md bg-white p-1",
+    logo: "/images/donofrio.jpg",
+    logoClass: "w-14 h-14 object-contain rounded-md bg-white p-1",
     description: "Gestiona entregas de helados, cartera de clientes, fichas de eventos y optimiza rutas de reparto.",
     icon: IceCreamCone,
     color: "#1F3C8B",
@@ -76,7 +76,7 @@ export function BrandSelectPage() {
       <header className="w-full flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5">
         <div className="flex items-center gap-3">
           <div className="w-20 h-10 rounded-lg border border-gray-200 dark:border-gray-700 bg-white p-1 flex items-center justify-center">
-            <img src="/images/eventos_ap.png" alt="Eventos AP" className="w-full h-full object-contain" />
+            <img src="/images/eventos_ap_logo.jpg" alt="Eventos AP" className="w-full h-full object-contain" />
           </div>
           <span className="text-gray-800 dark:text-gray-200" style={{ fontSize: "18px" }}>Eventos AP</span>
         </div>
@@ -136,7 +136,7 @@ export function BrandSelectPage() {
                     }}
                   />
                   <div className="absolute bottom-4 left-5 flex items-center gap-3">
-                    <div className="w-14 h-12 rounded-xl overflow-hidden border border-gray-200 bg-white p-1 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-gray-200 bg-white p-1 flex items-center justify-center">
                       <img src={brand.logo} alt={brand.name} className={brand.logoClass} />
                     </div>
                     <h2 className="text-white" style={{ fontSize: "24px" }}>{brand.name}</h2>

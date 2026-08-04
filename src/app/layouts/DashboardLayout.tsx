@@ -62,10 +62,10 @@ export function DashboardLayout() {
     donofrio: {
       name: "D'Onofrio",
       color: "#1F3C8B",
-      logoUrl: "/images/eventos_ap.png",
+      logoUrl: "/images/donofrio.jpg",
       logoClass: "w-full h-full object-contain",
-      logoContainerClass: "w-14 h-9 rounded-lg p-1",
-      logoContainerMobileClass: "w-11 h-7 rounded-md p-1",
+      logoContainerClass: "w-10 h-10 rounded-lg p-1",
+      logoContainerMobileClass: "w-9 h-9 rounded-md p-1",
     },
     jugueton: {
       name: "Juguetón",
@@ -100,7 +100,7 @@ export function DashboardLayout() {
           <div className="flex items-center gap-3">
             <div className={`${currentBrand?.logoContainerClass || "w-14 h-9 rounded-lg p-1"} overflow-hidden shrink-0 border border-gray-200 dark:border-gray-700 bg-white flex items-center justify-center`}>
               <img
-                src={currentBrand?.logoUrl || "/images/eventos_ap.png"}
+                src={currentBrand?.logoUrl || "/images/donofrio.jpg"}
                 alt={currentBrand?.name || "Eventos AP"}
                 className={currentBrand?.logoClass || "w-full h-full object-contain"}
               />
@@ -192,7 +192,7 @@ export function DashboardLayout() {
           <div className="flex items-center gap-2">
             <div className={`${currentBrand?.logoContainerMobileClass || "w-11 h-7 rounded-md p-1"} overflow-hidden border border-gray-200 dark:border-gray-700 bg-white flex items-center justify-center`}>
               <img
-                src={currentBrand?.logoUrl || "/images/eventos_ap.png"}
+                src={currentBrand?.logoUrl || "/images/donofrio.jpg"}
                 alt={currentBrand?.name || "Eventos AP"}
                 className={currentBrand?.logoClass || "w-full h-full object-contain"}
               />

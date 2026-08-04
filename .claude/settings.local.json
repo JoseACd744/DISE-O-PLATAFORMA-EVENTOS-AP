@@ -22,7 +22,14 @@
       "Bash(git status *)",
       "Bash(grep -n -B10 -A25 \"carritos/\\\\${unitId}/reservas\")",
       "Bash(curl -s -o /tmp/out.json -w \"%{http_code}\\\\n\" \"https://eventos-ap-backend-production.up.railway.app/api/products/categories\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(cp \"/c/Users/JOSE/Downloads/donofrio logo.jpeg\" \"public/images/donofrio.jpg\")",
+      "Bash(cp \"/c/Users/JOSE/Downloads/eventos ap logo.jpeg\" \"public/images/eventos_ap_logo.jpg\")",
+      "Bash(sed -i 's#/images/eventos_ap\\\\.png#/images/donofrio.jpg#g' src/app/pages/FichasPage.tsx)",
+      "Bash(sed -i 's#logoUrl: \"/images/eventos_ap\\\\.png\"#logoUrl: \"/images/donofrio.jpg\"#; s#currentBrand?\\\\.logoUrl || \"/images/eventos_ap\\\\.png\"#currentBrand?.logoUrl || \"/images/donofrio.jpg\"#g' src/app/layouts/DashboardLayout.tsx)",
+      "Bash(sed -i '12s#/images/eventos_ap\\\\.png#/images/donofrio.jpg#' src/app/pages/BrandSelectPage.tsx)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

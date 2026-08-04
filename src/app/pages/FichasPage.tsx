@@ -257,10 +257,10 @@ function getBrandMeta(brand: Ficha["brand"]) {
   return brand === "donofrio"
     ? {
         label: "D'Onofrio",
-        logoUrl: "/images/eventos_ap.png",
+        logoUrl: "/images/donofrio.jpg",
         badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-        logoClass: "w-7 h-4 rounded-sm object-contain bg-white p-0.5",
-        miniLogoInlineStyle: "width:32px; height:16px; border-radius:4px; object-fit:contain; background:#fff; padding:1px;",
+        logoClass: "w-6 h-6 rounded-sm object-contain bg-white p-0.5",
+        miniLogoInlineStyle: "width:24px; height:24px; border-radius:4px; object-fit:contain; background:#fff; padding:1px;",
       }
     : {
         label: "Juguetón",
@@ -1011,7 +1011,7 @@ export function FichasPage() {
           subtitulo: "Proforma de Servicio de Heladería",
           colorPrimario: "#1F3C8B",
           colorSecundario: "#EF8022",
-          logoUrl: "/images/eventos_ap.png",
+          logoUrl: "/images/donofrio.jpg",
         }
       : {
           empresa: "Juguetón Eventos",
@@ -1743,7 +1743,7 @@ export function FichasPage() {
             <div class="bar-top"></div>
 
             <header class="header">
-              <img class="logo" src="/images/eventos_ap.png" alt="Eventos AP" />
+              <img class="logo" src="/images/donofrio.jpg" alt="D'Onofrio" />
               <div class="company">
                 <div>DISTRIBUCIONES Y CONCESIONES AP EIRL</div>
                 <div>RUC: 20556840149</div>
