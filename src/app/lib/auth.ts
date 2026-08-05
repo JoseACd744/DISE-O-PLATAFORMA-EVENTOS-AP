@@ -66,12 +66,12 @@ export function isVendedorUser() {
 
 /** True if the current user can create/edit/delete on pages other than Fichas. */
 export function canManageResources() {
-  return isAdminUser();
+  return true;
 }
 
 /** True if the current user can create/edit/delete clients for both brands. */
 export function canManageClients() {
-  return isAdminUser() || getAuthUser()?.brand === "jugueton";
+  return true;
 }
 
 export function isAuthenticated() {

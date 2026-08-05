@@ -148,6 +148,12 @@ export function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);
   const { brand } = useBrand();
+  const [catalogBrandFilter, setCatalogBrandFilter] = useState<"todos" | "donofrio" | "jugueton">(brand || "todos");
+
+  const handleCatalogBrandFilterChange = (value: "todos" | "donofrio" | "jugueton") => {
+    setCatalogBrandFilter(value);
+    setCurrentPage(1);
+  };
 
   // ← shared context instead of local state
   const {
@@ -659,11 +665,13 @@ export function ProductsPage() {
     movements: RecursoStockMovement[];
   }>({ loading: false, error: "", movements: [] });
 
-  // Productos de la marca activa únicamente
-  const productsDeLaMarca = allProducts.filter((p) => p.brand === brand);
+  // Productos filtrados por marca (por defecto la marca activa, pero se puede ver "Todos")
+  const productsDeLaMarca = catalogBrandFilter === "todos" ? allProducts : allProducts.filter((p) => p.brand === catalogBrandFilter);
 
-  // Categorías con al menos un producto de la marca activa (las categorías en sí son compartidas)
-  const categoriesDeLaMarca = categories.filter((c) => c.productos.some((p) => p.brand === brand));
+  // Categorías con al menos un producto dentro del filtro de marca (las categorías en sí son compartidas)
+  const categoriesDeLaMarca = catalogBrandFilter === "todos"
+    ? categories
+    : categories.filter((c) => c.productos.some((p) => p.brand === catalogBrandFilter));
 
   // Filter products
   const filteredProducts = productsDeLaMarca.filter((product) => {
@@ -674,8 +682,8 @@ export function ProductsPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Paquetes de la marca activa únicamente
-  const paquetesDeLaMarca = paquetes.filter((p) => p.brand === brand);
+  // Paquetes filtrados por marca (por defecto la marca activa, pero se puede ver "Todos")
+  const paquetesDeLaMarca = catalogBrandFilter === "todos" ? paquetes : paquetes.filter((p) => p.brand === catalogBrandFilter);
 
   // All unique tipos across paquetes de la marca activa (for filter buttons)
   const allTipos = [...new Set(paquetesDeLaMarca.map((p) => p.tipo).filter(Boolean))].sort();
@@ -757,6 +765,12 @@ export function ProductsPage() {
     if (!catName) return;
     if (formLocksRef.current.product || productFormSubmitting) return;
 
+    // Si es una categoría existente, resolver su id dentro de las categorías de la marca activa
+    // para no confundirla con otra categoría de otra marca que tenga el mismo nombre.
+    const categoriaId = newProduct.nuevaCategoria
+      ? undefined
+      : categoriesDeLaMarca.find((c) => c.categoria.toLowerCase() === catName.toLowerCase())?.id;
+
     formLocksRef.current.product = true;
     setProductFormSubmitting(true);
 
@@ -769,9 +783,9 @@ export function ProductsPage() {
       };
 
       if (editingProduct) {
-        await updateProduct(editingProduct.id, catName, payload);
+        await updateProduct(editingProduct.id, catName, payload, categoriaId);
       } else {
-        await addProduct(catName, payload);
+        await addProduct(catName, payload, categoriaId);
       }
 
       setShowAddProduct(false);
@@ -1288,7 +1302,7 @@ export function ProductsPage() {
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Total Productos</span>
           </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{allProducts.length}</p>
+          <p className="text-3xl text-gray-900 dark:text-white">{productsDeLaMarca.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
@@ -1297,7 +1311,7 @@ export function ProductsPage() {
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Categorías</span>
           </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{categories.length}</p>
+          <p className="text-3xl text-gray-900 dark:text-white">{categoriesDeLaMarca.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
@@ -1416,6 +1430,22 @@ export function ProductsPage() {
                 )}
               </div>
             </div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              {(["todos", "donofrio", "jugueton"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => handleCatalogBrandFilterChange(opt)}
+                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    catalogBrandFilter === opt
+                      ? "bg-[#EF8022] text-white"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  {opt === "todos" ? "Todas las marcas" : opt === "donofrio" ? "D'Onofrio" : "Juguetón"}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -1427,6 +1457,7 @@ export function ProductsPage() {
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Producto</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Precio</th>
                     <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">SKU</th>
+                    {catalogBrandFilter === "todos" && <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Marca</th>}
                     {canManage && <th className="px-6 py-4 text-right text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
                   </tr>
                 </thead>
@@ -1443,6 +1474,13 @@ export function ProductsPage() {
                         {product.precio > 0 ? `S/ ${product.precio.toFixed(2)}` : "S/ 0.00"}
                       </td>
                       <td className="px-6 py-4 text-gray-500 dark:text-gray-500 text-sm font-mono">{product.sku}</td>
+                      {catalogBrandFilter === "todos" && (
+                        <td className="px-6 py-4">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${product.brand === "donofrio" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"}`}>
+                            {product.brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
+                          </span>
+                        </td>
+                      )}
                       {canManage && (
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
@@ -1516,6 +1554,22 @@ export function ProductsPage() {
                 </button>
               )}
             </div>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(["todos", "donofrio", "jugueton"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => handleCatalogBrandFilterChange(opt)}
+                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                    catalogBrandFilter === opt
+                      ? "bg-[#EF8022] text-white"
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  {opt === "todos" ? "Todas las marcas" : opt === "donofrio" ? "D'Onofrio" : "Juguetón"}
+                </button>
+              ))}
+            </div>
             {allTipos.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1572,7 +1626,14 @@ export function ProductsPage() {
                     {paquetesByTipo[tipo].map((paq) => (
                       <div key={paq.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow">
                         <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-gray-900 dark:text-white">{paq.nombre}</h3>
+                          <div>
+                            <h3 className="text-gray-900 dark:text-white">{paq.nombre}</h3>
+                            {catalogBrandFilter === "todos" && (
+                              <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${paq.brand === "donofrio" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"}`}>
+                                {paq.brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
+                              </span>
+                            )}
+                          </div>
                           {canManage && (
                             <div className="flex items-center gap-1">
                               <button
@@ -2708,7 +2769,7 @@ export function ProductsPage() {
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                 >
                   <option value="">Seleccionar categoría...</option>
-                  {categories.map((c) => (
+                  {categoriesDeLaMarca.map((c) => (
                     <option key={c.id} value={c.categoria}>{c.categoria}</option>
                   ))}
                 </select>

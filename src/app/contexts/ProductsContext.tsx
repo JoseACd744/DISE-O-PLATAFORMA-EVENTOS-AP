@@ -180,8 +180,8 @@ function buildChoferPayload(
 interface ProductsContextType {
   categories: Category[];
   allProducts: FlatProduct[];
-  addProduct: (catName: string, product: Omit<Product, "id">) => Promise<void>;
-  updateProduct: (id: number, catName: string, product: Omit<Product, "id">) => Promise<void>;
+  addProduct: (catName: string, product: Omit<Product, "id">, categoriaId?: number) => Promise<void>;
+  updateProduct: (id: number, catName: string, product: Omit<Product, "id">, categoriaId?: number) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
   deleteCategory: (id: number) => Promise<void>;
 
@@ -271,8 +271,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     return [...new Set([...names, "Termo de helado (5L)", "Termo de helado (10L)"])];
   }, [allProducts]);
 
-  const addProduct = async (catName: string, product: Omit<Product, "id">) => {
-    let category = categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
+  const addProduct = async (catName: string, product: Omit<Product, "id">, categoriaId?: number) => {
+    let category = categoriaId !== undefined
+      ? categories.find((c) => c.id === categoriaId)
+      : categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
 
     if (!category) {
       const createdCategory = await apiRequest<{ id: number }>("/products/categories", {
@@ -296,8 +298,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     await reloadData();
   };
 
-  const updateProduct = async (id: number, catName: string, product: Omit<Product, "id">) => {
-    let category = categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
+  const updateProduct = async (id: number, catName: string, product: Omit<Product, "id">, categoriaId?: number) => {
+    let category = categoriaId !== undefined
+      ? categories.find((c) => c.id === categoriaId)
+      : categories.find((c) => c.categoria.toLowerCase() === catName.toLowerCase());
 
     if (!category) {
       const createdCategory = await apiRequest<{ id: number }>("/products/categories", {
