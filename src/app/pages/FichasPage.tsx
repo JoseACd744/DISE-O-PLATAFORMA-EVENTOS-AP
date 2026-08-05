@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings } from "lucide-react";
+import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check } from "lucide-react";
 import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { DateRangePicker } from "../components/DateRangePicker";
@@ -59,7 +59,8 @@ interface Ficha {
   fecha_reserva: string;
   fecha: string;
   distrito: string;
-  transporte?: "cumpleanos" | "corporativo" | "delivery";
+  transporte?: "cumpleanos" | "delivery";
+  tipo_evento?: string;
   costo_envio?: number;
   descuento_movilidad?: number;
   direccion: string;
@@ -92,7 +93,8 @@ interface FichaFormData {
   fecha_evento: string;
   fecha_reserva: string;
   distrito: string;
-  transporte: "cumpleanos" | "corporativo" | "delivery";
+  transporte: "cumpleanos" | "delivery";
+  tipoEvento: string;
   costo_envio: number;
   descuento_movilidad: number;
   direccion: string;
@@ -113,6 +115,11 @@ interface FichaFormData {
   inflableIds: number[];
   personalIds: number[];
   recursos: Array<{ recursoId: number; cantidad: number }>;
+  registrarAbonoInicial: boolean;
+  abonoInicialFecha: string;
+  abonoInicialMonto: number;
+  abonoInicialMedio: Abono["medio"];
+  abonoInicialNumeroOperacion: string;
 }
 
 const FICHAS_PER_PAGE = 10;
@@ -122,6 +129,7 @@ const getInitialFormData = (): FichaFormData => ({
   fecha_reserva: new Date().toISOString().slice(0, 10),
   distrito: "",
   transporte: "cumpleanos",
+  tipoEvento: "",
   costo_envio: 0,
   descuento_movilidad: 0,
   direccion: "",
@@ -142,6 +150,11 @@ const getInitialFormData = (): FichaFormData => ({
   inflableIds: [],
   personalIds: [0],
   recursos: [{ recursoId: 0, cantidad: 1 }],
+  registrarAbonoInicial: false,
+  abonoInicialFecha: new Date().toISOString().slice(0, 10),
+  abonoInicialMonto: 0,
+  abonoInicialMedio: "Transferencia",
+  abonoInicialNumeroOperacion: "",
 });
 
 interface ExistingClient {
@@ -159,9 +172,31 @@ interface TarifaEnvio {
   zona: string;
   distrito: string;
   costo_cumpleanos: number;
-  costo_corporativo: number;
   costo_delivery: number;
 }
+
+const TIPOS_EVENTO = [
+  "Cumpleaños/ Fiestas infantiles",
+  "Baby Shower",
+  "Revelación de género",
+  "Bodas/Matrimonios",
+  "Quinceañeros",
+  "Graduaciones",
+  "Bautizos",
+  "Reuniones familiares",
+  "Eventos corporativos",
+  "Fiestas de fin de año",
+  "Celebraciones navideñas",
+  "Eventos escolares",
+  "Kermeses",
+  "Macro eventos",
+  "Ferias",
+  "Activaciones de marca",
+  "Eventos deportivos",
+  "Inauguraciones",
+  "Celebraciones temáticas",
+  "Otros",
+] as const;
 
 interface CarritoConflict {
   carrito_id: number;
@@ -182,14 +217,12 @@ interface InflableConflict {
 }
 
 function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["transporte"]): number {
-  if (transporte === "corporativo") return tarifa.costo_corporativo;
   if (transporte === "delivery") return tarifa.costo_delivery;
   return tarifa.costo_cumpleanos;
 }
 
 function labelTransporte(t?: string): string {
   if (t === "cumpleanos") return "Cumpleaños";
-  if (t === "corporativo") return "Corporativo";
   if (t === "delivery") return "Delivery";
   return t || "-";
 }
@@ -263,24 +296,17 @@ function getBrandMeta(brand: Ficha["brand"]) {
       };
 }
 
-function TransporteBadge({ transporte }: { transporte?: string }) {
-  if (transporte === "corporativo") {
-    return (
-      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-700">
-        Corporativo
-      </span>
-    );
-  }
-  if (transporte === "delivery") {
-    return (
-      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 ring-1 ring-teal-200 dark:ring-teal-700">
-        Delivery
-      </span>
-    );
-  }
+function TransporteBadge({ transporte, tipoEvento }: { transporte?: string; tipoEvento?: string }) {
   return (
-    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 ring-1 ring-pink-200 dark:ring-pink-700">
-      Cumpleaños
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 ring-1 ring-pink-200 dark:ring-pink-700">
+        {tipoEvento || "Cumpleaños"}
+      </span>
+      {transporte === "delivery" && (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 ring-1 ring-teal-200 dark:ring-teal-700">
+          Delivery
+        </span>
+      )}
     </span>
   );
 }
@@ -319,6 +345,75 @@ function formatEstadoPersonal(estado: string) {
 }
 
 // Función helper para obtener estado dinámico (será usada dentro del componente)
+
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "Seleccionar...",
+}: {
+  options: readonly string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = options.filter((opt) => opt.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022] text-left"
+      >
+        <span className={value ? "" : "text-gray-400"}>{value || placeholder}</span>
+        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-auto bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg">
+          <div className="sticky top-0 bg-white dark:bg-gray-700 p-2 border-b border-gray-100 dark:border-gray-600">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar tipo de evento..."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#EF8022]"
+                autoFocus
+              />
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <div className="p-3 text-sm text-gray-400 text-center">Sin resultados</div>
+          ) : (
+            filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onChange(opt);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center gap-2 ${
+                  opt === value ? "bg-[#EF8022]/10" : ""
+                }`}
+              >
+                {opt === value && <Check className="w-3 h-3 text-[#EF8022] shrink-0" />}
+                <span className="text-gray-900 dark:text-white">{opt}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 function AbonoModal({
@@ -624,6 +719,7 @@ export function FichasPage() {
   const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
   const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [tipoEventoMissing, setTipoEventoMissing] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [fichaImagenes, setFichaImagenes] = useState<FichaImagen[]>([]);
   const [loadingFichaImagenes, setLoadingFichaImagenes] = useState(false);
@@ -798,7 +894,8 @@ export function FichasPage() {
         fecha_reserva: f.fecha_reserva || f.fecha || "",
         fecha: f.fecha_evento || f.fecha || "",
         distrito: f.distrito || "",
-        transporte: (f.transporte || f.tipo_transporte || "cumpleanos") as "cumpleanos" | "corporativo" | "delivery",
+        transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
+        tipo_evento: f.tipo_evento || "",
         costo_envio: Number(f.costo_envio || 0),
         descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
         direccion: f.direccion || "",
@@ -1860,6 +1957,8 @@ export function FichasPage() {
     } else if (name === "descuento_movilidad") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
       setFormData((prev) => ({ ...prev, descuento_movilidad: clamped }));
+    } else if (name === "abonoInicialMonto") {
+      setFormData((prev) => ({ ...prev, abonoInicialMonto: Number(value) || 0 }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -2125,6 +2224,7 @@ export function FichasPage() {
       fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
       distrito: ficha.distrito || "",
       transporte: ficha.transporte || "cumpleanos",
+      tipoEvento: ficha.tipo_evento || "",
       costo_envio: ficha.costo_envio || 0,
       descuento_movilidad: ficha.descuento_movilidad || 0,
       direccion: ficha.direccion || "",
@@ -2149,6 +2249,11 @@ export function FichasPage() {
       recursos: (ficha.recursos ?? []).length > 0
         ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad }))
         : [{ recursoId: 0, cantidad: 1 }],
+      registrarAbonoInicial: false,
+      abonoInicialFecha: new Date().toISOString().slice(0, 10),
+      abonoInicialMonto: 0,
+      abonoInicialMedio: "Transferencia",
+      abonoInicialNumeroOperacion: "",
     });
     setCotizacionMode("manual");
     setEditingFichaId(ficha.id);
@@ -2186,6 +2291,18 @@ export function FichasPage() {
     e.preventDefault();
     if (!brand) return;
     if (createFichaLockRef.current || isSaving) return;
+    if (!formData.tipoEvento) {
+      setTipoEventoMissing(true);
+      return;
+    }
+    setTipoEventoMissing(false);
+
+    const montoAbonoInicial = toMoneyNumber(formData.abonoInicialMonto);
+    const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100));
+    if (formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
+      setError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
+      return;
+    }
 
     createFichaLockRef.current = true;
     setIsSaving(true);
@@ -2196,6 +2313,7 @@ export function FichasPage() {
       fecha_reserva: formData.fecha_reserva,
       distrito: formData.distrito,
       transporte: formData.transporte,
+      tipo_evento: formData.tipoEvento,
       direccion: formData.direccion,
       referencia: formData.referencia,
       hora_entrega: formData.hora_entrega || null,
@@ -2224,7 +2342,28 @@ export function FichasPage() {
       if (editingFichaId !== null) {
         await apiRequest(`/fichas/${editingFichaId}`, { method: "PUT", body: JSON.stringify(payload) });
       } else {
-        await apiRequest("/fichas", { method: "POST", body: JSON.stringify(payload) });
+        const createdFicha = await apiRequest<{ id?: number; ficha?: { id?: number } }>("/fichas", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        if (formData.registrarAbonoInicial) {
+          const fichaId = createdFicha?.id ?? createdFicha?.ficha?.id;
+          if (!fichaId) {
+            throw new Error("La ficha se creo, pero no se pudo registrar el abono inicial porque la API no devolvio su identificador.");
+          }
+
+          await apiRequest(`/fichas/${fichaId}/abonos`, {
+            method: "POST",
+            body: JSON.stringify({
+              fecha: formData.abonoInicialFecha,
+              monto: montoAbonoInicial,
+              numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
+              comprobante_url: null,
+              medio: formData.abonoInicialMedio,
+            }),
+          });
+        }
       }
 
       setShowAddModal(false);
@@ -2249,7 +2388,7 @@ export function FichasPage() {
     }
   };
 
-  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); setEditingFichaId(null); };
+  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); setEditingFichaId(null); setTipoEventoMissing(false); };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
 
@@ -2516,7 +2655,7 @@ export function FichasPage() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <TransporteBadge transporte={ficha.transporte} />
+                    <TransporteBadge transporte={ficha.transporte} tipoEvento={ficha.tipo_evento} />
                     <EstadoPagoBadge estado={estado} />
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
@@ -2941,7 +3080,8 @@ export function FichasPage() {
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
-                <p className="text-gray-900 dark:text-white">{labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${formatMoney(selectedFicha.costo_envio)}` : ""}</p>
+                <p className="text-gray-900 dark:text-white">{selectedFicha.tipo_evento || "-"}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Modalidad: {labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${formatMoney(selectedFicha.costo_envio)}` : ""}</p>
                 {(selectedFicha.descuento_movilidad ?? 0) > 0 && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Descuento movilidad: {selectedFicha.descuento_movilidad}% — Total movilidad: {formatMoney(Math.max(0, toMoneyNumber(selectedFicha.costo_envio) * (1 - toMoneyNumber(selectedFicha.descuento_movilidad) / 100)))}
@@ -3073,15 +3213,29 @@ export function FichasPage() {
               {/* Tipo de Evento — va primero para condicionar el resto del form */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Tipo de Evento *</h4>
+                <SearchableSelect
+                  options={TIPOS_EVENTO}
+                  value={formData.tipoEvento}
+                  onChange={(value) => { setFormData((prev) => ({ ...prev, tipoEvento: value })); setTipoEventoMissing(false); }}
+                  placeholder="Seleccionar tipo de evento..."
+                />
+                {tipoEventoMissing && (
+                  <p className="text-xs text-red-500 mt-1">Selecciona un tipo de evento para continuar.</p>
+                )}
+              </div>
+
+              {/* Modalidad — determina tarifa de envío y si se ocultan recursos/personal */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Modalidad *</h4>
                 <div className="flex gap-3">
-                  {(["cumpleanos", "corporativo", "delivery"] as const).map((tipo) => (
+                  {(["cumpleanos", "delivery"] as const).map((tipo) => (
                     <label key={tipo} className={`flex-1 flex items-center justify-center px-4 py-3 rounded-lg border cursor-pointer transition-colors text-sm ${
                       formData.transporte === tipo
                         ? "border-[#EF8022] bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20"
                         : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     }`}>
                       <input type="radio" name="transporte" value={tipo} checked={formData.transporte === tipo} onChange={handleInputChange} className="sr-only" />
-                      {tipo === "cumpleanos" ? "Cumpleaños" : tipo === "corporativo" ? "Corporativo" : "Delivery"}
+                      {tipo === "cumpleanos" ? "Evento" : "Delivery"}
                     </label>
                   ))}
                 </div>
@@ -3558,7 +3712,65 @@ export function FichasPage() {
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Paquetes, productos, carritos, inflables, recursos y transporte se suman automáticamente.</div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Los abonos se registran después de crear la ficha, desde el detalle del evento.</p>
+                {editingFichaId === null && (
+                  <div className="mt-5 rounded-lg border border-green-200 bg-green-50/60 p-4 dark:border-green-900/60 dark:bg-green-900/10">
+                    <label className="flex cursor-pointer items-center gap-3 text-sm text-gray-800 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={formData.registrarAbonoInicial}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, registrarAbonoInicial: event.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300 text-[#EF8022] focus:ring-[#EF8022]"
+                      />
+                      <span className="font-medium">Registrar abono inicial</span>
+                    </label>
+
+                    {formData.registrarAbonoInicial && (
+                      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Monto del abono (S/) *</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">S/</span>
+                            <input
+                              type="number"
+                              name="abonoInicialMonto"
+                              value={formData.abonoInicialMonto || ""}
+                              onChange={handleInputChange}
+                              min={0}
+                              step={0.01}
+                              placeholder="0.00"
+                              className={`${inputClass} pl-9`}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Fecha del abono *</label>
+                          <input type="date" name="abonoInicialFecha" value={formData.abonoInicialFecha} onChange={handleInputChange} className={inputClass} />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Medio de pago</label>
+                          <select name="abonoInicialMedio" value={formData.abonoInicialMedio} onChange={handleInputChange} className={inputClass}>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Yape">Yape</option>
+                            <option value="Plin">Plin</option>
+                            <option value="Efectivo">Efectivo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Nro. de operacion</label>
+                          <input
+                            type="text"
+                            name="abonoInicialNumeroOperacion"
+                            value={formData.abonoInicialNumeroOperacion}
+                            onChange={handleInputChange}
+                            placeholder="Opcional"
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Puedes registrar abonos adicionales desde el detalle del evento.</p>
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
