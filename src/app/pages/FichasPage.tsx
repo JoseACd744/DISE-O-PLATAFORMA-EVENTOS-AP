@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check } from "lucide-react";
+import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
 import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { DateRangePicker } from "../components/DateRangePicker";
@@ -10,6 +10,7 @@ import { useBrand } from "../contexts/BrandContext";
 import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
+import { buildJuguetonContractHtml, type JuguetonContractItem } from "../lib/juguetonContract";
 
 // ── Financial types ──────────────────────────────────────────────
 
@@ -66,7 +67,9 @@ interface Ficha {
   direccion: string;
   referencia?: string;
   hora_entrega: string;
+  hora_entrega_fin?: string;
   hora_recojo: string;
+  hora_recojo_fin?: string;
   paquetes: FichaPaquete[];
   productosSueltos: FichaProductoSuelto[];
   carritoIds?: number[];
@@ -100,7 +103,9 @@ interface FichaFormData {
   direccion: string;
   referencia: string;
   hora_entrega: string;
+  hora_entrega_fin: string;
   hora_recojo: string;
+  hora_recojo_fin: string;
   comentarios: string;
   cliente_nombre: string;
   cliente_celular: string;
@@ -135,7 +140,9 @@ const getInitialFormData = (): FichaFormData => ({
   direccion: "",
   referencia: "",
   hora_entrega: "",
+  hora_entrega_fin: "",
   hora_recojo: "",
+  hora_recojo_fin: "",
   comentarios: "",
   cliente_nombre: "",
   cliente_celular: "",
@@ -162,7 +169,10 @@ interface ExistingClient {
   nombre: string;
   razon_social: string | null;
   dni_ruc: string | null;
+  email?: string | null;
   telefono: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
   creado_por: "donofrio" | "jugueton";
   status: "active" | "inactive";
 }
@@ -242,6 +252,30 @@ function getEstadoPago(f: Ficha): EstadoPago {
   return "pendiente";
 }
 function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`; }
+
+const HORA_VENTANA_AUTOCOMPLETAR_HORAS = 1;
+
+function addHoraMasUnaHora(hora: string): string {
+  const [hoursText, minutesText = "00"] = hora.split(":");
+  const hours = Number(hoursText);
+  if (!Number.isFinite(hours)) return "";
+  const newHours = (hours + HORA_VENTANA_AUTOCOMPLETAR_HORAS) % 24;
+  return `${String(newHours).padStart(2, "0")}:${minutesText.padStart(2, "0")}`;
+}
+
+function formatHoraRango(inicio: string | undefined | null, fin?: string | undefined | null): string {
+  if (!inicio) return "-";
+  const startHour24 = Number(inicio.split(":")[0]);
+  if (!Number.isFinite(startHour24)) return inicio;
+  const finHour24 = fin ? Number(fin.split(":")[0]) : NaN;
+  const endHour24 = Number.isFinite(finHour24) ? finHour24 : (startHour24 + HORA_VENTANA_AUTOCOMPLETAR_HORAS) % 24;
+  const startPeriod = startHour24 >= 12 ? "pm" : "am";
+  const endPeriod = endHour24 >= 12 ? "pm" : "am";
+  const startHour12 = startHour24 % 12 || 12;
+  const endHour12 = endHour24 % 12 || 12;
+  const startLabel = startPeriod === endPeriod ? `${startHour12}` : `${startHour12}${startPeriod}`;
+  return `${startLabel} a ${endHour12}${endPeriod}`;
+}
 
 function toMoneyNumber(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -727,6 +761,10 @@ export function FichasPage() {
   const [previewComprobanteUrl, setPreviewComprobanteUrl] = useState<string | null>(null);
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
+  const [abonoInicialComprobante, setAbonoInicialComprobante] = useState<string>("");
+  const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
+  const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
+  const [isUploadingAbonoInicialComprobante, setIsUploadingAbonoInicialComprobante] = useState(false);
   const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
   const [clients, setClients] = useState<ExistingClient[]>([]);
   const [showNewClientModal, setShowNewClientModal] = useState(false);
@@ -742,6 +780,7 @@ export function FichasPage() {
     ciudad: "",
   });
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
   const dateRefreshLockRef = useRef(false);
@@ -901,7 +940,9 @@ export function FichasPage() {
         direccion: f.direccion || "",
         referencia: f.referencia || "",
         hora_entrega: f.hora_entrega || "",
+        hora_entrega_fin: f.hora_entrega_fin || "",
         hora_recojo: f.hora_recojo || "",
+        hora_recojo_fin: f.hora_recojo_fin || "",
         paquetes: (f.paquetes || []).map((p: any) => ({
           paqueteId: p.paquete_id || 0,
           paqueteNombre: p.paquete_nombre || "",
@@ -1018,7 +1059,13 @@ export function FichasPage() {
       matchesFecha = d >= new Date(dateRange.from) && d <= new Date(dateRange.to);
     } else if (dateRange?.from) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) >= new Date(dateRange.from);
     else if (dateRange?.to) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) <= new Date(dateRange.to);
-    return matchesSearch && matchesDistrito && matchesFecha && matchesEstado && matchesBrand;
+    let matchesFechaContacto = true;
+    if (contactDateRange?.from && contactDateRange?.to) {
+      const d = new Date(ficha.fecha_reserva || ficha.fecha);
+      matchesFechaContacto = d >= new Date(contactDateRange.from) && d <= new Date(contactDateRange.to);
+    } else if (contactDateRange?.from) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) >= new Date(contactDateRange.from);
+    else if (contactDateRange?.to) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) <= new Date(contactDateRange.to);
+    return matchesSearch && matchesDistrito && matchesFecha && matchesFechaContacto && matchesEstado && matchesBrand;
   });
 
   // Paginación de la grilla de fichas
@@ -1028,7 +1075,7 @@ export function FichasPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, brand]);
+  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand]);
 
   // Financial stats
   const stats = useMemo(() => {
@@ -1516,9 +1563,9 @@ export function FichasPage() {
 
             <div class="hora-box">
               <span>ENTREGA:</span>
-              <strong>${escapeHtml(ficha.hora_entrega || "-")}</strong>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin))}</strong>
               <span>RECOJO:</span>
-              <strong>${escapeHtml(ficha.hora_recojo || "-")}</strong>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin))}</strong>
             </div>
 
             <table>
@@ -1922,6 +1969,133 @@ export function FichasPage() {
     popup.document.close();
   };
 
+  const handleGenerarContrato = (ficha: Ficha) => {
+    if (ficha.brand !== "jugueton") return;
+
+    const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
+    const total = getTotal(ficha);
+    const abonado = getTotalAbonado(ficha);
+    const saldo = Math.max(0, getSaldo(ficha));
+    const movilidad = Math.max(
+      0,
+      toMoneyNumber(ficha.costo_envio) * (1 - toMoneyNumber(ficha.descuento_movilidad) / 100),
+    );
+    const items: JuguetonContractItem[] = [];
+
+    ficha.paquetes.forEach((paquete) => {
+      const catalogo = contextPaquetes.find((item) => item.id === paquete.paqueteId);
+      const precioUnitario = catalogo?.precioUnitario ?? 0;
+      items.push({
+        descripcion: "Paquete: " + paquete.paqueteNombre,
+        cantidad: paquete.cantidad,
+        monto: precioUnitario > 0 ? precioUnitario * paquete.cantidad : undefined,
+      });
+    });
+
+    ficha.productosSueltos.forEach((producto) => {
+      const catalogo = productsDeLaMarca.find((item) => item.producto === producto.productoNombre);
+      items.push({
+        descripcion: producto.productoNombre,
+        cantidad: producto.cantidad,
+        monto: catalogo?.precio ? catalogo.precio * producto.cantidad : undefined,
+      });
+    });
+
+    (ficha.inflableIds ?? []).forEach((inflableId) => {
+      const inflable = inflables.find((item) => item.id === inflableId);
+      if (!inflable) return;
+      items.push({
+        descripcion: "Inflable " + inflable.tipoNombre + (inflable.codigo ? " (" + inflable.codigo + ")" : ""),
+        cantidad: 1,
+        monto: inflable.precioAlquiler || undefined,
+      });
+    });
+
+    (ficha.carritoIds ?? []).forEach((carritoId) => {
+      const carrito = carritos.find((item) => item.id === carritoId);
+      if (!carrito) return;
+      items.push({
+        descripcion: "Carrito " + carrito.modelo + (carrito.codigo ? " (" + carrito.codigo + ")" : ""),
+        cantidad: 1,
+        monto: carrito.precioAlquiler || undefined,
+      });
+    });
+
+    (ficha.recursos ?? []).forEach((recurso) => {
+      const precio = Number(recurso.precio) || 0;
+      items.push({
+        descripcion: recurso.recurso_nombre,
+        cantidad: recurso.cantidad,
+        monto: precio > 0 ? precio * recurso.cantidad : undefined,
+      });
+    });
+
+    if (movilidad > 0) {
+      items.push({ descripcion: "Movilidad a " + ficha.distrito, cantidad: 1, monto: movilidad });
+    }
+
+    const formatContractTime = (time?: string) => {
+      if (!time) return "No especificado";
+      const [hoursText, minutesText = "0"] = time.split(":");
+      const hours = Number(hoursText);
+      const minutes = Number(minutesText);
+      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
+      const suffix = hours >= 12 ? "pm" : "am";
+      const hour12 = hours % 12 || 12;
+      return String(hour12).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + " " + suffix;
+    };
+
+    const getDurationText = () => {
+      if (!ficha.hora_entrega || !ficha.hora_recojo) return "según el horario acordado";
+      const toMinutes = (time: string) => {
+        const [hours, minutes] = time.split(":").map(Number);
+        return hours * 60 + minutes;
+      };
+      const start = toMinutes(ficha.hora_entrega);
+      let end = toMinutes(ficha.hora_recojo);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return "según el horario acordado";
+      if (end < start) end += 24 * 60;
+      const duration = end - start;
+      const hours = Math.floor(duration / 60);
+      const minutes = duration % 60;
+      return (hours > 0 ? hours + " hora" + (hours === 1 ? "" : "s") : "")
+        + (hours > 0 && minutes > 0 ? " y " : "")
+        + (minutes > 0 ? minutes + " minutos" : "");
+    };
+
+    const popup = window.open("", "contrato-jugueton-" + ficha.id, "width=1000,height=800");
+    if (!popup) {
+      setError("El navegador bloqueó la ventana del contrato. Habilita las ventanas emergentes e intenta nuevamente.");
+      return;
+    }
+
+    const direccionEvento = [ficha.direccion, ficha.distrito].filter(Boolean).join(", ") || "dirección por confirmar";
+    const horarioEvento = formatContractTime(ficha.hora_entrega) + " - " + formatContractTime(ficha.hora_recojo);
+    const html = buildJuguetonContractHtml({
+      numero: String(ficha.id).padStart(6, "0"),
+      fechaEmision: new Date().toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" }),
+      clienteNombre: ficha.cliente_nombre,
+      clienteDocumento: cliente?.dni_ruc || "",
+      clienteEmail: cliente?.email || "",
+      clienteTelefono: ficha.cliente_celular || cliente?.telefono || "",
+      tipoEvento: ficha.tipo_evento || "Evento",
+      fechaEvento: formatDate(ficha.fecha_evento || ficha.fecha),
+      direccionEvento,
+      horarioEvento,
+      duracionEvento: getDurationText(),
+      incluyePersonal: (ficha.personalIds ?? []).length > 0,
+      items,
+      total,
+      abonado,
+      saldo,
+    });
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+  };
+
   const handleAddPersonalRow = () => {
     setFormData((prev) => ({ ...prev, personalIds: [...prev.personalIds, 0] }));
   };
@@ -1954,6 +2128,18 @@ export function FichasPage() {
       }));
     } else if (name === "costo_envio") {
       setFormData((prev) => ({ ...prev, costo_envio: Number(value) || 0 }));
+    } else if (name === "hora_entrega") {
+      setFormData((prev) => ({
+        ...prev,
+        hora_entrega: value,
+        hora_entrega_fin: value ? addHoraMasUnaHora(value) : prev.hora_entrega_fin,
+      }));
+    } else if (name === "hora_recojo") {
+      setFormData((prev) => ({
+        ...prev,
+        hora_recojo: value,
+        hora_recojo_fin: value ? addHoraMasUnaHora(value) : prev.hora_recojo_fin,
+      }));
     } else if (name === "descuento_movilidad") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
       setFormData((prev) => ({ ...prev, descuento_movilidad: clamped }));
@@ -2230,7 +2416,9 @@ export function FichasPage() {
       direccion: ficha.direccion || "",
       referencia: ficha.referencia || "",
       hora_entrega: ficha.hora_entrega || "",
+      hora_entrega_fin: ficha.hora_entrega_fin || "",
       hora_recojo: ficha.hora_recojo || "",
+      hora_recojo_fin: ficha.hora_recojo_fin || "",
       comentarios: ficha.comentarios || "",
       cliente_nombre: ficha.cliente_nombre || "",
       cliente_celular: ficha.cliente_celular || "",
@@ -2257,6 +2445,8 @@ export function FichasPage() {
     });
     setCotizacionMode("manual");
     setEditingFichaId(ficha.id);
+    resetAbonoInicialComprobante();
+    setError("");
     closeFichaDetail();
     setShowAddModal(true);
   };
@@ -2287,9 +2477,97 @@ export function FichasPage() {
     }
   };
 
+  const resetAbonoInicialComprobante = () => {
+    setAbonoInicialComprobante("");
+    setAbonoInicialComprobanteName("");
+    setAbonoInicialComprobantePath("");
+  };
+
+  const cleanupAbonoInicialComprobante = async () => {
+    if (!abonoInicialComprobantePath) return;
+    try {
+      await apiRequest<{ ok?: boolean }>("/upload", {
+        method: "DELETE",
+        body: JSON.stringify({ path: abonoInicialComprobantePath }),
+      });
+    } catch {
+      // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
+    }
+  };
+
+  const handleAbonoInicialComprobanteChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAbonoInicialComprobante(true);
+    setError("");
+
+    try {
+      await cleanupAbonoInicialComprobante();
+      resetAbonoInicialComprobante();
+
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", file);
+      uploadFormData.append("folder", "comprobantes");
+
+      const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: "POST",
+        body: uploadFormData,
+      });
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        const isJson = contentType.includes("application/json");
+        const errorData = isJson ? await response.json() : { error: `HTTP ${response.status}` };
+        throw new Error((errorData as any).error || "Error al subir el archivo");
+      }
+
+      const data = await response.json();
+      const rawUrl =
+        data?.url ||
+        data?.fileUrl ||
+        data?.secure_url ||
+        data?.location ||
+        data?.data?.url ||
+        "";
+
+      const rawPath =
+        data?.path ||
+        data?.filePath ||
+        data?.data?.path ||
+        extractStoragePathFromUrl(rawUrl);
+
+      if (!rawUrl) {
+        throw new Error("La API respondió sin URL del archivo subido");
+      }
+
+      if (!rawPath) {
+        throw new Error("La API respondió sin path del archivo subido");
+      }
+
+      const normalizedUrl =
+        typeof rawUrl === "string" && rawUrl.startsWith("/")
+          ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
+          : rawUrl;
+
+      setAbonoInicialComprobante(normalizedUrl);
+      setAbonoInicialComprobanteName(file.name);
+      setAbonoInicialComprobantePath(rawPath);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al subir el comprobante");
+      resetAbonoInicialComprobante();
+    } finally {
+      setIsUploadingAbonoInicialComprobante(false);
+      event.target.value = "";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!brand) return;
+    if (!brand) {
+      setError("No se pudo determinar la marca de tu cuenta. Cierra sesión y vuelve a iniciar sesión; si el problema continúa, contacta al administrador.");
+      return;
+    }
     if (createFichaLockRef.current || isSaving) return;
     if (!formData.tipoEvento) {
       setTipoEventoMissing(true);
@@ -2317,7 +2595,9 @@ export function FichasPage() {
       direccion: formData.direccion,
       referencia: formData.referencia,
       hora_entrega: formData.hora_entrega || null,
+      hora_entrega_fin: formData.hora_entrega_fin || null,
       hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
+      hora_recojo_fin: formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
       comentarios: formData.comentarios,
       cliente_id: formData.cliente_id || null,
       cliente_nombre: formData.cliente_nombre,
@@ -2359,7 +2639,7 @@ export function FichasPage() {
               fecha: formData.abonoInicialFecha,
               monto: montoAbonoInicial,
               numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
-              comprobante_url: null,
+              comprobante_url: abonoInicialComprobante || null,
               medio: formData.abonoInicialMedio,
             }),
           });
@@ -2369,6 +2649,7 @@ export function FichasPage() {
       setShowAddModal(false);
       setEditingFichaId(null);
       setFormData(getInitialFormData());
+      resetAbonoInicialComprobante();
       await refreshFichasAndCatalogs();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -2388,7 +2669,15 @@ export function FichasPage() {
     }
   };
 
-  const handleCloseModal = () => { setShowAddModal(false); setFormData(getInitialFormData()); setCotizacionMode("auto"); setEditingFichaId(null); setTipoEventoMissing(false); };
+  const handleCloseModal = () => {
+    void cleanupAbonoInicialComprobante();
+    setShowAddModal(false);
+    setFormData(getInitialFormData());
+    setCotizacionMode("auto");
+    setEditingFichaId(null);
+    setTipoEventoMissing(false);
+    resetAbonoInicialComprobante();
+  };
 
   const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
 
@@ -2608,7 +2897,8 @@ export function FichasPage() {
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <DateRangePicker selectedRange={dateRange} onRangeChange={setDateRange} onClear={() => setDateRange(undefined)} />
+          <DateRangePicker label="Fecha del Evento" selectedRange={dateRange} onRangeChange={setDateRange} onClear={() => setDateRange(undefined)} />
+          <DateRangePicker label="Fecha de Contacto del Cliente" selectedRange={contactDateRange} onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
         </div>
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div className="flex-1 w-full lg:max-w-md">
@@ -2631,7 +2921,7 @@ export function FichasPage() {
               <option value="parcial">Parcial</option>
               <option value="pendiente">Pendiente</option>
             </select>
-            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); }}
+            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setError(""); }}
               className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
@@ -2665,7 +2955,7 @@ export function FichasPage() {
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
                     <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Reserva: {formatDate(ficha.fecha_reserva)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
                   <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{ficha.cliente_nombre}</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
@@ -2680,6 +2970,15 @@ export function FichasPage() {
                   >
                     <FileText className="w-5 h-5" />
                   </button>
+                  {ficha.brand === "jugueton" && (
+                    <button
+                      onClick={() => handleGenerarContrato(ficha)}
+                      className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                      title="Generar contrato"
+                    >
+                      <FileSignature className="w-5 h-5" />
+                    </button>
+                  )}
                   {canEditFicha(ficha) && (
                     <button onClick={() => { setAbonoTargetFicha(ficha); setShowAbonoModal(true); }}
                       className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
@@ -2763,7 +3062,7 @@ export function FichasPage() {
               {/* Footer */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.hora_entrega}{ficha.hora_recojo ? ` - ${ficha.hora_recojo}` : ""}</span></div>
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}{ficha.hora_recojo ? ` · ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}</span></div>
                   {(ficha.carritoIds?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
                   )}
@@ -2855,7 +3154,7 @@ export function FichasPage() {
                 <h3 className="text-2xl text-gray-900 dark:text-white mb-2">Detalle del Evento</h3>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Reserva: {formatDate(selectedFicha.fecha_reserva)}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
@@ -3075,8 +3374,8 @@ export function FichasPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_entrega || "-"}</p></div>
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.hora_recojo || "-"}</p></div>
+                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
@@ -3144,13 +3443,21 @@ export function FichasPage() {
               )}
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-wrap gap-3 mt-6">
               <button
                 onClick={() => handleGenerarProforma(selectedFicha)}
                 className="flex-1 bg-[#1F3C8B] text-white py-3 rounded-lg hover:bg-[#19316f] transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <FileText className="w-4 h-4" /> Generar Proforma
               </button>
+              {selectedFicha.brand === "jugueton" && (
+                <button
+                  onClick={() => handleGenerarContrato(selectedFicha)}
+                  className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm"
+                >
+                  <FileSignature className="w-4 h-4" /> Generar Contrato
+                </button>
+              )}
               {canEditFicha(selectedFicha) && (
                 <>
                   <button onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
@@ -3209,6 +3516,12 @@ export function FichasPage() {
               <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"><X className="w-5 h-5" /></button>
             </div>
 
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Tipo de Evento — va primero para condicionar el resto del form */}
               <div>
@@ -3253,7 +3566,7 @@ export function FichasPage() {
                     <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha de Reserva *</label>
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha de Contacto del Cliente *</label>
                     <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                   </div>
                 </div>
@@ -3280,9 +3593,7 @@ export function FichasPage() {
                         <input type="number" value={paq.cantidad} onChange={e => handlePaqueteCantidadChange(idx, Number(e.target.value))} min={1}
                           className={`${inputClass} text-sm`} />
                       </div>
-                      {formData.paquetes.length > 1 && (
-                        <button type="button" onClick={() => handleRemoveFormPaquete(idx)} className="mt-5 p-2 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                      )}
+                      <button type="button" onClick={() => handleRemoveFormPaquete(idx)} className="mt-5 p-2 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   ))}
                   <button type="button" onClick={handleAddFormPaquete} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar otro paquete</button>
@@ -3585,12 +3896,30 @@ export function FichasPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
-                    <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
+                        <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                      </div>
+                      <div>
+                        <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
+                        <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
+                      </div>
+                    </div>
                   </div>
                   {formData.transporte !== "delivery" && (
                     <div>
                       <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
-                      <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
+                          <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                        </div>
+                        <div>
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
+                          <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required className={inputClass} />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3765,6 +4094,21 @@ export function FichasPage() {
                             placeholder="Opcional"
                             className={inputClass}
                           />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Foto del comprobante (opcional)</label>
+                          <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
+                            isUploadingAbonoInicialComprobante ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
+                          }`}>
+                            <Upload className="w-4 h-4" />
+                            <span>{isUploadingAbonoInicialComprobante ? "Subiendo..." : abonoInicialComprobanteName || "Subir imagen del comprobante"}</span>
+                            <input type="file" accept="image/*" onChange={handleAbonoInicialComprobanteChange} disabled={isUploadingAbonoInicialComprobante} className="hidden" />
+                          </label>
+                          {abonoInicialComprobante && (
+                            <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                              <img src={abonoInicialComprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

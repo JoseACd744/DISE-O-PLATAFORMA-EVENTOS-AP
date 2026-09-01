@@ -30,7 +30,10 @@
       "Bash(sed -i '12s#/images/eventos_ap\\\\.png#/images/donofrio.jpg#' src/app/pages/BrandSelectPage.tsx)",
       "Bash(python3 -c ' *)",
       "Bash(node -e ' *)",
-      "Bash(awk 'NR==1400 || NR==1410 || NR==1415 || NR==1420 || NR==1425 {print NR\": \"$0}' src/app/pages/FichasPage.tsx)"
+      "Bash(awk 'NR==1400 || NR==1410 || NR==1415 || NR==1420 || NR==1425 {print NR\": \"$0}' src/app/pages/FichasPage.tsx)",
+      "Bash(firebase deploy *)",
+      "Bash(curl -s \"https://plataforma-eventos-ap.web.app/\")",
+      "Bash(curl -s \"https://plataforma-eventos-ap.web.app/assets/index-2LGIvJb4.js\" -o /tmp/bundle.js)"
     ]
   }
 }

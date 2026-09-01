@@ -9,9 +9,10 @@ interface DateRangePickerProps {
   selectedRange: DateRange | undefined;
   onRangeChange: (range: DateRange | undefined) => void;
   onClear: () => void;
+  label?: string;
 }
 
-export function DateRangePicker({ selectedRange, onRangeChange, onClear }: DateRangePickerProps) {
+export function DateRangePicker({ selectedRange, onRangeChange, onClear, label = "Rango de Fechas" }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const formatDateRange = () => {
@@ -34,7 +35,7 @@ export function DateRangePicker({ selectedRange, onRangeChange, onClear }: DateR
     <div className="relative">
       <label className="block text-sm text-gray-600 dark:text-gray-300 mb-2 flex items-center gap-2">
         <Calendar className="w-4 h-4" />
-        Rango de Fechas
+        {label}
       </label>
       
       <div className="flex gap-2">
