@@ -21,7 +21,7 @@ interface Abono {
   numeroOperacion: string;
   comprobante?: string; // filename
   comprobantePreview?: string; // data URL for preview
-  medio: "Transferencia" | "Yape" | "Plin" | "Efectivo";
+  medio: "Transferencia" | "Yape" | "Plin" | "Efectivo" | "Link de Pago";
 }
 
 interface FichaPaquete {
@@ -62,6 +62,7 @@ interface Ficha {
   distrito: string;
   transporte?: "cumpleanos" | "delivery";
   tipo_evento?: string;
+  titulo?: string;
   costo_envio?: number;
   descuento_movilidad?: number;
   direccion: string;
@@ -90,6 +91,7 @@ interface Ficha {
   brand: "donofrio" | "jugueton";
   created_by?: string;
   created_by_nombre?: string;
+  created_at?: string;
 }
 
 interface FichaFormData {
@@ -98,6 +100,7 @@ interface FichaFormData {
   distrito: string;
   transporte: "cumpleanos" | "delivery";
   tipoEvento: string;
+  titulo: string;
   costo_envio: number;
   descuento_movilidad: number;
   direccion: string;
@@ -130,11 +133,12 @@ interface FichaFormData {
 const FICHAS_PER_PAGE = 10;
 
 const getInitialFormData = (): FichaFormData => ({
-  fecha_evento: new Date().toISOString().slice(0, 10),
-  fecha_reserva: new Date().toISOString().slice(0, 10),
+  fecha_evento: getLocalDateString(),
+  fecha_reserva: getLocalDateString(),
   distrito: "",
   transporte: "cumpleanos",
   tipoEvento: "",
+  titulo: "",
   costo_envio: 0,
   descuento_movilidad: 0,
   direccion: "",
@@ -158,7 +162,7 @@ const getInitialFormData = (): FichaFormData => ({
   personalIds: [0],
   recursos: [{ recursoId: 0, cantidad: 1 }],
   registrarAbonoInicial: false,
-  abonoInicialFecha: new Date().toISOString().slice(0, 10),
+  abonoInicialFecha: getLocalDateString(),
   abonoInicialMonto: 0,
   abonoInicialMedio: "Transferencia",
   abonoInicialNumeroOperacion: "",
@@ -275,6 +279,24 @@ function formatHoraRango(inicio: string | undefined | null, fin?: string | undef
   const endHour12 = endHour24 % 12 || 12;
   const startLabel = startPeriod === endPeriod ? `${startHour12}` : `${startHour12}${startPeriod}`;
   return `${startLabel} a ${endHour12}${endPeriod}`;
+}
+
+function formatHoraFija(hora: string | undefined | null): string {
+  if (!hora) return "-";
+  const [hoursText, minutesText = "0"] = hora.split(":");
+  const hour24 = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hour24) || !Number.isFinite(minutes)) return hora;
+  const period = hour24 >= 12 ? "pm" : "am";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")}${period}`;
+}
+
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function toMoneyNumber(value: unknown): number {
@@ -452,18 +474,23 @@ function SearchableSelect({
 
 function AbonoModal({
   ficha,
+  abono,
   onClose,
   onSave,
+  onUpdate,
 }: {
   ficha: Ficha;
+  abono?: Abono | null;
   onClose: () => void;
   onSave: (fichaId: number, abono: Abono) => Promise<void>;
+  onUpdate?: (fichaId: number, abonoId: number, abono: Abono) => Promise<void>;
 }) {
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [monto, setMonto] = useState<string>("");
-  const [numeroOperacion, setNumeroOperacion] = useState("");
-  const [medio, setMedio] = useState<Abono["medio"]>("Transferencia");
-  const [comprobante, setComprobante] = useState<string>("");
+  const isEditing = Boolean(abono);
+  const [fecha, setFecha] = useState(abono?.fecha || getLocalDateString());
+  const [monto, setMonto] = useState<string>(abono ? String(abono.monto) : "");
+  const [numeroOperacion, setNumeroOperacion] = useState(abono?.numeroOperacion || "");
+  const [medio, setMedio] = useState<Abono["medio"]>(abono?.medio || "Transferencia");
+  const [comprobante, setComprobante] = useState<string>(abono?.comprobante || "");
   const [comprobanteName, setComprobanteName] = useState<string>("");
   const [comprobantePath, setComprobantePath] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -513,10 +540,7 @@ function AbonoModal({
     onClose();
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const uploadComprobanteFile = async (file: File) => {
     setIsUploading(true);
     setModalError("");
 
@@ -584,6 +608,26 @@ function AbonoModal({
     }
   };
 
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadComprobanteFile(file);
+  };
+
+  const handleComprobantePaste = async (event: React.ClipboardEvent) => {
+    if (isUploading || isCleaningUpload) return;
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const renamedFile = new File([file], file.name || `comprobante-pegado-${Date.now()}.png`, { type: file.type });
+    await uploadComprobanteFile(renamedFile);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const montoNumerico = Number(monto);
@@ -592,15 +636,21 @@ function AbonoModal({
     setModalError("");
     setIsSaving(true);
     try {
-      await onSave(ficha.id, {
-        id: Date.now(),
+      const payload: Abono = {
+        id: abono?.id ?? Date.now(),
         fecha,
         monto: montoNumerico,
         numeroOperacion: numeroOperacion.trim(),
         comprobante: comprobante || undefined,
         comprobantePreview: comprobante || undefined,
         medio,
-      });
+      };
+
+      if (isEditing && abono && onUpdate) {
+        await onUpdate(ficha.id, abono.id, payload);
+      } else {
+        await onSave(ficha.id, payload);
+      }
       setComprobantePath("");
       onClose();
     } catch (err) {
@@ -627,7 +677,7 @@ function AbonoModal({
       <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h3 className="text-2xl text-gray-900 dark:text-white">Registrar Abono</h3>
+            <h3 className="text-2xl text-gray-900 dark:text-white">{isEditing ? "Editar Abono" : "Registrar Abono"}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{ficha.cliente_nombre}</p>
           </div>
           <button onClick={() => void handleModalClose()} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
@@ -687,6 +737,7 @@ function AbonoModal({
               <option value="Yape">Yape</option>
               <option value="Plin">Plin</option>
               <option value="Efectivo">Efectivo</option>
+              <option value="Link de Pago">Link de Pago</option>
             </select>
           </div>
 
@@ -703,13 +754,20 @@ function AbonoModal({
 
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Comprobante</label>
-            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
-              isUploading || isCleaningUpload ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
-            }`}>
-              <Upload className="w-4 h-4" />
-              <span>{isUploading ? "Subiendo..." : isCleaningUpload ? "Limpiando archivo..." : comprobanteName || "Subir imagen del comprobante"}</span>
-              <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading || isCleaningUpload} className="hidden" />
-            </label>
+            <div
+              tabIndex={0}
+              onPaste={(e) => void handleComprobantePaste(e)}
+              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                isUploading || isCleaningUpload ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+              }`}
+            >
+              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading || isCleaningUpload ? "cursor-not-allowed" : "hover:text-[#EF8022]"}`}>
+                <Upload className="w-4 h-4" />
+                <span>{isUploading ? "Subiendo..." : isCleaningUpload ? "Limpiando archivo..." : comprobanteName || "Subir imagen del comprobante"}</span>
+                <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading || isCleaningUpload} className="hidden" />
+              </label>
+              <span className="text-xs text-gray-400 dark:text-gray-500">o haz clic aquí y pega una imagen (Ctrl+V)</span>
+            </div>
             {comprobante && (
               <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
@@ -723,7 +781,7 @@ function AbonoModal({
               disabled={isSaving || isCleaningUpload}
               className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
             >
-              {isSaving ? "Guardando..." : "Guardar abono"}
+              {isSaving ? "Guardando..." : isEditing ? "Guardar cambios" : "Guardar abono"}
             </button>
             <button
               type="button"
@@ -750,6 +808,7 @@ export function FichasPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"created_desc" | "created_asc" | "evento_asc" | "evento_desc">("created_desc");
   const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
   const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -761,6 +820,7 @@ export function FichasPage() {
   const [previewComprobanteUrl, setPreviewComprobanteUrl] = useState<string | null>(null);
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
+  const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
   const [abonoInicialComprobante, setAbonoInicialComprobante] = useState<string>("");
   const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
   const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
@@ -778,6 +838,11 @@ export function FichasPage() {
     telefono: "",
     direccion: "",
     ciudad: "",
+    canal: "Referidos",
+    status: "active" as "active" | "inactive",
+    anioRegistro: "",
+    fichasBase: 0,
+    recomendaciones: 0,
   });
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
@@ -801,7 +866,7 @@ export function FichasPage() {
   const canEditFicha = (ficha: Ficha) => !isVendedor || ficha.created_by === currentUserId;
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, allProducts, carritos, inflables, personales, recursos, reloadData } = useProducts();
+  const { paquetes: contextPaquetes, allProducts, carritos, inflables, personales, recursos, reloadData, isLoadingData } = useProducts();
 
   // Productos y nombres de la marca activa únicamente
   const productsDeLaMarca = useMemo(() => allProducts.filter((p) => p.brand === brand), [allProducts, brand]);
@@ -935,6 +1000,7 @@ export function FichasPage() {
         distrito: f.distrito || "",
         transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
         tipo_evento: f.tipo_evento || "",
+        titulo: f.titulo || "",
         costo_envio: Number(f.costo_envio || 0),
         descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
         direccion: f.direccion || "",
@@ -975,6 +1041,7 @@ export function FichasPage() {
         brand: f.brand,
         created_by: f.created_by || "",
         created_by_nombre: f.created_by_nombre || "",
+        created_at: f.created_at || "",
         abonos: (f.abonos || []).map((a: any) => ({
           id: a.id,
           fecha: a.fecha,
@@ -1048,6 +1115,7 @@ export function FichasPage() {
 
   const filteredFichas = fichas.filter(ficha => {
     const matchesSearch = ficha.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ficha.titulo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       ficha.direccion.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ficha.distrito.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDistrito = selectedDistrito === "Todos" || ficha.distrito === selectedDistrito;
@@ -1066,6 +1134,13 @@ export function FichasPage() {
     } else if (contactDateRange?.from) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) >= new Date(contactDateRange.from);
     else if (contactDateRange?.to) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) <= new Date(contactDateRange.to);
     return matchesSearch && matchesDistrito && matchesFecha && matchesFechaContacto && matchesEstado && matchesBrand;
+  }).sort((a, b) => {
+    if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
+    if (sortBy === "created_asc") return (a.created_at || "").localeCompare(b.created_at || "");
+    const fechaA = a.fecha_evento || a.fecha || "";
+    const fechaB = b.fecha_evento || b.fecha || "";
+    if (sortBy === "evento_asc") return fechaA.localeCompare(fechaB);
+    return fechaB.localeCompare(fechaA);
   });
 
   // Paginación de la grilla de fichas
@@ -1075,7 +1150,7 @@ export function FichasPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand]);
+  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand, sortBy]);
 
   // Financial stats
   const stats = useMemo(() => {
@@ -1120,6 +1195,15 @@ export function FichasPage() {
     return d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
   };
 
+  const formatDiaSemana = (dateIso: string) => {
+    if (!dateIso) return "";
+    const raw = dateIso.includes("T") ? dateIso.slice(0, 10) : dateIso;
+    const d = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return "";
+    const dia = d.toLocaleDateString("es-PE", { weekday: "long" });
+    return dia.charAt(0).toUpperCase() + dia.slice(1);
+  };
+
   const formatearContenidoPaquete = (contenido: { productoNombre: string; cantidad: number }[]) => {
     if (contenido.length === 0) return "";
     const parts = contenido.map(item => `${item.cantidad} ${item.productoNombre}`);
@@ -1129,13 +1213,14 @@ export function FichasPage() {
   };
 
   const handleGenerarProforma = (ficha: Ficha) => {
+    const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
     const abonado = getTotalAbonado(ficha);
     const saldo = Math.max(0, getSaldo(ficha));
     const unidadesHelado = getUnidadesHelado(ficha);
     const brandMeta = getBrandMeta(ficha.brand);
     const fechaEmision = new Date().toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const fechaParaArchivo = new Date().toISOString().slice(0, 10);
+    const fechaParaArchivo = getLocalDateString();
     const numeroFicha = String(ficha.id).padStart(4, "0");
     const defaultFileName = ficha.brand === "jugueton"
       ? `Cotizacion_Jugueton_${numeroFicha}_${fechaParaArchivo}`
@@ -1562,10 +1647,19 @@ export function FichasPage() {
             </section>
 
             <div class="hora-box">
+              ${ficha.brand === "jugueton" ? `
+              <span>ENTREGA:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_entrega))}</strong>
+              <span>INICIO:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_entrega_fin))}</strong>
+              <span>RECOJO:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_recojo))}</strong>
+              ` : `
               <span>ENTREGA:</span>
               <strong>${escapeHtml(formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin))}</strong>
               <span>RECOJO:</span>
               <strong>${escapeHtml(formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin))}</strong>
+              `}
             </div>
 
             <table>
@@ -1898,8 +1992,9 @@ export function FichasPage() {
             <section class="meta-top">
               <div class="client">
                 <div class="row"><strong>SR(A)</strong><span>${escapeHtml(ficha.cliente_nombre)}</span></div>
-                <div class="row"><strong>RUC / DNI</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
-                <div class="row"><strong>CORREO</strong><span>${escapeHtml(ficha.contacto_nombre || "-")}</span></div>
+                <div class="row"><strong>RUC / DNI</strong><span>${escapeHtml(cliente?.dni_ruc || "-")}</span></div>
+                <div class="row"><strong>CORREO</strong><span>${escapeHtml(cliente?.email || "-")}</span></div>
+                <div class="row"><strong>TELEFONO</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
                 <div class="row"><strong>Atencion</strong><span>${escapeHtml(ficha.contacto_nombre || ficha.cliente_nombre)}</span></div>
                 <div class="row"><strong></strong><span>Mediante la presente, enviamos lo solicitado:</span></div>
               </div>
@@ -2132,13 +2227,13 @@ export function FichasPage() {
       setFormData((prev) => ({
         ...prev,
         hora_entrega: value,
-        hora_entrega_fin: value ? addHoraMasUnaHora(value) : prev.hora_entrega_fin,
+        hora_entrega_fin: brand === "jugueton" ? prev.hora_entrega_fin : (value ? addHoraMasUnaHora(value) : prev.hora_entrega_fin),
       }));
     } else if (name === "hora_recojo") {
       setFormData((prev) => ({
         ...prev,
         hora_recojo: value,
-        hora_recojo_fin: value ? addHoraMasUnaHora(value) : prev.hora_recojo_fin,
+        hora_recojo_fin: brand === "jugueton" ? prev.hora_recojo_fin : (value ? addHoraMasUnaHora(value) : prev.hora_recojo_fin),
       }));
     } else if (name === "descuento_movilidad") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
@@ -2211,7 +2306,7 @@ export function FichasPage() {
   };
 
   const handleOpenNewClientModal = () => {
-    setNewClientForm({ nombre: "", razonSocial: "", dniRuc: "", email: "", telefono: "", direccion: "", ciudad: "" });
+    setNewClientForm({ nombre: "", razonSocial: "", dniRuc: "", email: "", telefono: "", direccion: "", ciudad: "", canal: "Referidos", status: "active", anioRegistro: "", fichasBase: 0, recomendaciones: 0 });
     setNewClientError("");
     setShowNewClientModal(true);
   };
@@ -2236,9 +2331,12 @@ export function FichasPage() {
           telefono: newClientForm.telefono,
           direccion: newClientForm.direccion || null,
           ciudad: newClientForm.ciudad || null,
-          canal: "Referidos",
-          status: "active",
+          canal: newClientForm.canal,
+          status: newClientForm.status,
           creado_por: brand,
+          anio_registro: newClientForm.anioRegistro ? Number(newClientForm.anioRegistro) : null,
+          fichas_base: Number(newClientForm.fichasBase) || 0,
+          recomendaciones: Number(newClientForm.recomendaciones) || 0,
         }),
       });
 
@@ -2274,7 +2372,7 @@ export function FichasPage() {
     }));
   };
   const handlePaqueteCantidadChange = (idx: number, cantidad: number) => {
-    setFormData(prev => ({
+      setFormData(prev => ({
       ...prev,
       paquetes: prev.paquetes.map((p, i) => i === idx ? { ...p, cantidad } : p)
     }));
@@ -2387,6 +2485,39 @@ export function FichasPage() {
     }
   };
 
+  const handleUpdateAbono = async (fichaId: number, abonoId: number, abono: Abono) => {
+    try {
+      await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          fecha: abono.fecha,
+          monto: abono.monto,
+          numero_operacion: abono.numeroOperacion || null,
+          comprobante_url: abono.comprobante || null,
+          medio: abono.medio,
+        }),
+      });
+
+      await refreshFichasAndCatalogs();
+      if (selectedFicha && selectedFicha.id === fichaId) {
+        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
+        setSelectedFicha((prev) => prev ? {
+          ...prev,
+          abonos: (refreshed.abonos || []).map((a: any) => ({
+            id: a.id,
+            fecha: a.fecha,
+            monto: Number(a.monto || 0),
+            numeroOperacion: a.numero_operacion || "",
+            comprobante: a.comprobante_url || "",
+            medio: a.medio,
+          })),
+        } : prev);
+      }
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Error al actualizar el abono");
+    }
+  };
+
   const openFichaDetail = (ficha: Ficha) => {
     setSelectedFicha(ficha);
     setShowDetailModal(true);
@@ -2411,6 +2542,7 @@ export function FichasPage() {
       distrito: ficha.distrito || "",
       transporte: ficha.transporte || "cumpleanos",
       tipoEvento: ficha.tipo_evento || "",
+      titulo: ficha.titulo || "",
       costo_envio: ficha.costo_envio || 0,
       descuento_movilidad: ficha.descuento_movilidad || 0,
       direccion: ficha.direccion || "",
@@ -2438,7 +2570,7 @@ export function FichasPage() {
         ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad }))
         : [{ recursoId: 0, cantidad: 1 }],
       registrarAbonoInicial: false,
-      abonoInicialFecha: new Date().toISOString().slice(0, 10),
+      abonoInicialFecha: getLocalDateString(),
       abonoInicialMonto: 0,
       abonoInicialMedio: "Transferencia",
       abonoInicialNumeroOperacion: "",
@@ -2495,10 +2627,7 @@ export function FichasPage() {
     }
   };
 
-  const handleAbonoInicialComprobanteChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const uploadAbonoInicialComprobanteFile = async (file: File) => {
     setIsUploadingAbonoInicialComprobante(true);
     setError("");
 
@@ -2558,8 +2687,28 @@ export function FichasPage() {
       resetAbonoInicialComprobante();
     } finally {
       setIsUploadingAbonoInicialComprobante(false);
-      event.target.value = "";
     }
+  };
+
+  const handleAbonoInicialComprobanteChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadAbonoInicialComprobanteFile(file);
+    event.target.value = "";
+  };
+
+  const handleAbonoInicialComprobantePaste = async (event: React.ClipboardEvent) => {
+    if (isUploadingAbonoInicialComprobante) return;
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const renamedFile = new File([file], file.name || `comprobante-pegado-${Date.now()}.png`, { type: file.type });
+    await uploadAbonoInicialComprobanteFile(renamedFile);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2592,12 +2741,13 @@ export function FichasPage() {
       distrito: formData.distrito,
       transporte: formData.transporte,
       tipo_evento: formData.tipoEvento,
+      titulo: formData.titulo || null,
       direccion: formData.direccion,
       referencia: formData.referencia,
       hora_entrega: formData.hora_entrega || null,
       hora_entrega_fin: formData.hora_entrega_fin || null,
       hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
-      hora_recojo_fin: formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
+      hora_recojo_fin: brand === "jugueton" || formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
       comentarios: formData.comentarios,
       cliente_id: formData.cliente_id || null,
       cliente_nombre: formData.cliente_nombre,
@@ -2921,6 +3071,13 @@ export function FichasPage() {
               <option value="parcial">Parcial</option>
               <option value="pendiente">Pendiente</option>
             </select>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm">
+              <option value="created_desc">Creación: más reciente</option>
+              <option value="created_asc">Creación: más antigua</option>
+              <option value="evento_asc">Evento: fecha ascendente</option>
+              <option value="evento_desc">Evento: fecha descendente</option>
+            </select>
             <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setError(""); }}
               className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
@@ -2954,12 +3111,12 @@ export function FichasPage() {
                   </div>
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDiaSemana(ficha.fecha_evento || ficha.fecha)} {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
-                  <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{ficha.cliente_nombre}</h3>
+                  <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{ficha.titulo || ficha.cliente_nombre}</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <Phone className="w-4 h-4" /> {ficha.cliente_celular}
+                    <Phone className="w-4 h-4" /> {ficha.cliente_nombre} · {ficha.cliente_celular}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -2980,7 +3137,7 @@ export function FichasPage() {
                     </button>
                   )}
                   {canEditFicha(ficha) && (
-                    <button onClick={() => { setAbonoTargetFicha(ficha); setShowAbonoModal(true); }}
+                    <button onClick={() => { setAbonoTargetFicha(ficha); setEditingAbono(null); setShowAbonoModal(true); }}
                       className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
                       title="Registrar abono">
                       <CreditCard className="w-5 h-5" />
@@ -3062,7 +3219,11 @@ export function FichasPage() {
               {/* Footer */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">{formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}{ficha.hora_recojo ? ` · ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}</span></div>
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">
+                    {ficha.brand === "jugueton"
+                      ? `${formatHoraFija(ficha.hora_entrega)}${ficha.hora_entrega_fin ? ` · Inicio ${formatHoraFija(ficha.hora_entrega_fin)}` : ""}${ficha.hora_recojo ? ` · ${formatHoraFija(ficha.hora_recojo)}` : ""}`
+                      : `${formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}${ficha.hora_recojo ? ` · ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}`}
+                  </span></div>
                   {(ficha.carritoIds?.length ?? 0) > 0 && (
                     <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
                   )}
@@ -3151,7 +3312,7 @@ export function FichasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h3 className="text-2xl text-gray-900 dark:text-white mb-2">Detalle del Evento</h3>
+                <h3 className="text-2xl text-gray-900 dark:text-white mb-2">{selectedFicha.titulo || selectedFicha.cliente_nombre}</h3>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
@@ -3194,7 +3355,7 @@ export function FichasPage() {
                   <h4 className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Resumen Financiero</h4>
                   {canEditFicha(selectedFicha) && (
                     <button
-                      onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
+                      onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
                       className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Registrar Abono
                     </button>
@@ -3253,6 +3414,14 @@ export function FichasPage() {
                               )}
                             </div>
                           </div>
+                          {canEditFicha(selectedFicha) && (
+                            <button
+                              onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(abono); setShowAbonoModal(true); }}
+                              className="p-1.5 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors shrink-0"
+                              title="Editar abono">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -3373,9 +3542,12 @@ export function FichasPage() {
                   <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-red-500 mt-0.5" /><div><p className="text-gray-900 dark:text-white">{selectedFicha.direccion}</p><p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{selectedFicha.distrito}</p>{selectedFicha.referencia && <p className="text-sm text-gray-500 mt-2 italic">Ref: {selectedFicha.referencia}</p>}</div></div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
+              <div className={selectedFicha.brand === "jugueton" ? "grid grid-cols-3 gap-4" : "grid grid-cols-2 gap-4"}>
+                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_entrega) : formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
+                {selectedFicha.brand === "jugueton" && (
+                  <div className="bg-[#EF8022]/5 dark:bg-[#EF8022]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Inicio</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraFija(selectedFicha.hora_entrega_fin)}</p></div>
+                )}
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_recojo) : formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
@@ -3460,7 +3632,7 @@ export function FichasPage() {
               )}
               {canEditFicha(selectedFicha) && (
                 <>
-                  <button onClick={() => { setAbonoTargetFicha(selectedFicha); setShowAbonoModal(true); }}
+                  <button onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
                     className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm">
                     <CreditCard className="w-4 h-4" /> Registrar Abono
                   </button>
@@ -3523,6 +3695,12 @@ export function FichasPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Título — encabezado principal de la ficha */}
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Título de la Ficha</label>
+                <input type="text" name="titulo" value={formData.titulo} onChange={handleInputChange} placeholder="Ej: Cumpleaños de Valentina" className={inputClass} />
+              </div>
+
               {/* Tipo de Evento — va primero para condicionar el resto del form */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Tipo de Evento *</h4>
@@ -3804,7 +3982,9 @@ export function FichasPage() {
                       <button type="button" onClick={handleAddPersonalRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
                     </div>
                     {personales.length === 0 ? (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay personal registrado.</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">
+                        {isLoadingData ? "Cargando personal..." : "No hay personal registrado."}
+                      </p>
                     ) : (
                       <div className="space-y-3">
                         {formData.personalIds.map((personalId, idx) => {
@@ -3893,36 +4073,55 @@ export function FichasPage() {
               {/* Horarios */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
-                        <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
-                      </div>
-                      <div>
-                        <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                        <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
-                      </div>
-                    </div>
-                  </div>
-                  {formData.transporte !== "delivery" && (
+                {brand === "jugueton" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
+                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Inicio *</label>
+                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
+                    </div>
+                    {formData.transporte !== "delivery" && (
+                      <div>
+                        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
-                          <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                          <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
                         </div>
                         <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                          <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required className={inputClass} />
+                          <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                    {formData.transporte !== "delivery" && (
+                      <div>
+                        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
+                            <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                          </div>
+                          <div>
+                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
+                            <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required className={inputClass} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Comentarios */}
@@ -4097,13 +4296,20 @@ export function FichasPage() {
                         </div>
                         <div className="md:col-span-2">
                           <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Foto del comprobante (opcional)</label>
-                          <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
-                            isUploadingAbonoInicialComprobante ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-not-allowed" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#EF8022] hover:text-[#EF8022]"
-                          }`}>
-                            <Upload className="w-4 h-4" />
-                            <span>{isUploadingAbonoInicialComprobante ? "Subiendo..." : abonoInicialComprobanteName || "Subir imagen del comprobante"}</span>
-                            <input type="file" accept="image/*" onChange={handleAbonoInicialComprobanteChange} disabled={isUploadingAbonoInicialComprobante} className="hidden" />
-                          </label>
+                          <div
+                            tabIndex={0}
+                            onPaste={(e) => void handleAbonoInicialComprobantePaste(e)}
+                            className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                              isUploadingAbonoInicialComprobante ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+                            }`}
+                          >
+                            <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploadingAbonoInicialComprobante ? "cursor-not-allowed" : "hover:text-[#EF8022]"}`}>
+                              <Upload className="w-4 h-4" />
+                              <span>{isUploadingAbonoInicialComprobante ? "Subiendo..." : abonoInicialComprobanteName || "Subir imagen del comprobante"}</span>
+                              <input type="file" accept="image/*" onChange={handleAbonoInicialComprobanteChange} disabled={isUploadingAbonoInicialComprobante} className="hidden" />
+                            </label>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">o haz clic aquí y pega una imagen (Ctrl+V)</span>
+                          </div>
                           {abonoInicialComprobante && (
                             <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                               <img src={abonoInicialComprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
@@ -4225,6 +4431,68 @@ export function FichasPage() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
+                  <select
+                    value={newClientForm.canal}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, canal: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="Referidos">Referidos</option>
+                    <option value="Pagina Web">Pagina Web</option>
+                    <option value="Google">Google</option>
+                    <option value="TikTok">TikTok</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Facebook">Facebook</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <select
+                    value={newClientForm.status}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, status: e.target.value as "active" | "inactive" })}
+                    className={inputClass}
+                  >
+                    <option value="active">Activo</option>
+                    <option value="inactive">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <input
+                    type="number"
+                    value={newClientForm.anioRegistro}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, anioRegistro: e.target.value })}
+                    placeholder="Ej: 2022"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClientForm.fichasBase}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, fichasBase: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClientForm.recomendaciones}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, recomendaciones: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -4251,8 +4519,10 @@ export function FichasPage() {
       {showAbonoModal && abonoTargetFicha && (
         <AbonoModal
           ficha={abonoTargetFicha}
-          onClose={() => { setShowAbonoModal(false); setAbonoTargetFicha(null); }}
+          abono={editingAbono}
+          onClose={() => { setShowAbonoModal(false); setAbonoTargetFicha(null); setEditingAbono(null); }}
           onSave={handleAddAbono}
+          onUpdate={handleUpdateAbono}
         />
       )}
     </div>

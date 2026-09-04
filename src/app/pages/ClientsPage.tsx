@@ -20,6 +20,11 @@ interface Client {
   lastOrder: string;
   status: "active" | "inactive";
   creadoPor: "donofrio" | "jugueton";
+  anioRegistro: number | null;
+  fichasBase: number;
+  recomendaciones: number;
+  fichasReales: number;
+  totalFichas: number;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -52,6 +57,9 @@ export function ClientsPage() {
     canal: "Referidos" as Client["canal"],
     status: "active" as "active" | "inactive",
     creadoPor: (brand || "donofrio") as "donofrio" | "jugueton",
+    anioRegistro: "",
+    fichasBase: 0,
+    recomendaciones: 0,
   });
 
   const filteredClients = clients.filter((client) => {
@@ -101,6 +109,11 @@ export function ClientsPage() {
         last_order: string | null;
         status: Client["status"];
         creado_por: Client["creadoPor"];
+        anio_registro: number | null;
+        fichas_base: number;
+        recomendaciones: number;
+        fichas_reales: number;
+        total_fichas: number;
       }>>("/clients");
 
       setClients(
@@ -117,6 +130,11 @@ export function ClientsPage() {
           totalOrders: c.total_orders || 0,
           lastOrder: c.last_order || "",
           status: c.status,
+          anioRegistro: c.anio_registro ?? null,
+          fichasBase: c.fichas_base || 0,
+          recomendaciones: c.recomendaciones || 0,
+          fichasReales: c.fichas_reales || 0,
+          totalFichas: c.total_fichas || 0,
           creadoPor: c.creado_por,
         }))
       );
@@ -152,11 +170,14 @@ export function ClientsPage() {
           canal: newClient.canal,
           status: newClient.status,
           creado_por: newClient.creadoPor,
+          anio_registro: newClient.anioRegistro ? Number(newClient.anioRegistro) : null,
+          fichas_base: Number(newClient.fichasBase) || 0,
+          recomendaciones: Number(newClient.recomendaciones) || 0,
         }),
       });
 
       setShowAddModal(false);
-      setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active", creadoPor: (brand || "donofrio") as "donofrio" | "jugueton" });
+      setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active", creadoPor: (brand || "donofrio") as "donofrio" | "jugueton", anioRegistro: "", fichasBase: 0, recomendaciones: 0 });
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
@@ -186,6 +207,9 @@ export function ClientsPage() {
           ciudad: editingClient.city,
           canal: editingClient.canal,
           status: editingClient.status,
+          anio_registro: editingClient.anioRegistro,
+          fichas_base: editingClient.fichasBase,
+          recomendaciones: editingClient.recomendaciones,
         }),
       });
 
@@ -363,7 +387,9 @@ export function ClientsPage() {
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Ubicación</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Creado por</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Canal</th>
-                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Pedidos</th>
+                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Año</th>
+                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Fichas</th>
+                <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Recom.</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Último Pedido</th>
                 <th className="px-6 py-4 text-left text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Estado</th>
                 {canManage && <th className="px-6 py-4 text-center text-xs text-gray-600 dark:text-gray-300 uppercase tracking-wider">Acciones</th>}
@@ -372,7 +398,7 @@ export function ClientsPage() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={canManage ? 9 : 8} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  <td colSpan={canManage ? 11 : 10} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                     Cargando clientes...
                   </td>
                 </tr>
@@ -420,7 +446,13 @@ export function ClientsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-gray-900 dark:text-white">{client.totalOrders}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{client.anioRegistro ?? "—"}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm text-gray-900 dark:text-white" title={`${client.fichasBase} base + ${client.fichasReales} en el sistema`}>{client.totalFichas}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{client.recomendaciones}</span>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -625,6 +657,41 @@ export function ClientsPage() {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <input
+                    type="number"
+                    value={newClient.anioRegistro}
+                    onChange={(e) => setNewClient({ ...newClient, anioRegistro: e.target.value })}
+                    placeholder="Ej: 2022"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClient.fichasBase}
+                    onChange={(e) => setNewClient({ ...newClient, fichasBase: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Fichas que tuvo antes de registrarse en el sistema</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClient.recomendaciones}
+                    onChange={(e) => setNewClient({ ...newClient, recomendaciones: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setShowAddModal(false)}
@@ -751,6 +818,39 @@ export function ClientsPage() {
                     <option value="active">Activo</option>
                     <option value="inactive">Inactivo</option>
                   </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <input
+                    type="number"
+                    value={editingClient.anioRegistro ?? ""}
+                    onChange={(e) => setEditingClient({ ...editingClient, anioRegistro: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="Ej: 2022"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editingClient.fichasBase}
+                    onChange={(e) => setEditingClient({ ...editingClient, fichasBase: Number(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Fichas reales en el sistema: {editingClient.fichasReales}</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editingClient.recomendaciones}
+                    onChange={(e) => setEditingClient({ ...editingClient, recomendaciones: Number(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">

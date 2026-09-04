@@ -224,6 +224,7 @@ interface ProductsContextType {
 
   productNames: string[];
   reloadData: () => Promise<void>;
+  isLoadingData: boolean;
 }
 
 const ProductsContext = createContext<ProductsContextType | undefined>(undefined);
@@ -235,24 +236,58 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [inflables, setInflables] = useState<Inflable[]>([]);
   const [personales, setPersonales] = useState<Personal[]>([]);
   const [recursos, setRecursos] = useState<Recurso[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const reloadData = async () => {
-    const [categoriesData, productsData, paquetesData, carritosData, inflablesData, personalData, recursosData] = await Promise.all([
-      apiRequest<unknown[]>("/products/categories"),
-      apiRequest<unknown[]>("/products"),
-      apiRequest<unknown[]>("/paquetes"),
-      apiRequest<unknown[]>("/carritos"),
-      apiRequest<unknown[]>("/inflables"),
-      apiRequest<unknown[]>("/personal"),
-      apiRequest<unknown[]>("/recursos"),
-    ]);
+    const [categoriesResult, productsResult, paquetesResult, carritosResult, inflablesResult, personalResult, recursosResult] =
+      await Promise.allSettled([
+        apiRequest<unknown[]>("/products/categories"),
+        apiRequest<unknown[]>("/products"),
+        apiRequest<unknown[]>("/paquetes"),
+        apiRequest<unknown[]>("/carritos"),
+        apiRequest<unknown[]>("/inflables"),
+        apiRequest<unknown[]>("/personal"),
+        apiRequest<unknown[]>("/recursos"),
+      ]);
 
-    setCategories(mapApiCategoriesFromFlatProducts(categoriesData as never, productsData as never));
-    setPaquetes(mapApiPaquetes(paquetesData as never));
-    setCarritos(mapApiCarritos(carritosData as never));
-    setInflables(mapApiInflables(inflablesData as never));
-    setPersonales(mapApiPersonal(personalData as never));
-    setRecursos(mapApiRecursos(recursosData as never));
+    if (categoriesResult.status === "fulfilled" && productsResult.status === "fulfilled") {
+      setCategories(mapApiCategoriesFromFlatProducts(categoriesResult.value as never, productsResult.value as never));
+    } else {
+      if (categoriesResult.status === "rejected") console.error("No se pudo cargar /products/categories:", categoriesResult.reason);
+      if (productsResult.status === "rejected") console.error("No se pudo cargar /products:", productsResult.reason);
+    }
+
+    if (paquetesResult.status === "fulfilled") {
+      setPaquetes(mapApiPaquetes(paquetesResult.value as never));
+    } else {
+      console.error("No se pudo cargar /paquetes:", paquetesResult.reason);
+    }
+
+    if (carritosResult.status === "fulfilled") {
+      setCarritos(mapApiCarritos(carritosResult.value as never));
+    } else {
+      console.error("No se pudo cargar /carritos:", carritosResult.reason);
+    }
+
+    if (inflablesResult.status === "fulfilled") {
+      setInflables(mapApiInflables(inflablesResult.value as never));
+    } else {
+      console.error("No se pudo cargar /inflables:", inflablesResult.reason);
+    }
+
+    if (personalResult.status === "fulfilled") {
+      setPersonales(mapApiPersonal(personalResult.value as never));
+    } else {
+      console.error("No se pudo cargar /personal:", personalResult.reason);
+    }
+
+    if (recursosResult.status === "fulfilled") {
+      setRecursos(mapApiRecursos(recursosResult.value as never));
+    } else {
+      console.error("No se pudo cargar /recursos:", recursosResult.reason);
+    }
+
+    setIsLoadingData(false);
   };
 
   useEffect(() => {
@@ -651,6 +686,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         deletePersonal,
         productNames,
         reloadData,
+        isLoadingData,
       }}
     >
       {children}

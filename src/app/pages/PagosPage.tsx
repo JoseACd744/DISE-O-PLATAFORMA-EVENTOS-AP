@@ -14,13 +14,14 @@ interface PagoRow {
   comprobanteUrl: string;
 }
 
-const MEDIOS = ["Todos", "Transferencia", "Yape", "Plin", "Efectivo"];
+const MEDIOS = ["Todos", "Transferencia", "Yape", "Plin", "Efectivo", "Link de Pago"];
 
 const MEDIO_COLORS: Record<string, string> = {
   Transferencia: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   Yape:          "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
   Plin:          "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   Efectivo:      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  "Link de Pago": "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
 };
 
 function formatMoney(n: number) {

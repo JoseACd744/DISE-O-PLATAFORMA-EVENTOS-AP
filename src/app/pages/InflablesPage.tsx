@@ -76,6 +76,17 @@ type SeveridadAlerta = "critica" | "advertencia" | "info";
 type EstadoAlerta = "pendiente" | "en-proceso" | "resuelta";
 type TipoRecurso = "inflable" | "carrito";
 
+interface FichaCalendario {
+  id: number;
+  titulo: string;
+  clienteNombre: string;
+  clienteCelular: string;
+  fecha: string;
+  horaEntrega: string;
+  tipoEvento: string;
+  distrito: string;
+}
+
 interface AlertaMantenimiento {
   id: number;
   recursoTipo: TipoRecurso;
@@ -159,6 +170,8 @@ export function InflablesPage() {
   const [carritos, setCarritos] = useState<Carrito[]>([]);
   const [reservasCarritos, setReservasCarritos] = useState<ReservaCarrito[]>([]);
   const [alertas, setAlertas] = useState<AlertaMantenimiento[]>([]);
+  const [fichasCalendario, setFichasCalendario] = useState<FichaCalendario[]>([]);
+  const [selectedFichaCal, setSelectedFichaCal] = useState<FichaCalendario | null>(null);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<InflableType | null>(null);
@@ -170,7 +183,7 @@ export function InflablesPage() {
   const [showNewInflable, setShowNewInflable] = useState(false);
   const [showNewAlerta, setShowNewAlerta] = useState(false);
   const [showNewReservaCarrito, setShowNewReservaCarrito] = useState(false);
-  const [mainTab, setMainTab] = useState<"inflables" | "carritos" | "mantenimiento">("inflables");
+  const [mainTab, setMainTab] = useState<"inflables" | "carritos" | "mantenimiento" | "calendario">("inflables");
   const [reservaSubmitting, setReservaSubmitting] = useState(false);
   const [reservaCarritoSubmitting, setReservaCarritoSubmitting] = useState(false);
   const [inflableSubmitting, setInflableSubmitting] = useState(false);
@@ -358,11 +371,23 @@ export function InflablesPage() {
         fechaResolucion: a.fecha_resolucion || undefined,
       }));
 
+      const fichasCalendarioMapped: FichaCalendario[] = fichasApi.map((f) => ({
+        id: f.id,
+        titulo: f.titulo || "",
+        clienteNombre: f.cliente_nombre || "",
+        clienteCelular: f.cliente_celular || "",
+        fecha: (f.fecha_evento || f.fecha || "").split("T")[0],
+        horaEntrega: f.hora_entrega || "",
+        tipoEvento: f.tipo_evento || "",
+        distrito: f.distrito || "",
+      })).filter((f) => f.fecha);
+
       setInflables(inflablesMapped);
       setCarritos(carritosMapped);
       setReservas([...manualReservasInflables, ...fichaReservasInflables]);
       setReservasCarritos([...manualReservasCarritos, ...fichaReservasCarritos]);
       setAlertas(alertasMapped);
+      setFichasCalendario(fichasCalendarioMapped);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar inflables y carritos");
     }
@@ -381,6 +406,25 @@ export function InflablesPage() {
     reservasCarritos.filter(r => r.carritoId === carritoId && r.fecha === date).reduce((s, r) => s + r.cantidad, 0);
   const getReservasByDate = (date: string) => reservas.filter(r => r.fecha === date);
   const getReservasCarritoByDate = (date: string) => reservasCarritos.filter(r => r.fecha === date);
+  const getFichasByDate = (date: string) => fichasCalendario.filter(f => f.fecha === date);
+
+  const filteredFichasCalendario = [...fichasCalendario]
+    .filter(f =>
+      f.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.distrito.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const calendarFichasMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const days = getDaysInMonth(calendarYear, calendarMonth);
+    for (let d = 1; d <= days; d++) {
+      const dateStr = formatDate(new Date(calendarYear, calendarMonth, d));
+      map[dateStr] = getFichasByDate(dateStr).length;
+    }
+    return map;
+  }, [fichasCalendario, calendarYear, calendarMonth]);
 
   // Active alerts per resource
   const getActiveAlerts = (tipo: TipoRecurso, id: number) =>
@@ -876,10 +920,11 @@ export function InflablesPage() {
             { key: "inflables" as const, label: "Inflables", icon: Wind },
             { key: "carritos" as const, label: "Stock Carritos", icon: ShoppingCart },
             { key: "mantenimiento" as const, label: "Mantenimiento", icon: Wrench, badge: alertasCriticas > 0 },
+            { key: "calendario" as const, label: "Calendario", icon: Calendar },
           ]).map(tab => {
             const Icon = tab.icon;
             return (
-              <button key={tab.key} onClick={() => { setMainTab(tab.key); setSearchTerm(""); setSelectedType(null); setSelectedCarrito(null); setSelectedDate(null); }}
+              <button key={tab.key} onClick={() => { setMainTab(tab.key); setSearchTerm(""); setSelectedType(null); setSelectedCarrito(null); setSelectedDate(null); setSelectedFichaCal(null); }}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors relative ${mainTab === tab.key ? "bg-[#EF8022]/10 text-[#EF8022] border-b-2 border-[#EF8022]" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 {tab.badge && <span className="absolute top-2 right-[calc(50%-40px)] w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />}
@@ -1271,6 +1316,108 @@ export function InflablesPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* CALENDARIO TAB */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {mainTab === "calendario" && (
+        <>
+          {/* Header */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="flex-1 w-full lg:max-w-md relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input type="text" placeholder="Buscar ficha por título, cliente o distrito..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent" />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{fichasCalendario.length} ficha{fichasCalendario.length !== 1 ? "s" : ""} de Juguetón</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Fichas list */}
+            <div className="xl:col-span-1 space-y-3">
+              <h2 className="text-lg text-gray-900 dark:text-white mb-2">Fichas Programadas</h2>
+              {filteredFichasCalendario.length === 0 && (
+                <div className="text-center py-8 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                  <Calendar className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No hay fichas para mostrar</p>
+                </div>
+              )}
+              {filteredFichasCalendario.map(f => {
+                const isSelected = selectedFichaCal?.id === f.id;
+                return (
+                  <div key={f.id} onClick={() => {
+                      const d = new Date(f.fecha + "T12:00:00");
+                      setCalendarYear(d.getFullYear());
+                      setCalendarMonth(d.getMonth());
+                      setSelectedDate(f.fecha);
+                      setSelectedFichaCal(isSelected ? null : f);
+                    }}
+                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm text-gray-900 dark:text-white truncate">{f.titulo || f.clienteNombre}</h3>
+                      <span className="text-[10px] text-gray-400 shrink-0">#{f.id}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{f.clienteNombre}</p>
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(f.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}</span>
+                      {f.horaEntrega && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {f.horaEntrega.slice(0, 5)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Calendar + Detail */}
+            <div className="xl:col-span-2 space-y-6">
+              {renderFichasCalendar(calendarYear, calendarMonth, setCalendarYear, setCalendarMonth, calendarFichasMap, selectedDate, setSelectedDate, todayStr)}
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <h3 className="text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+                  {selectedDate
+                    ? `Fichas del ${new Date(selectedDate + "T12:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
+                    : "Fichas de Hoy"}
+                </h3>
+                {(() => {
+                  const dateToShow = selectedDate || todayStr;
+                  const dayFichas = getFichasByDate(dateToShow);
+                  if (dayFichas.length === 0) {
+                    return (<div className="text-center py-8"><Calendar className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-500 dark:text-gray-400 text-sm">No hay fichas para este día</p></div>);
+                  }
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-gray-700">
+                            <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Título</th>
+                            <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
+                            <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Distrito</th>
+                            <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Hora</th>
+                            <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Tipo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {dayFichas.map(f => (
+                            <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="py-3 px-3 text-gray-900 dark:text-white">{f.titulo || <span className="text-gray-400 italic">Sin título</span>}</td>
+                              <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{f.clienteNombre}</td>
+                              <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.distrito || "—"}</td>
+                              <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.horaEntrega ? f.horaEntrega.slice(0, 5) : "—"}</td>
+                              <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">{f.tipoEvento || "—"}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -1670,6 +1817,68 @@ function renderCalendar(
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Parcial</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800"></div> {"> 50%"}</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800"></div> Agotado</div>
+        <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-[#1F3C8B]"></div> Hoy</div>
+      </div>
+    </div>
+  );
+}
+
+function renderFichasCalendar(
+  year: number, month: number,
+  setYear: (fn: (y: number) => number) => void, setMonth: (fn: (m: number) => number) => void,
+  map: Record<string, number>,
+  selectedDate: string | null, setSelectedDate: (d: string | null) => void,
+  todayStr: string
+) {
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month);
+
+  const prevMonth = () => { if (month === 0) { setMonth(() => 11); setYear(y => y - 1); } else setMonth(m => m - 1); };
+  const nextMonth = () => { if (month === 11) { setMonth(() => 0); setYear(y => y + 1); } else setMonth(m => m + 1); };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+          Calendario de Fichas
+        </h2>
+        <div className="flex items-center gap-3">
+          <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-5 h-5" /></button>
+          <span className="text-gray-900 dark:text-white min-w-[140px] text-center">{MONTH_NAMES[month]} {year}</span>
+          <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-5 h-5" /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DAY_HEADERS.map(d => <div key={d} className="text-center text-xs text-gray-500 dark:text-gray-400 py-2">{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} className="aspect-square" />)}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const dateStr = formatDate(new Date(year, month, day));
+          const count = map[dateStr] || 0;
+          const isToday = dateStr === todayStr;
+          const isSel = dateStr === selectedDate;
+
+          const bgClass = count > 0
+            ? "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100"
+            : "bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700";
+
+          return (
+            <button key={day} onClick={() => setSelectedDate(isSel ? null : dateStr)}
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative ${bgClass} ${isSel ? "ring-2 ring-[#EF8022]" : ""} ${isToday ? "ring-2 ring-[#1F3C8B] dark:ring-blue-400" : ""}`}>
+              <span className={`text-sm ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}>{day}</span>
+              {count > 0 && <span className="text-[10px] mt-0.5 text-blue-600 dark:text-blue-400">{count} ficha{count !== 1 ? "s" : ""}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600"></div> Sin fichas</div>
+        <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Con fichas</div>
         <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-[#1F3C8B]"></div> Hoy</div>
       </div>
     </div>
