@@ -490,7 +490,8 @@ function AbonoModal({
   const [monto, setMonto] = useState<string>(abono ? String(abono.monto) : "");
   const [numeroOperacion, setNumeroOperacion] = useState(abono?.numeroOperacion || "");
   const [medio, setMedio] = useState<Abono["medio"]>(abono?.medio || "Transferencia");
-  const [comprobante, setComprobante] = useState<string>(abono?.comprobante || "");
+  const originalComprobante = abono?.comprobante || "";
+  const [comprobante, setComprobante] = useState<string>(originalComprobante);
   const [comprobanteName, setComprobanteName] = useState<string>("");
   const [comprobantePath, setComprobantePath] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -517,6 +518,15 @@ function AbonoModal({
     } catch {
       return false;
     }
+  };
+
+  const handleRemoveComprobante = async () => {
+    if (comprobantePath) {
+      setIsCleaningUpload(true);
+      await cleanupUploadedComprobante(comprobantePath);
+      setIsCleaningUpload(false);
+    }
+    resetUploadedComprobante();
   };
 
   const handleModalClose = async () => {
@@ -651,6 +661,12 @@ function AbonoModal({
       } else {
         await onSave(ficha.id, payload);
       }
+
+      if (originalComprobante && originalComprobante !== comprobante) {
+        const path = extractStoragePathFromUrl(originalComprobante);
+        if (path) await cleanupUploadedComprobante(path);
+      }
+
       setComprobantePath("");
       onClose();
     } catch (err) {
@@ -769,8 +785,18 @@ function AbonoModal({
               <span className="text-xs text-gray-400 dark:text-gray-500">o haz clic aquí y pega una imagen (Ctrl+V)</span>
             </div>
             {comprobante && (
-              <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+              <div className="mt-3">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveComprobante()}
+                  disabled={isUploading || isCleaningUpload}
+                  className="mt-2 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Quitar imagen
+                </button>
               </div>
             )}
           </div>
@@ -821,6 +847,8 @@ export function FichasPage() {
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
   const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
+  const [deleteAbonoTarget, setDeleteAbonoTarget] = useState<{ fichaId: number; abonoId: number } | null>(null);
+  const [deleteAbonoSubmitting, setDeleteAbonoSubmitting] = useState(false);
   const [abonoInicialComprobante, setAbonoInicialComprobante] = useState<string>("");
   const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
   const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
@@ -1122,17 +1150,17 @@ export function FichasPage() {
     const matchesEstado = estadoFilter === "Todos" || getEstadoPago(ficha) === estadoFilter;
     const matchesBrand = ficha.brand === brand; // Solo mostrar fichas de la marca actual
     let matchesFecha = true;
+    const fichaFechaEvento = (ficha.fecha_evento || ficha.fecha || "").slice(0, 10);
     if (dateRange?.from && dateRange?.to) {
-      const d = new Date(ficha.fecha_evento || ficha.fecha);
-      matchesFecha = d >= new Date(dateRange.from) && d <= new Date(dateRange.to);
-    } else if (dateRange?.from) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) >= new Date(dateRange.from);
-    else if (dateRange?.to) matchesFecha = new Date(ficha.fecha_evento || ficha.fecha) <= new Date(dateRange.to);
+      matchesFecha = fichaFechaEvento >= getLocalDateString(dateRange.from) && fichaFechaEvento <= getLocalDateString(dateRange.to);
+    } else if (dateRange?.from) matchesFecha = fichaFechaEvento >= getLocalDateString(dateRange.from);
+    else if (dateRange?.to) matchesFecha = fichaFechaEvento <= getLocalDateString(dateRange.to);
     let matchesFechaContacto = true;
+    const fichaFechaReserva = (ficha.fecha_reserva || ficha.fecha || "").slice(0, 10);
     if (contactDateRange?.from && contactDateRange?.to) {
-      const d = new Date(ficha.fecha_reserva || ficha.fecha);
-      matchesFechaContacto = d >= new Date(contactDateRange.from) && d <= new Date(contactDateRange.to);
-    } else if (contactDateRange?.from) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) >= new Date(contactDateRange.from);
-    else if (contactDateRange?.to) matchesFechaContacto = new Date(ficha.fecha_reserva || ficha.fecha) <= new Date(contactDateRange.to);
+      matchesFechaContacto = fichaFechaReserva >= getLocalDateString(contactDateRange.from) && fichaFechaReserva <= getLocalDateString(contactDateRange.to);
+    } else if (contactDateRange?.from) matchesFechaContacto = fichaFechaReserva >= getLocalDateString(contactDateRange.from);
+    else if (contactDateRange?.to) matchesFechaContacto = fichaFechaReserva <= getLocalDateString(contactDateRange.to);
     return matchesSearch && matchesDistrito && matchesFecha && matchesFechaContacto && matchesEstado && matchesBrand;
   }).sort((a, b) => {
     if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
@@ -1203,6 +1231,8 @@ export function FichasPage() {
     const dia = d.toLocaleDateString("es-PE", { weekday: "long" });
     return dia.charAt(0).toUpperCase() + dia.slice(1);
   };
+
+  const getFichaTitulo = (ficha: Ficha) => ficha.titulo || `Ficha #${String(ficha.id).padStart(7, "0")}`;
 
   const formatearContenidoPaquete = (contenido: { productoNombre: string; cantidad: number }[]) => {
     if (contenido.length === 0) return "";
@@ -2518,6 +2548,57 @@ export function FichasPage() {
     }
   };
 
+  const handleDeleteAbono = (fichaId: number, abonoId: number) => {
+    setDeleteAbonoTarget({ fichaId, abonoId });
+  };
+
+  const confirmDeleteAbono = async () => {
+    if (!deleteAbonoTarget) return;
+    const { fichaId, abonoId } = deleteAbonoTarget;
+
+    setDeleteAbonoSubmitting(true);
+    try {
+      const abonoAEliminar = selectedFicha?.id === fichaId
+        ? selectedFicha.abonos.find((a) => a.id === abonoId)
+        : undefined;
+
+      await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, { method: "DELETE" });
+
+      if (abonoAEliminar?.comprobante) {
+        const path = extractStoragePathFromUrl(abonoAEliminar.comprobante);
+        if (path) {
+          try {
+            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }) });
+          } catch {
+            // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
+          }
+        }
+      }
+
+      await refreshFichasAndCatalogs();
+      if (selectedFicha && selectedFicha.id === fichaId) {
+        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
+        setSelectedFicha((prev) => prev ? {
+          ...prev,
+          abonos: (refreshed.abonos || []).map((a: any) => ({
+            id: a.id,
+            fecha: a.fecha,
+            monto: Number(a.monto || 0),
+            numeroOperacion: a.numero_operacion || "",
+            comprobante: a.comprobante_url || "",
+            medio: a.medio,
+          })),
+        } : prev);
+        await loadFichaImagenes(fichaId);
+      }
+      setDeleteAbonoTarget(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el abono");
+    } finally {
+      setDeleteAbonoSubmitting(false);
+    }
+  };
+
   const openFichaDetail = (ficha: Ficha) => {
     setSelectedFicha(ficha);
     setShowDetailModal(true);
@@ -2846,6 +2927,19 @@ export function FichasPage() {
         onConfirm={confirmDeleteFicha}
       />
 
+      <DeleteConfirmDialog
+        open={deleteAbonoTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteAbonoTarget(null);
+        }}
+        title="Eliminar abono"
+        description="¿Seguro que quieres eliminar este abono? El comprobante asociado también se eliminará. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar abono"
+        loadingLabel="Eliminando..."
+        loading={deleteAbonoSubmitting}
+        onConfirm={confirmDeleteAbono}
+      />
+
       {/* Modal de conflictos 409 */}
       {carritoConflicts !== null && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -3114,7 +3208,7 @@ export function FichasPage() {
                     <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDiaSemana(ficha.fecha_evento || ficha.fecha)} {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
-                  <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{ficha.titulo || ficha.cliente_nombre}</h3>
+                  <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{getFichaTitulo(ficha)}</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <Phone className="w-4 h-4" /> {ficha.cliente_nombre} · {ficha.cliente_celular}
                   </div>
@@ -3312,7 +3406,7 @@ export function FichasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <h3 className="text-2xl text-gray-900 dark:text-white mb-2">{selectedFicha.titulo || selectedFicha.cliente_nombre}</h3>
+                <h3 className="text-2xl text-gray-900 dark:text-white mb-2">{getFichaTitulo(selectedFicha)}</h3>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
@@ -3415,12 +3509,20 @@ export function FichasPage() {
                             </div>
                           </div>
                           {canEditFicha(selectedFicha) && (
-                            <button
-                              onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(abono); setShowAbonoModal(true); }}
-                              className="p-1.5 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors shrink-0"
-                              title="Editar abono">
-                              <Edit className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(abono); setShowAbonoModal(true); }}
+                                className="p-1.5 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                                title="Editar abono">
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAbono(selectedFicha.id, abono.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Eliminar abono">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}

@@ -409,6 +409,7 @@ export function InflablesPage() {
   const getFichasByDate = (date: string) => fichasCalendario.filter(f => f.fecha === date);
 
   const filteredFichasCalendario = [...fichasCalendario]
+    .filter(f => f.fecha === (selectedDate || todayStr))
     .filter(f =>
       f.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -917,10 +918,10 @@ export function InflablesPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 mb-6">
         <div className="flex border-b border-gray-200 dark:border-gray-700">
           {([
+            { key: "calendario" as const, label: "Calendario", icon: Calendar },
             { key: "inflables" as const, label: "Inflables", icon: Wind },
             { key: "carritos" as const, label: "Stock Carritos", icon: ShoppingCart },
             { key: "mantenimiento" as const, label: "Mantenimiento", icon: Wrench, badge: alertasCriticas > 0 },
-            { key: "calendario" as const, label: "Calendario", icon: Calendar },
           ]).map(tab => {
             const Icon = tab.icon;
             return (
@@ -1338,40 +1339,6 @@ export function InflablesPage() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Fichas list */}
-            <div className="xl:col-span-1 space-y-3">
-              <h2 className="text-lg text-gray-900 dark:text-white mb-2">Fichas Programadas</h2>
-              {filteredFichasCalendario.length === 0 && (
-                <div className="text-center py-8 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                  <Calendar className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">No hay fichas para mostrar</p>
-                </div>
-              )}
-              {filteredFichasCalendario.map(f => {
-                const isSelected = selectedFichaCal?.id === f.id;
-                return (
-                  <div key={f.id} onClick={() => {
-                      const d = new Date(f.fecha + "T12:00:00");
-                      setCalendarYear(d.getFullYear());
-                      setCalendarMonth(d.getMonth());
-                      setSelectedDate(f.fecha);
-                      setSelectedFichaCal(isSelected ? null : f);
-                    }}
-                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm text-gray-900 dark:text-white truncate">{f.titulo || f.clienteNombre}</h3>
-                      <span className="text-[10px] text-gray-400 shrink-0">#{f.id}</span>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{f.clienteNombre}</p>
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(f.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}</span>
-                      {f.horaEntrega && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {f.horaEntrega.slice(0, 5)}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
             {/* Calendar + Detail */}
             <div className="xl:col-span-2 space-y-6">
               {renderFichasCalendar(calendarYear, calendarMonth, setCalendarYear, setCalendarMonth, calendarFichasMap, selectedDate, setSelectedDate, todayStr)}
@@ -1404,7 +1371,7 @@ export function InflablesPage() {
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                           {dayFichas.map(f => (
                             <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              <td className="py-3 px-3 text-gray-900 dark:text-white">{f.titulo || <span className="text-gray-400 italic">Sin título</span>}</td>
+                              <td className="py-3 px-3 text-gray-900 dark:text-white">{f.titulo || `Ficha #${String(f.id).padStart(7, "0")}`}</td>
                               <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{f.clienteNombre}</td>
                               <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.distrito || "—"}</td>
                               <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.horaEntrega ? f.horaEntrega.slice(0, 5) : "—"}</td>
@@ -1417,6 +1384,39 @@ export function InflablesPage() {
                   );
                 })()}
               </div>
+            </div>
+
+            {/* Fichas list — solo del día seleccionado en el calendario */}
+            <div className="xl:col-span-1 space-y-3">
+              <h2 className="text-lg text-gray-900 dark:text-white mb-2">
+                Fichas Programadas
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {new Date((selectedDate || todayStr) + "T12:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}
+                </span>
+              </h2>
+              {filteredFichasCalendario.length === 0 && (
+                <div className="text-center py-8 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                  <Calendar className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No hay fichas para mostrar</p>
+                </div>
+              )}
+              {filteredFichasCalendario.map(f => {
+                const isSelected = selectedFichaCal?.id === f.id;
+                return (
+                  <div key={f.id} onClick={() => setSelectedFichaCal(isSelected ? null : f)}
+                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm text-gray-900 dark:text-white truncate">{f.titulo || `Ficha #${String(f.id).padStart(7, "0")}`}</h3>
+                      <span className="text-[10px] text-gray-400 shrink-0">#{f.id}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{f.clienteNombre}</p>
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(f.fecha + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}</span>
+                      {f.horaEntrega && <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {f.horaEntrega.slice(0, 5)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>
