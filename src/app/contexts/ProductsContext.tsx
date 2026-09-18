@@ -7,6 +7,7 @@ import {
   mapApiPaquetes,
   mapApiPersonal,
   mapApiRecursos,
+  mapInflableIncluidoToApi,
   mapPaqueteItemToApi,
 } from "../lib/mappers";
 
@@ -55,10 +56,18 @@ export interface PaqueteItem {
   cantidad: number;
 }
 
+// Un cupo de inflable(s) que ya viene incluido (sin costo) en el precio del paquete.
+// tipoIds con más de un elemento representa "1 inflable a elección entre estos tipos".
+export interface PaqueteInflableIncluido {
+  tipoIds: number[];
+  cantidad: number;
+}
+
 export interface Paquete {
   id: number;
   nombre: string;
   contenido: PaqueteItem[];
+  inflablesIncluidos: PaqueteInflableIncluido[];
   precioUnitario: number;
   tipo: string;
   brand: "donofrio" | "jugueton";
@@ -67,6 +76,7 @@ export interface Paquete {
 export interface PaqueteInput {
   nombre: string;
   contenido: PaqueteItem[];
+  inflablesIncluidos: PaqueteInflableIncluido[];
   precioUnitario: number;
   tipo: string;
   brand: "donofrio" | "jugueton";
@@ -439,6 +449,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         tipo: paquete.tipo,
         brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
+        inflables_incluidos: paquete.inflablesIncluidos.map(mapInflableIncluidoToApi),
       }),
     });
 
@@ -455,6 +466,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         tipo: paquete.tipo,
         brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
+        inflables_incluidos: paquete.inflablesIncluidos.map(mapInflableIncluidoToApi),
       }),
     });
     await reloadData();

@@ -6,6 +6,7 @@ import { DateRangePicker } from "../components/DateRangePicker";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
+import type { Paquete, Inflable } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
 import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
@@ -256,6 +257,35 @@ function getEstadoPago(f: Ficha): EstadoPago {
   return "pendiente";
 }
 function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`; }
+
+// Dado los paquetes y los inflables asignados a una ficha, calcula qué inflables ya
+// vienen cubiertos (S/0) por el "cupo" de inflables incluidos de esos paquetes.
+function getInflablesGratisIds(
+  paquetesFicha: { paqueteId: number; cantidad: number }[],
+  inflableIdsFicha: number[],
+  catalogoPaquetes: Paquete[],
+  catalogoInflables: Inflable[]
+): Set<number> {
+  const cupos = paquetesFicha.flatMap((p) => {
+    const catalogo = catalogoPaquetes.find((item) => item.id === p.paqueteId);
+    const cantidadPaquete = Math.max(0, toMoneyNumber(p.cantidad));
+    return (catalogo?.inflablesIncluidos ?? [])
+      .map((slot) => ({ tipoIds: slot.tipoIds, restante: slot.cantidad * cantidadPaquete }))
+      .filter((cupo) => cupo.restante > 0);
+  });
+
+  const gratis = new Set<number>();
+  inflableIdsFicha.forEach((inflableId) => {
+    const inflable = catalogoInflables.find((item) => item.id === inflableId);
+    if (!inflable) return;
+    const cupo = cupos.find((c) => c.restante > 0 && c.tipoIds.includes(inflable.tipoId));
+    if (cupo) {
+      cupo.restante -= 1;
+      gratis.add(inflableId);
+    }
+  });
+  return gratis;
+}
 
 const HORA_VENTANA_AUTOCOMPLETAR_HORAS = 1;
 
@@ -989,10 +1019,14 @@ export function FichasPage() {
     }, 0);
 
     const totalInflables = brand === "jugueton"
-      ? formData.inflableIds.reduce((sum, inflableId) => {
-          const inflable = inflables.find((item) => item.id === inflableId);
-          return sum + toMoneyNumber(inflable?.precioAlquiler);
-        }, 0)
+      ? (() => {
+          const gratisIds = getInflablesGratisIds(formData.paquetes, formData.inflableIds, contextPaquetes, inflables);
+          return formData.inflableIds.reduce((sum, inflableId) => {
+            if (gratisIds.has(inflableId)) return sum;
+            const inflable = inflables.find((item) => item.id === inflableId);
+            return sum + toMoneyNumber(inflable?.precioAlquiler);
+          }, 0);
+        })()
       : 0;
 
     const totalRecursos = formData.recursos.reduce((sum, recurso) => {
@@ -2126,13 +2160,15 @@ export function FichasPage() {
       });
     });
 
+    const inflablesGratisIds = getInflablesGratisIds(ficha.paquetes, ficha.inflableIds ?? [], contextPaquetes, inflables);
     (ficha.inflableIds ?? []).forEach((inflableId) => {
       const inflable = inflables.find((item) => item.id === inflableId);
       if (!inflable) return;
+      const incluidoEnPaquete = inflablesGratisIds.has(inflableId);
       items.push({
-        descripcion: "Inflable " + inflable.tipoNombre + (inflable.codigo ? " (" + inflable.codigo + ")" : ""),
+        descripcion: "Inflable " + inflable.tipoNombre + (inflable.codigo ? " (" + inflable.codigo + ")" : "") + (incluidoEnPaquete ? " (incluido en el paquete)" : ""),
         cantidad: 1,
-        monto: inflable.precioAlquiler || undefined,
+        monto: incluidoEnPaquete ? undefined : (inflable.precioAlquiler || undefined),
       });
     });
 

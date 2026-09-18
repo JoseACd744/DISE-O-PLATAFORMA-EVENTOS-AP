@@ -3,7 +3,7 @@ import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronL
 import { Pagination } from "../components/Pagination";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
-import type { PaqueteItem, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
+import type { PaqueteItem, PaqueteInflableIncluido, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
 import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
@@ -172,6 +172,7 @@ export function ProductsPage() {
     addPaquete,
     updatePaquete,
     deletePaquete,
+    inflables,
     carritos,
     addCarrito,
     updateCarrito,
@@ -210,6 +211,7 @@ export function ProductsPage() {
     precioUnitario: 0,
     precioEditadoManualmente: false,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
+    inflablesIncluidosItems: [] as PaqueteInflableIncluido[],
   });
 
   // Carrito modal
@@ -740,6 +742,46 @@ export function ProductsPage() {
 
   const categoryNames = ["Todas", ...new Set(productsDeLaMarca.map((p) => p.categoria))];
 
+  const inflableTiposUnicos = useMemo(() => {
+    const map = new Map<number, string>();
+    inflables.forEach((i) => { if (!map.has(i.tipoId)) map.set(i.tipoId, i.tipoNombre); });
+    return Array.from(map, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [inflables]);
+
+  const updateInflableIncluidoSlot = (idx: number, patch: Partial<PaqueteInflableIncluido>) => {
+    setNewPaquete((prev) => ({
+      ...prev,
+      inflablesIncluidosItems: prev.inflablesIncluidosItems.map((slot, i) => i === idx ? { ...slot, ...patch } : slot),
+    }));
+  };
+
+  const toggleInflableIncluidoTipo = (idx: number, tipoId: number) => {
+    setNewPaquete((prev) => ({
+      ...prev,
+      inflablesIncluidosItems: prev.inflablesIncluidosItems.map((slot, i) => {
+        if (i !== idx) return slot;
+        const tipoIds = slot.tipoIds.includes(tipoId)
+          ? slot.tipoIds.filter((id) => id !== tipoId)
+          : [...slot.tipoIds, tipoId];
+        return { ...slot, tipoIds };
+      }),
+    }));
+  };
+
+  const addInflableIncluidoSlot = () => {
+    setNewPaquete((prev) => ({
+      ...prev,
+      inflablesIncluidosItems: [...prev.inflablesIncluidosItems, { tipoIds: [], cantidad: 1 }],
+    }));
+  };
+
+  const removeInflableIncluidoSlot = (idx: number) => {
+    setNewPaquete((prev) => ({
+      ...prev,
+      inflablesIncluidosItems: prev.inflablesIncluidosItems.filter((_, i) => i !== idx),
+    }));
+  };
+
   const getPrecioPaqueteCalculado = (items: PaqueteItem[]) => {
     return items.reduce((total, item) => {
       if (!item.productoSku || item.cantidad <= 0) return total;
@@ -814,6 +856,7 @@ export function ProductsPage() {
       precioUnitario: 0,
       precioEditadoManualmente: false,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
+      inflablesIncluidosItems: [],
     });
   };
 
@@ -828,6 +871,7 @@ export function ProductsPage() {
       contenidoItems: paq.contenido.length > 0
         ? paq.contenido
         : [{ productoSku: "", productoNombre: "", cantidad: 0 }],
+      inflablesIncluidosItems: paq.inflablesIncluidos,
     });
     setPaqueteFormErrors({ nombre: false, tipo: false });
     setShowAddPaquete(true);
@@ -848,12 +892,14 @@ export function ProductsPage() {
     try {
       const contenidoValido = newPaquete.contenidoItems.filter((i) => i.productoSku && i.cantidad > 0);
       const precioTotalCalculado = Number(getPrecioPaqueteCalculado(contenidoValido).toFixed(2));
+      const inflablesIncluidosValidos = newPaquete.inflablesIncluidosItems.filter((slot) => slot.tipoIds.length > 0 && slot.cantidad > 0);
       const payload = {
         nombre: newPaquete.nombre.trim(),
         brand: newPaquete.brand,
         tipo: newPaquete.tipo,
         precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
         contenido: contenidoValido,
+        inflablesIncluidos: inflablesIncluidosValidos,
       };
 
       if (editingPaquete) {
@@ -1678,6 +1724,24 @@ export function ProductsPage() {
                             </div>
                           )}
                         </div>
+
+                        {paq.inflablesIncluidos.length > 0 && (
+                          <div className="mb-4">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Inflables incluidos (S/0)</p>
+                            <div className="space-y-1">
+                              {paq.inflablesIncluidos.map((slot, idx) => {
+                                const nombres = slot.tipoIds
+                                  .map((id) => inflableTiposUnicos.find((t) => t.id === id)?.nombre || "?")
+                                  .join(" / ");
+                                return (
+                                  <p key={idx} className="text-xs text-gray-600 dark:text-gray-300">
+                                    {slot.cantidad}× {slot.tipoIds.length > 1 ? `a elección: ${nombres}` : nombres}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-500 dark:text-gray-400">Precio</span>
@@ -2979,6 +3043,70 @@ export function ProductsPage() {
                   Agregar producto al paquete
                 </button>
               </div>
+
+              {/* Inflables incluidos sin costo (solo Juguetón) */}
+              {newPaquete.brand === "jugueton" && (
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Inflables incluidos (S/0 extra)</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    Marca qué inflables ya están cubiertos por el precio de este paquete. Si eliges más de un tipo en un cupo, el cliente elige uno de esos tipos sin costo adicional.
+                  </p>
+                  <div className="space-y-3">
+                    {newPaquete.inflablesIncluidosItems.map((slot, idx) => (
+                      <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Cupo {idx + 1}</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={1}
+                              value={slot.cantidad}
+                              onChange={(e) => updateInflableIncluidoSlot(idx, { cantidad: Math.max(1, Number(e.target.value) || 1) })}
+                              className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                            />
+                            <span className="text-xs text-gray-400">gratis</span>
+                            <button onClick={() => removeInflableIncluidoSlot(idx)} className="p-1 text-red-400 hover:text-red-600">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {inflableTiposUnicos.length === 0 && (
+                            <span className="text-xs text-gray-400">No hay tipos de inflable registrados todavía.</span>
+                          )}
+                          {inflableTiposUnicos.map((tipo) => {
+                            const selected = slot.tipoIds.includes(tipo.id);
+                            return (
+                              <button
+                                key={tipo.id}
+                                type="button"
+                                onClick={() => toggleInflableIncluidoTipo(idx, tipo.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                  selected
+                                    ? "bg-[#EF8022] text-white border-[#EF8022]"
+                                    : "bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-[#EF8022]"
+                                }`}
+                              >
+                                {tipo.nombre}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {slot.tipoIds.length > 1 && (
+                          <p className="text-[11px] text-gray-400 mt-1.5">Se cubre {slot.cantidad} inflable(s) a elección entre los tipos marcados.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={addInflableIncluidoSlot}
+                    className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Agregar cupo de inflable incluido
+                  </button>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">

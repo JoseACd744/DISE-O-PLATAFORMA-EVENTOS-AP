@@ -3,6 +3,7 @@ import type {
   Product,
   Paquete,
   PaqueteItem,
+  PaqueteInflableIncluido,
   Carrito,
   Inflable,
   Personal,
@@ -42,6 +43,10 @@ type ApiPaquete = {
   contenido?: Array<{
     producto_sku: string;
     producto_nombre: string;
+    cantidad: number;
+  }>;
+  inflables_incluidos?: Array<{
+    tipo_ids: number[];
     cantidad: number;
   }>;
 };
@@ -128,6 +133,13 @@ export function mapPaqueteItemToApi(item: PaqueteItem) {
   };
 }
 
+export function mapInflableIncluidoToApi(item: PaqueteInflableIncluido) {
+  return {
+    tipo_ids: item.tipoIds,
+    cantidad: item.cantidad,
+  };
+}
+
 export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
   return apiPaquetes.map((paquete) => ({
     id: paquete.id,
@@ -139,6 +151,10 @@ export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
       productoSku: item.producto_sku,
       productoNombre: item.producto_nombre,
       cantidad: item.cantidad,
+    })),
+    inflablesIncluidos: (paquete.inflables_incluidos || []).map((item) => ({
+      tipoIds: item.tipo_ids || [],
+      cantidad: Number(item.cantidad || 0),
     })),
   }));
 }
