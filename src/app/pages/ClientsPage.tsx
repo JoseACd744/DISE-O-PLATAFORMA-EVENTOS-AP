@@ -6,6 +6,25 @@ import { useBrand, Brand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
 import { canManageClients } from "../lib/auth";
 
+// Canales de adquisición disponibles. Si un cliente antiguo tiene un canal
+// que no está en esta lista, el selector lo agrega para no perder el dato.
+const CANALES = [
+  "Referidos",
+  "Staff",
+  "Redes",
+  "Instagram",
+  "Facebook",
+  "TikTok",
+  "WhatsApp",
+  "Google",
+  "Pagina Web",
+  "Otro",
+];
+
+function canalesDisponibles(actual?: string) {
+  return actual && !CANALES.includes(actual) ? [actual, ...CANALES] : CANALES;
+}
+
 interface Client {
   id: string;
   nombre: string;
@@ -15,7 +34,7 @@ interface Client {
   phone: string;
   address: string;
   city: string;
-  canal: "Referidos" | "Pagina Web" | "Google" | "TikTok" | "Instagram" | "Facebook";
+  canal: string;
   totalOrders: number;
   lastOrder: string;
   status: "active" | "inactive";
@@ -634,15 +653,12 @@ export function ClientsPage() {
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
                   <select
                     value={newClient.canal}
-                    onChange={(e) => setNewClient({ ...newClient, canal: e.target.value as Client["canal"] })}
+                    onChange={(e) => setNewClient({ ...newClient, canal: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
-                    <option value="Referidos">Referidos</option>
-                    <option value="Pagina Web">Pagina Web</option>
-                    <option value="Google">Google</option>
-                    <option value="TikTok">TikTok</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Facebook">Facebook</option>
+                    {canalesDisponibles(newClient.canal).map((canal) => (
+                      <option key={canal} value={canal}>{canal}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -797,15 +813,12 @@ export function ClientsPage() {
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
                   <select
                     value={editingClient.canal}
-                    onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value as Client["canal"] })}
+                    onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
-                    <option value="Referidos">Referidos</option>
-                    <option value="Pagina Web">Pagina Web</option>
-                    <option value="Google">Google</option>
-                    <option value="TikTok">TikTok</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Facebook">Facebook</option>
+                    {canalesDisponibles(editingClient.canal).map((canal) => (
+                      <option key={canal} value={canal}>{canal}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

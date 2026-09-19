@@ -296,23 +296,38 @@ export function ReportsPage() {
       .map((item) => { acumulado += item.abonos; return { ...item, acumulado }; });
   }, [monthFichasDetalle]);
 
-  const paquetesPorTipo = useMemo(() => {
-    const rows = new Map<string, { paquete: string; corporativo: number; familias: number; instituciones: number; megaeventos: number; organizadores: number }>();
+  // Ventas por servicio (paquete o inflable) y tipo de evento.
+  // Antes solo consideraba fichas con paquetes, por lo que quedaba vacío para
+  // las fichas de Juguetón, que normalmente solo llevan inflables.
+  const ventasPorServicio = useMemo(() => {
+    const rows = new Map<string, Record<string, number | string>>();
+    const tipos = new Set<string>();
+
     monthFichasDetalle.forEach((f) => {
-      const tipoRaw = (f.tipo_cliente || "familias").toString().toLowerCase();
-      const tipo = tipoRaw.includes("corp") ? "corporativo"
-        : tipoRaw.includes("instit") ? "instituciones"
-        : tipoRaw.includes("mega") ? "megaeventos"
-        : tipoRaw.includes("org") ? "organizadores"
-        : "familias";
-      (Array.isArray(f.paquetes) ? f.paquetes : []).forEach((p: any) => {
-        const key = (p.paquete_tipo || p.paquete_nombre || "PAQUETE").toString();
-        const row = rows.get(key) || { paquete: key, corporativo: 0, familias: 0, instituciones: 0, megaeventos: 0, organizadores: 0 };
-        row[tipo] += Number(f.total || 0);
-        rows.set(key, row);
+      const tipoEvento = (f.tipo_evento || "Sin tipo").toString();
+      tipos.add(tipoEvento);
+
+      const paquetes = Array.isArray(f.paquetes) ? f.paquetes : [];
+      const inflablesFicha = Array.isArray(f.inflables) ? f.inflables : [];
+      const servicios = paquetes.length > 0
+        ? paquetes.map((p: any) => (p.paquete_nombre || p.paquete_tipo || "Paquete").toString())
+        : inflablesFicha.length > 0
+          ? inflablesFicha.map((i: any) => (i.tipo_nombre || "Inflable").toString())
+          : ["Otros servicios"];
+
+      // El total de la ficha se reparte entre los servicios que la componen
+      const montoPorServicio = Number(f.total || 0) / servicios.length;
+      servicios.forEach((servicio: string) => {
+        const row = rows.get(servicio) || { servicio };
+        row[tipoEvento] = Number(row[tipoEvento] || 0) + montoPorServicio;
+        rows.set(servicio, row);
       });
     });
-    return Array.from(rows.values());
+
+    return {
+      data: Array.from(rows.values()).sort((a, b) => String(a.servicio).localeCompare(String(b.servicio))),
+      tipos: Array.from(tipos),
+    };
   }, [monthFichasDetalle]);
 
   const heladosReporte = useMemo(() => {
@@ -373,7 +388,10 @@ export function ReportsPage() {
   const estadoClientes = useMemo(() => {
     const byEstado = new Map<string, number>();
     allClients.forEach((c) => {
-      const estado = c.estado_cliente || c.estado || "Nuevo";
+      const raw = (c.estado_cliente || c.estado || c.status || "").toString().toLowerCase();
+      const estado = raw === "active" || raw === "activo" ? "Activo"
+        : raw === "inactive" || raw === "inactivo" ? "Inactivo"
+        : raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Sin estado";
       byEstado.set(estado, (byEstado.get(estado) || 0) + 1);
     });
     const palette = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
@@ -777,20 +795,31 @@ export function ReportsPage() {
       {/* Row 3: Paquetes por Tipo + Medios de Pago */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Ventas por Paquete y Tipo de Cliente</h3>
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={paquetesPorTipo} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis type="number" stroke="#6b7280" />
-              <YAxis dataKey="paquete" type="category" stroke="#6b7280" width={100} />
-              <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-              <Legend />
-              <Bar dataKey="corporativo" stackId="a" fill="#1F3C8B" name="Corporativo" />
-              <Bar dataKey="familias" stackId="a" fill="#EF8022" name="Familias" />
-              <Bar dataKey="instituciones" stackId="a" fill="#10B981" name="Instituciones" />
-              <Bar dataKey="organizadores" stackId="a" fill="#F59E0B" name="Organizadores" />
-            </BarChart>
-          </ResponsiveContainer>
+          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Ventas por Servicio y Tipo de Evento</h3>
+          {ventasPorServicio.data.length === 0 ? (
+            <div className="flex h-[350px] items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+              Sin ventas registradas en el período
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={ventasPorServicio.data} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
+                <XAxis type="number" stroke="#6b7280" />
+                <YAxis dataKey="servicio" type="category" stroke="#6b7280" width={140} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 0 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                <Legend />
+                {ventasPorServicio.tipos.map((tipo, index) => (
+                  <Bar
+                    key={tipo}
+                    dataKey={tipo}
+                    stackId="a"
+                    name={tipo}
+                    fill={[COLORS.primary, COLORS.secondary, COLORS.success, COLORS.warning, COLORS.info, COLORS.gray][index % 6]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">

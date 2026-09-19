@@ -25,7 +25,16 @@ interface Abono {
   medio: "Transferencia" | "Yape" | "Plin" | "Efectivo" | "Link de Pago";
 }
 
-interface FichaPaquete {
+type DescuentoTipo = "porcentaje" | "monto";
+
+interface LineaDescuento {
+  descuentoTipo: DescuentoTipo;
+  descuentoValor: number;
+}
+
+const SIN_DESCUENTO: LineaDescuento = { descuentoTipo: "porcentaje", descuentoValor: 0 };
+
+interface FichaPaquete extends LineaDescuento {
   paqueteId: number;
   paqueteNombre: string;
   paqueteTipo: string;
@@ -39,12 +48,12 @@ interface FichaImagen {
   fecha: string;
 }
 
-interface FichaProductoSuelto {
+interface FichaProductoSuelto extends LineaDescuento {
   productoNombre: string;
   cantidad: number;
 }
 
-interface FichaRecurso {
+interface FichaRecurso extends LineaDescuento {
   id: number;
   recurso_id: number;
   recurso_nombre: string;
@@ -76,7 +85,10 @@ interface Ficha {
   productosSueltos: FichaProductoSuelto[];
   carritoIds?: number[];
   inflableIds?: number[];
+  inflablesDescuentos?: Record<number, LineaDescuento>;
+  carritosDescuentos?: Record<number, LineaDescuento>;
   recursos?: FichaRecurso[];
+  aplica_igv?: boolean;
   comentarios?: string;
   personalIds?: number[];
   cliente_id?: string | null;
@@ -122,8 +134,11 @@ interface FichaFormData {
   productosSueltos: FichaProductoSuelto[];
   carritoIds: number[];
   inflableIds: number[];
+  inflablesDescuentos: Record<number, LineaDescuento>;
+  carritosDescuentos: Record<number, LineaDescuento>;
   personalIds: number[];
-  recursos: Array<{ recursoId: number; cantidad: number }>;
+  recursos: Array<{ recursoId: number; cantidad: number } & LineaDescuento>;
+  aplicaIgv: boolean;
   registrarAbonoInicial: boolean;
   abonoInicialFecha: string;
   abonoInicialMonto: number;
@@ -156,12 +171,15 @@ const getInitialFormData = (): FichaFormData => ({
   cotizacion: 0,
   descuento: 0,
   cliente_id: "",
-  paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
+  paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }],
   productosSueltos: [],
   carritoIds: [0],
   inflableIds: [],
+  inflablesDescuentos: {},
+  carritosDescuentos: {},
   personalIds: [0],
-  recursos: [{ recursoId: 0, cantidad: 1 }],
+  recursos: [{ recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }],
+  aplicaIgv: false,
   registrarAbonoInicial: false,
   abonoInicialFecha: getLocalDateString(),
   abonoInicialMonto: 0,
@@ -257,6 +275,63 @@ function getEstadoPago(f: Ficha): EstadoPago {
   return "pendiente";
 }
 function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`; }
+
+const IGV_RATE = 0.18;
+
+type GrupoLinea = "Paquete" | "Producto" | "Carrito" | "Inflable" | "Recurso" | "Movilidad";
+
+interface LineaCotizacion extends LineaDescuento {
+  key: string;
+  grupo: GrupoLinea;
+  descripcion: string;
+  detalle?: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  descuentoMonto: number;
+  total: number;
+  editable: boolean;
+  incluidoEnPaquete?: boolean;
+  ref: { tipo: "paquete" | "producto" | "carrito" | "inflable" | "recurso" | "movilidad"; index?: number; id?: number };
+}
+
+interface OrigenLineas {
+  brand: "donofrio" | "jugueton";
+  paquetes: FichaPaquete[];
+  productosSueltos: FichaProductoSuelto[];
+  carritoIds: number[];
+  carritosDescuentos: Record<number, LineaDescuento>;
+  inflableIds: number[];
+  inflablesDescuentos: Record<number, LineaDescuento>;
+  recursos: Array<{ recursoId: number; cantidad: number; nombre?: string; precio?: number } & LineaDescuento>;
+  costoEnvio: number;
+  descuentoMovilidad: number;
+  distrito: string;
+}
+
+// Descuento de una línea: 'porcentaje' se aplica sobre el subtotal, 'monto' es soles directos.
+function getDescuentoLinea(subtotal: number, { descuentoTipo, descuentoValor }: LineaDescuento): number {
+  const valor = toMoneyNumber(descuentoValor);
+  if (valor <= 0 || subtotal <= 0) return 0;
+  const monto = descuentoTipo === "monto" ? valor : subtotal * (valor / 100);
+  return Math.min(subtotal, Math.max(0, monto));
+}
+
+function mapDescuentoApi(row: any): LineaDescuento {
+  return {
+    descuentoTipo: row?.descuento_tipo === "monto" ? "monto" : "porcentaje",
+    descuentoValor: toMoneyNumber(row?.descuento_valor),
+  };
+}
+
+function mapDescuentosPorId(rows: any[] | undefined, idKey: string): Record<number, LineaDescuento> {
+  const map: Record<number, LineaDescuento> = {};
+  (rows ?? []).forEach((row) => {
+    const id = Number(row?.[idKey]);
+    if (Number.isFinite(id)) map[id] = mapDescuentoApi(row);
+  });
+  return map;
+}
 
 // Dado los paquetes y los inflables asignados a una ficha, calcula qué inflables ya
 // vienen cubiertos (S/0) por el "cupo" de inflables incluidos de esos paquetes.
@@ -1002,42 +1077,213 @@ export function FichasPage() {
     [clients]
   );
 
-  const cotizacionSugerida = useMemo(() => {
-    const totalPaquetes = formData.paquetes.reduce((sum, paquete) => {
+  // ── Líneas de cotización (con descuento por ítem) ───────────────
+  // Se usa tanto en el formulario (panel de Precios) como al generar proforma y contrato,
+  // para que lo cotizado y lo impreso siempre coincidan.
+  const construirLineas = (origen: OrigenLineas): LineaCotizacion[] => {
+    const lineas: LineaCotizacion[] = [];
+
+    const push = (base: Omit<LineaCotizacion, "subtotal" | "descuentoMonto" | "total">) => {
+      const subtotal = base.precioUnitario * base.cantidad;
+      const descuentoMonto = base.editable ? getDescuentoLinea(subtotal, base) : 0;
+      lineas.push({ ...base, subtotal, descuentoMonto, total: Math.max(0, subtotal - descuentoMonto) });
+    };
+
+    origen.paquetes.forEach((paquete, index) => {
+      if (!paquete.paqueteId) return;
       const catalogo = contextPaquetes.find((item) => item.id === paquete.paqueteId);
-      return sum + (toMoneyNumber(catalogo?.precioUnitario) * Math.max(0, toMoneyNumber(paquete.cantidad)));
-    }, 0);
+      push({
+        key: `paquete-${index}`,
+        grupo: "Paquete",
+        descripcion: paquete.paqueteNombre || catalogo?.nombre || "Paquete",
+        detalle: formatearContenidoPaquete(catalogo?.contenido ?? []),
+        cantidad: Math.max(0, toMoneyNumber(paquete.cantidad)),
+        precioUnitario: toMoneyNumber(catalogo?.precioUnitario),
+        descuentoTipo: paquete.descuentoTipo,
+        descuentoValor: paquete.descuentoValor,
+        editable: true,
+        ref: { tipo: "paquete", index },
+      });
+    });
 
-    const totalProductos = formData.productosSueltos.reduce((sum, producto) => {
+    origen.productosSueltos.forEach((producto, index) => {
+      if (!producto.productoNombre) return;
       const catalogo = productsDeLaMarca.find((item) => item.producto === producto.productoNombre);
-      return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(producto.cantidad)));
-    }, 0);
+      push({
+        key: `producto-${index}`,
+        grupo: "Producto",
+        descripcion: producto.productoNombre,
+        cantidad: Math.max(0, toMoneyNumber(producto.cantidad)),
+        precioUnitario: toMoneyNumber(catalogo?.precio),
+        descuentoTipo: producto.descuentoTipo,
+        descuentoValor: producto.descuentoValor,
+        editable: true,
+        ref: { tipo: "producto", index },
+      });
+    });
 
-    const totalCarritos = formData.carritoIds.reduce((sum, carritoId) => {
+    origen.carritoIds.forEach((carritoId) => {
+      if (!carritoId) return;
       const carrito = carritos.find((item) => item.id === carritoId);
-      return sum + toMoneyNumber(carrito?.precioAlquiler);
-    }, 0);
+      if (!carrito) return;
+      const desc = origen.carritosDescuentos[carritoId] ?? SIN_DESCUENTO;
+      push({
+        key: `carrito-${carritoId}`,
+        grupo: "Carrito",
+        descripcion: `${carrito.codigo} — ${carrito.modelo}`,
+        cantidad: 1,
+        precioUnitario: toMoneyNumber(carrito.precioAlquiler),
+        descuentoTipo: desc.descuentoTipo,
+        descuentoValor: desc.descuentoValor,
+        editable: true,
+        ref: { tipo: "carrito", id: carritoId },
+      });
+    });
 
-    const totalInflables = brand === "jugueton"
-      ? (() => {
-          const gratisIds = getInflablesGratisIds(formData.paquetes, formData.inflableIds, contextPaquetes, inflables);
-          return formData.inflableIds.reduce((sum, inflableId) => {
-            if (gratisIds.has(inflableId)) return sum;
-            const inflable = inflables.find((item) => item.id === inflableId);
-            return sum + toMoneyNumber(inflable?.precioAlquiler);
-          }, 0);
-        })()
-      : 0;
+    if (origen.brand === "jugueton") {
+      const gratisIds = getInflablesGratisIds(origen.paquetes, origen.inflableIds, contextPaquetes, inflables);
+      origen.inflableIds.forEach((inflableId) => {
+        const inflable = inflables.find((item) => item.id === inflableId);
+        if (!inflable) return;
+        const incluido = gratisIds.has(inflableId);
+        const desc = origen.inflablesDescuentos[inflableId] ?? SIN_DESCUENTO;
+        push({
+          key: `inflable-${inflableId}`,
+          grupo: "Inflable",
+          descripcion: `${inflable.tipoNombre}${inflable.codigo ? ` (${inflable.codigo})` : ""}`,
+          detalle: incluido ? "Incluido en el paquete" : undefined,
+          cantidad: 1,
+          precioUnitario: incluido ? 0 : toMoneyNumber(inflable.precioAlquiler),
+          descuentoTipo: desc.descuentoTipo,
+          descuentoValor: desc.descuentoValor,
+          editable: !incluido,
+          incluidoEnPaquete: incluido,
+          ref: { tipo: "inflable", id: inflableId },
+        });
+      });
+    }
 
-    const totalRecursos = formData.recursos.reduce((sum, recurso) => {
+    origen.recursos.forEach((recurso, index) => {
+      if (!recurso.recursoId) return;
       const catalogo = recursos.find((item) => item.id === recurso.recursoId);
-      return sum + (toMoneyNumber(catalogo?.precio) * Math.max(0, toMoneyNumber(recurso.cantidad)));
-    }, 0);
+      push({
+        key: `recurso-${index}`,
+        grupo: "Recurso",
+        descripcion: recurso.nombre || catalogo?.recurso || "Recurso",
+        cantidad: Math.max(0, toMoneyNumber(recurso.cantidad)),
+        precioUnitario: recurso.precio !== undefined ? toMoneyNumber(recurso.precio) : toMoneyNumber(catalogo?.precio),
+        descuentoTipo: recurso.descuentoTipo,
+        descuentoValor: recurso.descuentoValor,
+        editable: true,
+        ref: { tipo: "recurso", index },
+      });
+    });
 
-    const totalTransporte = toMoneyNumber(formData.costo_envio) * (1 - (toMoneyNumber(formData.descuento_movilidad) / 100));
+    const costoEnvio = toMoneyNumber(origen.costoEnvio);
+    if (costoEnvio > 0) {
+      push({
+        key: "movilidad",
+        grupo: "Movilidad",
+        descripcion: `Movilidad a ${origen.distrito || "destino"}`,
+        cantidad: 1,
+        precioUnitario: costoEnvio,
+        descuentoTipo: "porcentaje",
+        descuentoValor: toMoneyNumber(origen.descuentoMovilidad),
+        editable: true,
+        ref: { tipo: "movilidad" },
+      });
+    }
 
-    return Math.max(0, totalPaquetes + totalProductos + totalCarritos + totalInflables + totalRecursos + totalTransporte);
-  }, [productsDeLaMarca, brand, carritos, contextPaquetes, formData.carritoIds, formData.costo_envio, formData.descuento_movilidad, formData.inflableIds, formData.paquetes, formData.productosSueltos, formData.recursos, inflables, recursos]);
+    return lineas;
+  };
+
+  const origenDesdeFormulario = (): OrigenLineas => ({
+    brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
+    paquetes: formData.paquetes,
+    productosSueltos: formData.productosSueltos,
+    carritoIds: formData.carritoIds,
+    carritosDescuentos: formData.carritosDescuentos,
+    inflableIds: formData.inflableIds,
+    inflablesDescuentos: formData.inflablesDescuentos,
+    recursos: formData.recursos.map((r) => ({ ...r })),
+    costoEnvio: formData.costo_envio,
+    descuentoMovilidad: formData.descuento_movilidad,
+    distrito: formData.distrito,
+  });
+
+  const origenDesdeFicha = (ficha: Ficha): OrigenLineas => ({
+    brand: ficha.brand,
+    paquetes: ficha.paquetes,
+    productosSueltos: ficha.productosSueltos,
+    carritoIds: ficha.carritoIds ?? [],
+    carritosDescuentos: ficha.carritosDescuentos ?? {},
+    inflableIds: ficha.inflableIds ?? [],
+    inflablesDescuentos: ficha.inflablesDescuentos ?? {},
+    recursos: (ficha.recursos ?? []).map((r) => ({
+      recursoId: r.recurso_id,
+      cantidad: r.cantidad,
+      nombre: r.recurso_nombre,
+      precio: toMoneyNumber(r.precio),
+      descuentoTipo: r.descuentoTipo,
+      descuentoValor: r.descuentoValor,
+    })),
+    costoEnvio: toMoneyNumber(ficha.costo_envio),
+    descuentoMovilidad: toMoneyNumber(ficha.descuento_movilidad),
+    distrito: ficha.distrito,
+  });
+
+  const lineasFormulario = useMemo(
+    () => construirLineas(origenDesdeFormulario()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brand, carritos, contextPaquetes, formData, inflables, productsDeLaMarca, recursos]
+  );
+
+  const actualizarDescuentoLinea = (ref: LineaCotizacion["ref"], patch: Partial<LineaDescuento>) => {
+    setFormData((prev) => {
+      switch (ref.tipo) {
+        case "paquete":
+          return { ...prev, paquetes: prev.paquetes.map((p, i) => (i === ref.index ? { ...p, ...patch } : p)) };
+        case "producto":
+          return { ...prev, productosSueltos: prev.productosSueltos.map((p, i) => (i === ref.index ? { ...p, ...patch } : p)) };
+        case "recurso":
+          return { ...prev, recursos: prev.recursos.map((r, i) => (i === ref.index ? { ...r, ...patch } : r)) };
+        case "carrito":
+          return {
+            ...prev,
+            carritosDescuentos: {
+              ...prev.carritosDescuentos,
+              [ref.id!]: { ...(prev.carritosDescuentos[ref.id!] ?? SIN_DESCUENTO), ...patch },
+            },
+          };
+        case "inflable":
+          return {
+            ...prev,
+            inflablesDescuentos: {
+              ...prev.inflablesDescuentos,
+              [ref.id!]: { ...(prev.inflablesDescuentos[ref.id!] ?? SIN_DESCUENTO), ...patch },
+            },
+          };
+        case "movilidad":
+          // La movilidad guarda su descuento como porcentaje en la ficha
+          return patch.descuentoValor === undefined
+            ? prev
+            : { ...prev, descuento_movilidad: Math.min(100, Math.max(0, patch.descuentoValor)) };
+        default:
+          return prev;
+      }
+    });
+  };
+
+  const resumenFormulario = useMemo(() => {
+    const subtotalBruto = lineasFormulario.reduce((sum, l) => sum + l.subtotal, 0);
+    const descuentos = lineasFormulario.reduce((sum, l) => sum + l.descuentoMonto, 0);
+    const total = Math.max(0, subtotalBruto - descuentos);
+    // El precio cotizado ya incluye IGV; al marcarlo solo se desglosa en los documentos.
+    const valorVenta = formData.aplicaIgv ? total / (1 + IGV_RATE) : total;
+    return { subtotalBruto, descuentos, total, valorVenta, igv: total - valorVenta };
+  }, [lineasFormulario, formData.aplicaIgv]);
+
+  const cotizacionSugerida = resumenFormulario.total;
 
   useEffect(() => {
     if (cotizacionMode !== "auto") return;
@@ -1076,13 +1322,17 @@ export function FichasPage() {
           paqueteNombre: p.paquete_nombre || "",
           paqueteTipo: p.paquete_tipo || "",
           cantidad: toMoneyNumber(p.cantidad) || 1,
+          ...mapDescuentoApi(p),
         })),
         productosSueltos: (f.productosSueltos || []).map((p: any) => ({
           productoNombre: p.producto_nombre,
           cantidad: toMoneyNumber(p.cantidad) || 1,
+          ...mapDescuentoApi(p),
         })),
         carritoIds: f.carritoIds || [],
         inflableIds: f.inflableIds || [],
+        inflablesDescuentos: mapDescuentosPorId(f.inflables, "id"),
+        carritosDescuentos: mapDescuentosPorId(f.carritos, "id"),
         recursos: (f.recursos || []).map((r: any) => ({
           id: r.id,
           recurso_id: r.recurso_id,
@@ -1090,7 +1340,9 @@ export function FichasPage() {
           cantidad: toMoneyNumber(r.cantidad) || 1,
           sku: r.sku || "",
           precio: String(toMoneyNumber(r.precio)),
+          ...mapDescuentoApi(r),
         })),
+        aplica_igv: f.aplica_igv === true,
         comentarios: f.comentarios || "",
         personalIds: f.personalIds || [],
         cliente_id: f.cliente_id || null,
@@ -1266,6 +1518,13 @@ export function FichasPage() {
     return dia.charAt(0).toUpperCase() + dia.slice(1);
   };
 
+  const esFinDeSemana = (dateIso: string) => {
+    if (!dateIso) return false;
+    const d = new Date(`${dateIso.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return false;
+    return d.getDay() === 0 || d.getDay() === 6;
+  };
+
   const getFichaTitulo = (ficha: Ficha) => ficha.titulo || `Ficha #${String(ficha.id).padStart(7, "0")}`;
 
   const formatearContenidoPaquete = (contenido: { productoNombre: string; cantidad: number }[]) => {
@@ -1279,6 +1538,11 @@ export function FichasPage() {
   const handleGenerarProforma = (ficha: Ficha) => {
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
+    const lineasFicha = construirLineas(origenDesdeFicha(ficha));
+    const valorVenta = ficha.aplica_igv ? total / (1 + IGV_RATE) : total;
+    const igvMonto = total - valorVenta;
+    const descuentosFicha = lineasFicha.reduce((sum, l) => sum + l.descuentoMonto, 0);
+    const razonSocialCliente = cliente?.razon_social || ficha.cliente_nombre;
     const abonado = getTotalAbonado(ficha);
     const saldo = Math.max(0, getSaldo(ficha));
     const unidadesHelado = getUnidadesHelado(ficha);
@@ -1314,147 +1578,50 @@ export function FichasPage() {
           logoUrl: "/images/jugueton.png",
         };
 
-    const lineasPaquetes = ficha.paquetes.map((p, index) => {
-      const paqueteCatalogo = contextPaquetes.find(cp => cp.id === p.paqueteId);
-      const precioUnitario = paqueteCatalogo?.precioUnitario ?? 0;
-      const subtotal = precioUnitario * p.cantidad;
-      const contenidoStr = formatearContenidoPaquete(paqueteCatalogo?.contenido ?? []);
-      return {
-        item: index + 1,
-        descripcion: p.paqueteNombre,
-        contenidoStr,
-        paqueteNombre: p.paqueteNombre,
-        cantidad: p.cantidad,
-        precioUnitario,
-        subtotal,
-      };
-    });
-
-    const lineasSueltos = ficha.productosSueltos.map((p, index) => {
-      const catalogo = productsDeLaMarca.find((item) => item.producto === p.productoNombre);
-      const precioUnitario = catalogo?.precio ?? 0;
-      return {
-        item: lineasPaquetes.length + index + 1,
-        descripcion: `${p.productoNombre} (Producto adicional)`,
-        cantidad: p.cantidad,
-        precioUnitario,
-        subtotal: precioUnitario * p.cantidad,
-      };
-    });
-
-    const recursosFicha = (ficha.recursos ?? []).map((r, index) => ({
-      item: lineasPaquetes.length + lineasSueltos.length + index + 1,
-      descripcion: r.recurso_nombre,
-      cantidad: r.cantidad,
-      precioUnitario: Number(r.precio) || 0,
-      subtotal: (Number(r.precio) || 0) * r.cantidad,
-    }));
-
-    const lineasRecursos = [
-      ...(carritoDetalle.length > 0
-        ? [{ item: lineasPaquetes.length + lineasSueltos.length + recursosFicha.length + 1, descripcion: `Carritos asignados: ${carritoDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
-        : []),
-      ...(inflableDetalle.length > 0
-        ? [{ item: lineasPaquetes.length + lineasSueltos.length + recursosFicha.length + (carritoDetalle.length > 0 ? 2 : 1), descripcion: `Inflables asignados: ${inflableDetalle.join(" | ")}`, cantidad: 1, precioUnitario: 0, subtotal: 0 }]
-        : []),
-    ];
-
-    const detalleConceptos = [...lineasPaquetes, ...lineasSueltos, ...lineasRecursos];
-    const montoPaquetes = lineasPaquetes.reduce((sum, l) => sum + l.subtotal, 0);
-
-    const filasDetalle = detalleConceptos.length > 0
-      ? detalleConceptos.map(l => `
-          <tr>
-            <td style="text-align:center; width:40px;">${l.item}</td>
-            <td>${escapeHtml(l.descripcion)}</td>
-            <td style="text-align:center; width:80px;">${l.cantidad}</td>
-            <td style="text-align:right; width:120px;">${l.precioUnitario > 0 ? formatMoney(l.precioUnitario) : "-"}</td>
-            <td style="text-align:right; width:120px;">${l.subtotal > 0 ? formatMoney(l.subtotal) : "-"}</td>
-          </tr>
-        `).join("")
-      : `<tr><td colspan="5" style="text-align:center; color:#6B7280;">Sin conceptos registrados</td></tr>`;
-
-    const filasSueltos = ficha.productosSueltos.length > 0
-      ? ficha.productosSueltos.map(p => `
-          <tr>
-            <td>${escapeHtml(p.productoNombre)}</td>
-            <td style="text-align:center;">${p.cantidad}</td>
-          </tr>
-        `).join("")
-      : `<tr><td colspan="2" style="text-align:center; color:#6B7280;">Sin productos adicionales</td></tr>`;
-
-    const filasAbonos = ficha.abonos.length > 0
-      ? ficha.abonos.map((a, idx) => `
-          <tr>
-            <td style="text-align:center; width:40px;">${idx + 1}</td>
-            <td>${escapeHtml(a.fecha)}</td>
-            <td>${escapeHtml(a.medio)}</td>
-            <td>${escapeHtml(a.numeroOperacion || "-")}</td>
-            <td style="text-align:right;">${formatMoney(a.monto)}</td>
-          </tr>
-        `).join("")
-      : `<tr><td colspan="5" style="text-align:center; color:#6B7280;">Sin abonos registrados</td></tr>`;
-
     const popup = window.open("", `proforma-${ficha.id}`, "width=1000,height=760");
     if (!popup) return;
 
     if (ficha.brand === "jugueton") {
       const numeroCotizacion = String(ficha.id).padStart(4, "0");
-      const eventDate = new Date(`${ficha.fecha_evento || ficha.fecha}T00:00:00`);
+      const eventDate = new Date(`${(ficha.fecha_evento || ficha.fecha || "").slice(0, 10)}T00:00:00`);
       const fechaEventoTexto = Number.isNaN(eventDate.getTime())
         ? (ficha.fecha_evento || ficha.fecha)
         : eventDate.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })
             .replace(/(^.|\s.)/g, (m) => m.toUpperCase());
 
-      const filasJugueton = [
-        ...lineasPaquetes.map((l, idx) => ({
-          producto: `Paquete ${idx + 1}`,
-          descripcion: escapeHtml(l.paqueteNombre),
-          contenidoStr: l.contenidoStr,
-          cantidad: l.cantidad,
-          precio: l.subtotal,
-        })),
-        ...lineasSueltos.map((l, idx) => ({
-          producto: `Producto ${idx + 1}`,
-          descripcion: l.descripcion,
-          cantidad: l.cantidad,
-          precio: l.subtotal,
-        })),
-        ...recursosFicha.map((r, idx) => ({
-          producto: `Recurso ${idx + 1}`,
-          descripcion: r.descripcion,
-          cantidad: r.cantidad,
-          precio: r.subtotal,
-        })),
-      ];
+      const etiquetaGrupo: Record<GrupoLinea, string> = {
+        Paquete: "Paquete",
+        Producto: "Producto",
+        Carrito: "Carrito",
+        Inflable: "Inflables",
+        Recurso: "Recurso",
+        Movilidad: "Transporte",
+      };
 
-      if (inflableDetalle.length > 0) {
-        filasJugueton.push({
-          producto: "Inflables",
-          descripcion: inflableDetalle.join(" | "),
-          cantidad: inflableDetalle.length,
-          precio: 0,
-        });
-      }
+      const filasJugueton = lineasFicha.map((linea) => ({
+        producto: etiquetaGrupo[linea.grupo],
+        descripcion: escapeHtml(linea.descripcion),
+        contenidoStr: linea.detalle,
+        cantidad: linea.cantidad,
+        precio: linea.total,
+        descuentoMonto: linea.descuentoMonto,
+        incluido: linea.incluidoEnPaquete === true,
+      }));
 
       const bloqueStaff = [
         personalDetalle.length > 0 ? `Personal de staff: ${personalDetalle.join(", ")}` : "Personal de staff: 1 PERSONAL",
         "Incluye instalacion y desmontaje",
-        ficha.comentarios ? `Observacion: ${ficha.comentarios}` : "Precio incluye IGB",
+        ficha.comentarios ? `Observacion: ${ficha.comentarios}` : "Precio incluye IGV",
       ].join("<br/>");
 
       filasJugueton.push({
         producto: "OTROS",
         descripcion: bloqueStaff,
+        contenidoStr: undefined,
         cantidad: 1,
         precio: 0,
-      });
-
-      filasJugueton.push({
-        producto: "Transporte",
-        descripcion: `Costo de transporte a ${escapeHtml(ficha.distrito)}`,
-        cantidad: 1,
-        precio: ficha.costo_envio || 0,
+        descuentoMonto: 0,
+        incluido: false,
       });
 
       const filasTablaJugueton = filasJugueton
@@ -1464,7 +1631,7 @@ export function FichasPage() {
               <td>${escapeHtml(row.producto)}</td>
               <td>${row.descripcion}</td>
               <td class="text-center">${row.cantidad}</td>
-              <td class="text-right">${row.precio > 0 ? formatMoney(row.precio) : "-"}</td>
+              <td class="text-right">${row.incluido ? "Incluido" : row.precio > 0 ? formatMoney(row.precio) : "-"}</td>
             </tr>
           `;
           const cs = (row as { contenidoStr?: string }).contenidoStr;
@@ -1741,10 +1908,27 @@ export function FichasPage() {
             </table>
 
             <section class="totals">
+              ${descuentosFicha > 0 ? `
+              <div class="row">
+                <div class="label">Descuentos</div>
+                <div class="value">- ${formatMoney(descuentosFicha)}</div>
+              </div>
+              ` : ""}
+              ${ficha.aplica_igv ? `
+              <div class="row">
+                <div class="label">Valor Venta</div>
+                <div class="value">${formatMoney(valorVenta)}</div>
+              </div>
+              <div class="row">
+                <div class="label">IGV (18%)</div>
+                <div class="value">${formatMoney(igvMonto)}</div>
+              </div>
+              ` : `
               <div class="row">
                 <div class="label">Subtotal</div>
                 <div class="value">${formatMoney(total)}</div>
               </div>
+              `}
               <div class="row">
                 <div class="label">Total a Pagar</div>
                 <div class="value">${formatMoney(total)}</div>
@@ -1786,39 +1970,21 @@ export function FichasPage() {
     }
 
       const filasDonofrio = [
-      ...lineasPaquetes.map((l) => ({
-        cantidad: l.cantidad,
-        descripcion: l.paqueteNombre,
-        contenidoStr: l.contenidoStr,
-        pu: l.precioUnitario,
-        total: l.subtotal,
-        destacado: true,
+      ...lineasFicha.map((linea) => ({
+        cantidad: linea.cantidad,
+        descripcion: linea.descripcion
+          + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
+          + (linea.descuentoMonto > 0 ? ` — dscto. ${formatMoney(linea.descuentoMonto)}` : ""),
+        contenidoStr: linea.detalle,
+        pu: linea.precioUnitario,
+        total: linea.total,
+        destacado: linea.grupo === "Paquete" || linea.grupo === "Movilidad",
       })),
-      ...lineasSueltos.map((l) => ({
-        cantidad: l.cantidad,
-        descripcion: l.descripcion,
-        pu: l.precioUnitario,
-        total: l.subtotal,
-        destacado: false,
-      })),
-      ...recursosFicha.map((r) => ({
-        cantidad: r.cantidad,
-        descripcion: r.descripcion,
-        pu: r.precioUnitario,
-        total: r.subtotal,
-        destacado: r.subtotal > 0,
-      })),
-      {
-        cantidad: 1,
-        descripcion: `Costo de transporte a ${ficha.distrito}`,
-        pu: ficha.costo_envio || 0,
-        total: ficha.costo_envio || 0,
-        destacado: true,
-      },
       ...(ficha.comentarios
         ? [{
             cantidad: 1,
             descripcion: ficha.comentarios,
+            contenidoStr: undefined,
             pu: 0,
             total: 0,
             destacado: false,
@@ -2055,7 +2221,7 @@ export function FichasPage() {
 
             <section class="meta-top">
               <div class="client">
-                <div class="row"><strong>SR(A)</strong><span>${escapeHtml(ficha.cliente_nombre)}</span></div>
+                <div class="row"><strong>RAZON SOCIAL</strong><span>${escapeHtml(razonSocialCliente)}</span></div>
                 <div class="row"><strong>RUC / DNI</strong><span>${escapeHtml(cliente?.dni_ruc || "-")}</span></div>
                 <div class="row"><strong>CORREO</strong><span>${escapeHtml(cliente?.email || "-")}</span></div>
                 <div class="row"><strong>TELEFONO</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
@@ -2139,61 +2305,23 @@ export function FichasPage() {
       0,
       toMoneyNumber(ficha.costo_envio) * (1 - toMoneyNumber(ficha.descuento_movilidad) / 100),
     );
-    const items: JuguetonContractItem[] = [];
+    const etiquetaContrato: Record<GrupoLinea, string> = {
+      Paquete: "Paquete: ",
+      Producto: "",
+      Carrito: "Carrito ",
+      Inflable: "Inflable ",
+      Recurso: "",
+      Movilidad: "",
+    };
 
-    ficha.paquetes.forEach((paquete) => {
-      const catalogo = contextPaquetes.find((item) => item.id === paquete.paqueteId);
-      const precioUnitario = catalogo?.precioUnitario ?? 0;
-      items.push({
-        descripcion: "Paquete: " + paquete.paqueteNombre,
-        cantidad: paquete.cantidad,
-        monto: precioUnitario > 0 ? precioUnitario * paquete.cantidad : undefined,
-      });
-    });
-
-    ficha.productosSueltos.forEach((producto) => {
-      const catalogo = productsDeLaMarca.find((item) => item.producto === producto.productoNombre);
-      items.push({
-        descripcion: producto.productoNombre,
-        cantidad: producto.cantidad,
-        monto: catalogo?.precio ? catalogo.precio * producto.cantidad : undefined,
-      });
-    });
-
-    const inflablesGratisIds = getInflablesGratisIds(ficha.paquetes, ficha.inflableIds ?? [], contextPaquetes, inflables);
-    (ficha.inflableIds ?? []).forEach((inflableId) => {
-      const inflable = inflables.find((item) => item.id === inflableId);
-      if (!inflable) return;
-      const incluidoEnPaquete = inflablesGratisIds.has(inflableId);
-      items.push({
-        descripcion: "Inflable " + inflable.tipoNombre + (inflable.codigo ? " (" + inflable.codigo + ")" : "") + (incluidoEnPaquete ? " (incluido en el paquete)" : ""),
-        cantidad: 1,
-        monto: incluidoEnPaquete ? undefined : (inflable.precioAlquiler || undefined),
-      });
-    });
-
-    (ficha.carritoIds ?? []).forEach((carritoId) => {
-      const carrito = carritos.find((item) => item.id === carritoId);
-      if (!carrito) return;
-      items.push({
-        descripcion: "Carrito " + carrito.modelo + (carrito.codigo ? " (" + carrito.codigo + ")" : ""),
-        cantidad: 1,
-        monto: carrito.precioAlquiler || undefined,
-      });
-    });
-
-    (ficha.recursos ?? []).forEach((recurso) => {
-      const precio = Number(recurso.precio) || 0;
-      items.push({
-        descripcion: recurso.recurso_nombre,
-        cantidad: recurso.cantidad,
-        monto: precio > 0 ? precio * recurso.cantidad : undefined,
-      });
-    });
-
-    if (movilidad > 0) {
-      items.push({ descripcion: "Movilidad a " + ficha.distrito, cantidad: 1, monto: movilidad });
-    }
+    const items: JuguetonContractItem[] = construirLineas(origenDesdeFicha(ficha)).map((linea) => ({
+      descripcion: etiquetaContrato[linea.grupo]
+        + linea.descripcion
+        + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
+        + (linea.descuentoMonto > 0 ? " (dscto. " + formatMoney(linea.descuentoMonto) + ")" : ""),
+      cantidad: linea.cantidad,
+      monto: linea.total > 0 ? linea.total : undefined,
+    }));
 
     const formatContractTime = (time?: string) => {
       if (!time) return "No especificado";
@@ -2424,7 +2552,7 @@ export function FichasPage() {
   };
 
   const handleAddFormPaquete = () => {
-    setFormData(prev => ({ ...prev, paquetes: [...prev.paquetes, { paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }] }));
+    setFormData(prev => ({ ...prev, paquetes: [...prev.paquetes, { paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }] }));
   };
   const handleRemoveFormPaquete = (idx: number) => {
     setFormData(prev => ({ ...prev, paquetes: prev.paquetes.filter((_, i) => i !== idx) }));
@@ -2444,7 +2572,7 @@ export function FichasPage() {
     }));
   };
   const handleAddProductoSuelto = () => {
-    setFormData(prev => ({ ...prev, productosSueltos: [...prev.productosSueltos, { productoNombre: "", cantidad: 0 }] }));
+    setFormData(prev => ({ ...prev, productosSueltos: [...prev.productosSueltos, { productoNombre: "", cantidad: 0, ...SIN_DESCUENTO }] }));
   };
   const handleRemoveProductoSuelto = (idx: number) => {
     setFormData(prev => ({ ...prev, productosSueltos: prev.productosSueltos.filter((_, i) => i !== idx) }));
@@ -2473,7 +2601,7 @@ export function FichasPage() {
   };
 
   const handleAddRecursoRow = () => {
-    setFormData((prev) => ({ ...prev, recursos: [...prev.recursos, { recursoId: 0, cantidad: 1 }] }));
+    setFormData((prev) => ({ ...prev, recursos: [...prev.recursos, { recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }] }));
   };
 
   const useSuggestedCotizacion = () => {
@@ -2677,15 +2805,18 @@ export function FichasPage() {
       descuento: ficha.descuento,
       cliente_id: ficha.cliente_id || "",
       paquetes: ficha.paquetes.length > 0
-        ? ficha.paquetes.map(p => ({ paqueteId: p.paqueteId, paqueteNombre: p.paqueteNombre, paqueteTipo: p.paqueteTipo, cantidad: p.cantidad }))
-        : [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1 }],
+        ? ficha.paquetes.map(p => ({ paqueteId: p.paqueteId, paqueteNombre: p.paqueteNombre, paqueteTipo: p.paqueteTipo, cantidad: p.cantidad, descuentoTipo: p.descuentoTipo, descuentoValor: p.descuentoValor }))
+        : [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }],
       productosSueltos: ficha.productosSueltos || [],
       carritoIds: (ficha.carritoIds ?? []).length > 0 ? ficha.carritoIds! : [0],
       inflableIds: ficha.inflableIds || [],
+      inflablesDescuentos: ficha.inflablesDescuentos ?? {},
+      carritosDescuentos: ficha.carritosDescuentos ?? {},
       personalIds: (ficha.personalIds ?? []).length > 0 ? ficha.personalIds! : [0],
       recursos: (ficha.recursos ?? []).length > 0
-        ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad }))
-        : [{ recursoId: 0, cantidad: 1 }],
+        ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad, descuentoTipo: r.descuentoTipo, descuentoValor: r.descuentoValor }))
+        : [{ recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }],
+      aplicaIgv: ficha.aplica_igv === true,
       registrarAbonoInicial: false,
       abonoInicialFecha: getLocalDateString(),
       abonoInicialMonto: 0,
@@ -2851,6 +2982,9 @@ export function FichasPage() {
     createFichaLockRef.current = true;
     setIsSaving(true);
 
+    const carritoIdsPayload = formData.transporte === "delivery" ? [] : formData.carritoIds.filter((carritoId) => carritoId > 0);
+    const inflableIdsPayload = formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [];
+
     const payload = {
       fecha: formData.fecha_evento,
       fecha_evento: formData.fecha_evento,
@@ -2875,12 +3009,21 @@ export function FichasPage() {
       descuento: toMoneyNumber(formData.descuento),
       costo_envio: toMoneyNumber(formData.costo_envio),
       descuento_movilidad: toMoneyNumber(formData.descuento_movilidad),
+      aplica_igv: formData.aplicaIgv,
       brand,
       created_by: getAuthUser()?.id,
       paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
       productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
-      carritoIds: formData.transporte === "delivery" ? [] : formData.carritoIds.filter((carritoId) => carritoId > 0),
-      inflableIds: formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [],
+      carritoIds: carritoIdsPayload,
+      carritosDescuentos: carritoIdsPayload.map((carritoId) => ({
+        carritoId,
+        ...(formData.carritosDescuentos[carritoId] ?? SIN_DESCUENTO),
+      })),
+      inflableIds: inflableIdsPayload,
+      inflablesDescuentos: inflableIdsPayload.map((inflableId) => ({
+        inflableId,
+        ...(formData.inflablesDescuentos[inflableId] ?? SIN_DESCUENTO),
+      })),
       personalIds: formData.transporte === "delivery" ? [] : formData.personalIds.filter((personalId) => personalId > 0),
       recursos: formData.transporte === "delivery" ? [] : formData.recursos.filter((recurso) => recurso.recursoId > 0),
     };
@@ -3880,10 +4023,21 @@ export function FichasPage() {
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha del Evento *</label>
                     <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                    {formData.fecha_evento && (
+                      <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-[#EF8022]" : "text-gray-500 dark:text-gray-400"}`}>
+                        {formatDiaSemana(formData.fecha_evento)} {formatDate(formData.fecha_evento)}
+                        {esFinDeSemana(formData.fecha_evento) && " · fin de semana"}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha de Contacto del Cliente *</label>
                     <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                    {formData.fecha_reserva && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {formatDiaSemana(formData.fecha_reserva)} {formatDate(formData.fecha_reserva)}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4271,52 +4425,134 @@ export function FichasPage() {
               {/* ── PRECIOS ───────────────────────────────────── */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
-                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl">
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
-                      <input
-                        type="number"
-                        name="costo_envio"
-                        value={formData.costo_envio || ""}
-                        onChange={handleInputChange}
-                        min={0}
-                        step={0.01}
-                        placeholder="0.00"
-                        className={`${inputClass} pl-9`}
-                      />
-                    </div>
-                    {tarifaCache && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
-                    )}
+                <div className="mb-4 max-w-xs">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                    <input
+                      type="number"
+                      name="costo_envio"
+                      value={formData.costo_envio || ""}
+                      onChange={handleInputChange}
+                      min={0}
+                      step={0.01}
+                      placeholder="0.00"
+                      className={`${inputClass} pl-9`}
+                    />
                   </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Descuento Movilidad (%)</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        name="descuento_movilidad"
-                        value={formData.descuento_movilidad || ""}
-                        onChange={handleInputChange}
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        placeholder="0"
-                        className={`${inputClass} pr-9`}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total Movilidad</label>
-                    <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
-                      <span className="text-sm text-[#1F3C8B] dark:text-blue-400">
-                        {formatMoney(Math.max(0, toMoneyNumber(formData.costo_envio) * (1 - toMoneyNumber(formData.descuento_movilidad) / 100)))}
-                      </span>
-                    </div>
-                  </div>
+                  {tarifaCache && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
+                  )}
                 </div>
+
+                {/* Desglose con descuento por ítem */}
+                <div className="mb-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                      <tr className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <th className="py-2 px-3 text-left">Ítem</th>
+                        <th className="py-2 px-3 text-center w-16">Cant.</th>
+                        <th className="py-2 px-3 text-right w-28">P. Unitario</th>
+                        <th className="py-2 px-3 text-center w-40">Descuento</th>
+                        <th className="py-2 px-3 text-right w-28">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {lineasFormulario.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-6 px-3 text-center text-gray-400 dark:text-gray-500">
+                            Agrega paquetes, productos, inflables o movilidad para ver el detalle.
+                          </td>
+                        </tr>
+                      )}
+                      {lineasFormulario.map((linea) => (
+                        <tr key={linea.key} className="align-top">
+                          <td className="py-2 px-3">
+                            <span className="mr-2 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                              {linea.grupo}
+                            </span>
+                            <span className="text-gray-900 dark:text-white">{linea.descripcion}</span>
+                            {linea.detalle && (
+                              <p className="mt-0.5 text-[11px] italic text-gray-400 dark:text-gray-500">{linea.detalle}</p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-center text-gray-600 dark:text-gray-400">{linea.cantidad}</td>
+                          <td className="py-2 px-3 text-right text-gray-600 dark:text-gray-400">{formatMoney(linea.precioUnitario)}</td>
+                          <td className="py-2 px-3">
+                            {linea.editable ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  value={linea.descuentoValor || ""}
+                                  onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoValor: Math.max(0, Number(e.target.value) || 0) })}
+                                  placeholder="0"
+                                  className="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-right text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                                />
+                                {linea.ref.tipo === "movilidad" ? (
+                                  <span className="text-xs text-gray-400 w-12">%</span>
+                                ) : (
+                                  <select
+                                    value={linea.descuentoTipo}
+                                    onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoTipo: e.target.value as DescuentoTipo })}
+                                    className="w-12 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-1 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                                  >
+                                    <option value="porcentaje">%</option>
+                                    <option value="monto">S/</option>
+                                  </select>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+                                {linea.incluidoEnPaquete ? "Incluido" : "—"}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-900 dark:text-white">{formatMoney(linea.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-sm">
+                      <tr>
+                        <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Subtotal</td>
+                        <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.subtotalBruto)}</td>
+                      </tr>
+                      {resumenFormulario.descuentos > 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Descuentos</td>
+                          <td className="py-1.5 px-3 text-right text-red-500">− {formatMoney(resumenFormulario.descuentos)}</td>
+                        </tr>
+                      )}
+                      {formData.aplicaIgv && (
+                        <>
+                          <tr>
+                            <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Valor venta</td>
+                            <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.valorVenta)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">IGV (18%)</td>
+                            <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.igv)}</td>
+                          </tr>
+                        </>
+                      )}
+                      <tr>
+                        <td colSpan={4} className="py-2 px-3 text-right text-gray-700 dark:text-gray-300">Total</td>
+                        <td className="py-2 px-3 text-right text-[#1F3C8B] dark:text-blue-400">{formatMoney(resumenFormulario.total)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={formData.aplicaIgv}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, aplicaIgv: e.target.checked }))}
+                    className="w-4 h-4 accent-[#EF8022]"
+                  />
+                  Desglosar IGV (18%) en la proforma y el contrato
+                </label>
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
                     Modo: {cotizacionMode === "auto" ? "Autocalculado" : "Editable manual"}

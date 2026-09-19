@@ -69,21 +69,15 @@ export function PagosPage() {
       .catch(console.error);
   }, [brand]);
 
-  // 2. Carga detalles solo de las fichas dentro del rango, luego extrae abonos
+  // 2. Carga los abonos de todas las fichas de la marca; el filtro por fecha se aplica
+  //    sobre la fecha del PAGO, no sobre la fecha del evento.
   useEffect(() => {
     if (!allFichas.length) { setPagos([]); return; }
-
-    const enRango = allFichas.filter((f) => {
-      const d = (f.fecha || "").slice(0, 10);
-      return (!filterFrom || d >= filterFrom) && (!filterTo || d <= filterTo);
-    });
-
-    if (!enRango.length) { setPagos([]); return; }
 
     let cancelled = false;
     setLoading(true);
 
-    Promise.all(enRango.map((f) => apiRequest<any>(`/fichas/${f.id}`)))
+    Promise.all(allFichas.map((f) => apiRequest<any>(`/fichas/${f.id}`)))
       .then((detalles) => {
         if (cancelled) return;
         const rows: PagoRow[] = [];
@@ -108,7 +102,7 @@ export function PagosPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [allFichas, filterFrom, filterTo]);
+  }, [allFichas]);
 
   const handleSavePago = async (updated: PagoRow) => {
     await apiRequest(`/fichas/${updated.fichaId}/abonos/${updated.id}`, {
@@ -151,14 +145,16 @@ export function PagosPage() {
   };
 
   const filteredPagos = useMemo(() => pagos.filter((p) => {
+    const fechaPago     = (p.fechaPago || "").slice(0, 10);
+    const matchesFecha  = (!filterFrom || fechaPago >= filterFrom) && (!filterTo || fechaPago <= filterTo);
     const matchesMedio  = filterMedio === "Todos" || p.medio === filterMedio;
     const q             = searchTerm.toLowerCase();
     const matchesSearch = !q ||
       p.clienteNombre.toLowerCase().includes(q) ||
       String(p.fichaId).includes(q) ||
       p.numeroOperacion.toLowerCase().includes(q);
-    return matchesMedio && matchesSearch;
-  }), [pagos, filterMedio, searchTerm]);
+    return matchesFecha && matchesMedio && matchesSearch;
+  }), [pagos, filterFrom, filterTo, filterMedio, searchTerm]);
 
   const stats = useMemo(() => ({
     total:    filteredPagos.reduce((s, p) => s + p.monto, 0),
