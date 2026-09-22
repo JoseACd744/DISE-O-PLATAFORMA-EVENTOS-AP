@@ -5,6 +5,7 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, PaqueteInflableIncluido, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
+import { getLocalDateString } from "../lib/date";
 import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
 
@@ -401,7 +402,7 @@ export function ProductsPage() {
 
   // Calcular estado dinámico del personal basado en eventos asignados (solo HOY)
   const getDynamicPersonalEstado = (personalId: number): Personal["estado"] => {
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD de hoy
+    const today = getLocalDateString(); // YYYY-MM-DD de hoy
     const hasEventsToday = fichasCalendario.some(
       (ficha) => ficha.personalIds.includes(personalId) && 
       normalizeDateString(ficha.fechaEvento || ficha.fecha) === today
@@ -446,7 +447,7 @@ export function ProductsPage() {
     year: "numeric",
   });
 
-  const personalCalendarToday = new Date().toISOString().split("T")[0];
+  const personalCalendarToday = getLocalDateString();
 
   const goToPreviousPersonalCalendarMonth = () => {
     setSelectedPersonalCalendarDate(null);
@@ -477,7 +478,7 @@ export function ProductsPage() {
     : null;
 
   const getDynamicCarritoEstadoCalendar = (carritoId: number): "disponible" | "ocupado" => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     const busyToday = fichasCalendario.some(
       (f) => f.carritoIds.includes(carritoId) && normalizeDateString(f.fechaEvento || f.fecha) === today
     );
@@ -521,7 +522,7 @@ export function ProductsPage() {
     year: "numeric",
   });
 
-  const carritoCalendarToday = new Date().toISOString().split("T")[0];
+  const carritoCalendarToday = getLocalDateString();
 
   const goToPreviousCarritoCalendarMonth = () => {
     setSelectedCarritoCalendarDate(null);
@@ -2646,7 +2647,7 @@ export function ProductsPage() {
                     type="date"
                     value={personalForm.fecha_nacimiento}
                     onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
-                    max={new Date().toISOString().split("T")[0]}
+                    max={getLocalDateString()}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   />
                 </div>

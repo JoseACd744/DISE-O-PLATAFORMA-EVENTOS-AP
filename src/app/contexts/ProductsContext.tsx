@@ -1,5 +1,6 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { apiRequest } from "../lib/api";
+import { AUTH_CHANGED_EVENT, isAuthenticated } from "../lib/auth";
 import {
   mapApiCarritos,
   mapApiCategoriesFromFlatProducts,
@@ -301,9 +302,17 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    reloadData().catch((error) => {
-      console.error("No se pudo cargar data de productos:", error);
-    });
+    // El provider se monta una sola vez (también en /login), así que hay que volver a cargar
+    // al iniciar sesión; sin sesión no se pide nada para no disparar 401 en cadena.
+    const cargarSiHaySesion = () => {
+      if (!isAuthenticated()) return;
+      reloadData().catch((error) => {
+        console.error("No se pudo cargar data de productos:", error);
+      });
+    };
+    cargarSiHaySesion();
+    window.addEventListener(AUTH_CHANGED_EVENT, cargarSiHaySesion);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, cargarSiHaySesion);
   }, []);
 
   const allProducts = useMemo<FlatProduct[]>(

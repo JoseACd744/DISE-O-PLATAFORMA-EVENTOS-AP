@@ -60,6 +60,7 @@ export function PagosPage() {
   const [editingPago, setEditingPago] = useState<PagoRow | null>(null);
   const [deletingPago, setDeletingPago] = useState<PagoRow | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState(false);
+  const [cargaError, setCargaError] = useState("");
 
   // 1. Carga liviana de fichas
   useEffect(() => {
@@ -77,9 +78,21 @@ export function PagosPage() {
     let cancelled = false;
     setLoading(true);
 
-    Promise.all(allFichas.map((f) => apiRequest<any>(`/fichas/${f.id}`)))
-      .then((detalles) => {
+    // Cada ficha se pide por separado: si una falla, igual se muestran los pagos del resto
+    // en vez de dejar la pantalla vacía sin explicación.
+    Promise.all(
+      allFichas.map((f) =>
+        apiRequest<any>(`/fichas/${f.id}`).catch((err) => {
+          console.error(`No se pudo cargar la ficha ${f.id}:`, err);
+          return null;
+        })
+      )
+    )
+      .then((resultados) => {
         if (cancelled) return;
+        const detalles = resultados.filter((d): d is any => d !== null);
+        const fallidas = resultados.length - detalles.length;
+        setCargaError(fallidas > 0 ? `No se pudieron cargar ${fallidas} de ${resultados.length} fichas; pueden faltar pagos.` : "");
         const rows: PagoRow[] = [];
         detalles.forEach((ficha) => {
           (ficha.abonos || []).forEach((a: any) => {
@@ -98,7 +111,6 @@ export function PagosPage() {
         rows.sort((a, b) => b.fechaPago.localeCompare(a.fechaPago));
         setPagos(rows);
       })
-      .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -199,6 +211,12 @@ export function PagosPage() {
           </select>
           {loading && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
         </div>
+
+        {cargaError && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
+            {cargaError}
+          </div>
+        )}
       </div>
 
       {/* Cards de resumen */}

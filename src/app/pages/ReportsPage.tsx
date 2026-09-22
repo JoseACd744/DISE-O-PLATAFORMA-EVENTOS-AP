@@ -18,6 +18,9 @@ import {
 } from "recharts";
 import { TrendingUp, Target, DollarSign, Percent, AlertCircle, Receipt, CreditCard, Banknote, ArrowDownRight, ArrowUpRight, Loader2, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { getLocalDateString, parseLocalDate } from "../lib/date";
+import { useProducts } from "../contexts/ProductsContext";
+import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
 import { useBrand } from "../contexts/BrandContext";
 
 const COLORS = {
@@ -46,13 +49,30 @@ const monthKey = (value?: string) => {
   return value.slice(0, 7);
 };
 
+// Fecha del evento "YYYY-MM-DD". La API devuelve la fecha como medianoche UTC
+// ("2026-10-10T00:00:00.000Z"); hacer `new Date()` directo la corre al día anterior en Perú.
+const fechaEventoDe = (f: any): string => (f?.fecha_evento || f?.fecha || "").slice(0, 10);
+
+function diasDelPeriodo(modo: "month" | "day" | "range", mes: string, desde: string, hasta: string): number {
+  if (modo === "day") return 1;
+  if (modo === "range") {
+    if (!desde || !hasta) return 1;
+    const ms = parseLocalDate(hasta).getTime() - parseLocalDate(desde).getTime();
+    return Math.max(1, Math.round(ms / 86_400_000) + 1);
+  }
+  const [year, month] = mes.split("-").map(Number);
+  if (!year || !month) return 30;
+  return new Date(year, month, 0).getDate();
+}
+
 export function ReportsPage() {
   const { brand } = useBrand();
+  const { paquetes: catalogoPaquetes, allProducts: catalogoProductos, carritos: catalogoCarritos, inflables: catalogoInflables, recursos: catalogoRecursos } = useProducts();
   const [filterMode, setFilterMode] = useState<"month" | "day" | "range">("month");
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [filterDay, setFilterDay] = useState(new Date().toISOString().slice(0, 10));
-  const [filterFrom, setFilterFrom] = useState(new Date().toISOString().slice(0, 10));
-  const [filterTo, setFilterTo] = useState(new Date().toISOString().slice(0, 10));
+  const [filterDay, setFilterDay] = useState(getLocalDateString());
+  const [filterFrom, setFilterFrom] = useState(getLocalDateString());
+  const [filterTo, setFilterTo] = useState(getLocalDateString());
   const [selectedFichaHelados, setSelectedFichaHelados] = useState<string | null>(null);
 
   // Lista liviana de todas las fichas (sin detalles por ficha) — solo para el selector de mes y gráficos que usan campos del listado
@@ -62,6 +82,7 @@ export function ReportsPage() {
   // Detalles completos (abonos, paquetes) cargados únicamente para el mes seleccionado
   const [monthFichasDetalle, setMonthFichasDetalle] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detallesError, setDetallesError] = useState("");
 
   // Carga inicial: fichas (lista) + clientes, sin detalle individual
   useEffect(() => {
@@ -84,7 +105,7 @@ export function ReportsPage() {
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     allFichas.forEach((f) => {
-      const key = monthKey(f.fecha);
+      const key = monthKey(fechaEventoDe(f));
       if (key) months.add(key);
     });
     return Array.from(months).sort((a, b) => b.localeCompare(a));
@@ -100,10 +121,10 @@ export function ReportsPage() {
 
   // Fichas filtradas según el modo activo
   const monthFichas = useMemo(() => {
-    if (filterMode === "month") return allFichas.filter((f) => monthKey(f.fecha) === selectedMonth);
-    if (filterMode === "day")   return allFichas.filter((f) => (f.fecha || "").slice(0, 10) === filterDay);
+    if (filterMode === "month") return allFichas.filter((f) => monthKey(fechaEventoDe(f)) === selectedMonth);
+    if (filterMode === "day")   return allFichas.filter((f) => fechaEventoDe(f) === filterDay);
     return allFichas.filter((f) => {
-      const d = (f.fecha || "").slice(0, 10);
+      const d = fechaEventoDe(f);
       return d >= filterFrom && d <= filterTo;
     });
   }, [allFichas, filterMode, selectedMonth, filterDay, filterFrom, filterTo]);
@@ -116,9 +137,23 @@ export function ReportsPage() {
     }
     let cancelled = false;
     setLoadingDetails(true);
-    Promise.all(monthFichas.map((f) => apiRequest<any>(`/fichas/${f.id}`)))
-      .then((detalles) => { if (!cancelled) setMonthFichasDetalle(detalles); })
-      .catch((err) => console.error("Error cargando detalles:", err))
+    // Cada ficha se pide por separado: si una falla, el resto del informe igual se muestra
+    // en vez de quedar en blanco, y se avisa cuántas no se pudieron cargar.
+    Promise.all(
+      monthFichas.map((f) =>
+        apiRequest<any>(`/fichas/${f.id}`).catch((err) => {
+          console.error(`No se pudo cargar la ficha ${f.id}:`, err);
+          return null;
+        })
+      )
+    )
+      .then((detalles) => {
+        if (cancelled) return;
+        const cargadas = detalles.filter((d): d is any => d !== null);
+        setMonthFichasDetalle(cargadas);
+        const fallidas = detalles.length - cargadas.length;
+        setDetallesError(fallidas > 0 ? `No se pudieron cargar ${fallidas} de ${detalles.length} fichas; el informe puede estar incompleto.` : "");
+      })
       .finally(() => { if (!cancelled) setLoadingDetails(false); });
     return () => { cancelled = true; };
   }, [monthFichas]);
@@ -146,19 +181,40 @@ export function ReportsPage() {
     return idx >= 0 && idx <= 11 ? `${monthNames[idx]} ${year}` : selectedMonth;
   }, [filterMode, filterDay, filterFrom, filterTo, selectedMonth]);
 
+  // Descuentos registrados en el período: los de cada ítem (paquete, inflable, movilidad…)
+  // más el descuento global de la ficha. Usa la misma fórmula que la cotización.
+  const descuentosDelPeriodo = useMemo(() => {
+    const catalogos = {
+      paquetes: catalogoPaquetes,
+      productos: catalogoProductos,
+      carritos: catalogoCarritos,
+      inflables: catalogoInflables,
+      recursos: catalogoRecursos,
+    };
+    let fichasConDescuento = 0;
+    let monto = 0;
+    monthFichasDetalle.forEach((f) => {
+      const lineas = construirLineasCotizacion(origenDesdeDetalleApi(f), catalogos);
+      const porItem = lineas.reduce((sum, l) => sum + l.descuentoMonto, 0);
+      const global = toMoneyNumber(f.cotizacion) * (toMoneyNumber(f.descuento) / 100);
+      const totalFicha = porItem + global;
+      if (totalFicha > 0.005) {
+        fichasConDescuento += 1;
+        monto += totalFicha;
+      }
+    });
+    return { fichasConDescuento, monto };
+  }, [monthFichasDetalle, catalogoPaquetes, catalogoProductos, catalogoCarritos, catalogoInflables, catalogoRecursos]);
+
   const kpiData = useMemo(() => {
     const ventasActuales = financialMonthly.ventaTotal;
     const nivelAvance = OBJETIVO_MENSUAL > 0 ? ventasActuales / OBJETIVO_MENSUAL : 0;
     const montoCobrado = financialMonthly.ingresoNeto;
     const montoPorCobrar = financialMonthly.saldoPendiente;
     const indiceCobranza = ventasActuales > 0 ? (montoCobrado / ventasActuales) * 100 : 0;
-    const promedioDiario = ventasActuales / Math.max(1, 30);
-    const numDescuentos = monthFichas.filter((f) => Number(f.descuento || 0) > 0).length;
-    const descuentoAcumulado = monthFichas.reduce((sum, f) => {
-      const cot = Number(f.cotizacion || 0);
-      const pct = Number(f.descuento || 0);
-      return sum + (cot * pct) / 100;
-    }, 0);
+    const promedioDiario = ventasActuales / diasDelPeriodo(filterMode, selectedMonth, filterFrom, filterTo);
+    const numDescuentos = descuentosDelPeriodo.fichasConDescuento;
+    const descuentoAcumulado = descuentosDelPeriodo.monto;
     const grossTotal = ventasActuales + descuentoAcumulado;
     const proporcionDescuentos = grossTotal > 0
       ? Number(((descuentoAcumulado / grossTotal) * 100).toFixed(1))
@@ -175,14 +231,15 @@ export function ReportsPage() {
       descuentoAcumulado,
       proporcionDescuentos,
     };
-  }, [financialMonthly, monthFichas]);
+  }, [financialMonthly, descuentosDelPeriodo, filterMode, selectedMonth, filterFrom, filterTo]);
 
   // ── Gráficos basados en lista del mes (sin detalle) ─────────────
   const ventasPorDiaSemana = useMemo(() => {
     const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const acc = dias.map((dia) => ({ dia, monto: 0, cantidad: 0 }));
     monthFichas.forEach((f) => {
-      const fecha = f.fecha ? new Date(f.fecha) : null;
+      const raw = fechaEventoDe(f);
+      const fecha = raw ? parseLocalDate(raw) : null;
       if (!fecha || Number.isNaN(fecha.getTime())) return;
       acc[fecha.getDay()].monto += Number(f.total || 0);
       acc[fecha.getDay()].cantidad += 1;
@@ -193,7 +250,7 @@ export function ReportsPage() {
   const ventasPorFecha = useMemo(() => {
     const map = new Map<string, { fecha: string; servicios: number; monto: number }>();
     monthFichas.forEach((f) => {
-      const rawFecha = typeof f.fecha === "string" ? f.fecha : "";
+      const rawFecha = fechaEventoDe(f);
       if (!rawFecha) return;
       const key = rawFecha.slice(0, 10);
       const label = filterMode === "month" ? rawFecha.slice(8, 10) : rawFecha.slice(5, 10);
@@ -266,7 +323,8 @@ export function ReportsPage() {
   const ingresoVsVentaPorSemana = useMemo(() => {
     const weeks = [1, 2, 3, 4, 5].map((n) => ({ semana: `Sem ${n}`, ventaTotal: 0, ingresoNeto: 0 }));
     monthFichasDetalle.forEach((f) => {
-      const fecha = typeof f.fecha === "string" ? new Date(f.fecha) : null;
+      const raw = fechaEventoDe(f);
+      const fecha = raw ? parseLocalDate(raw) : null;
       if (!fecha || Number.isNaN(fecha.getTime())) return;
       const weekIndex = Math.min(4, Math.max(0, Math.ceil(fecha.getDate() / 7) - 1));
       const abonos = Array.isArray(f.abonos)
@@ -547,6 +605,13 @@ export function ReportsPage() {
           {loadingDetails && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
           <span className="text-xs text-gray-400 dark:text-gray-500">{monthFichas.length} ficha{monthFichas.length !== 1 ? "s" : ""}</span>
         </div>
+
+        {detallesError && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{detallesError}</span>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -971,7 +1036,7 @@ export function ReportsPage() {
             <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Paquetes incluidos</p>
               <div className="space-y-1.5">
-                {fichaDetalleSeleccionada.paquetesDetalle.map((p, idx) => (
+                {fichaDetalleSeleccionada.paquetesDetalle.map((p: { nombre: string; cantidad: number; unidades: number }, idx: number) => (
                   <div key={idx} className="flex items-center justify-between text-sm">
                     <span className="text-gray-700 dark:text-gray-300">{p.nombre} x{p.cantidad}</span>
                     <span className="text-gray-900 dark:text-white">{p.unidades} u.</span>

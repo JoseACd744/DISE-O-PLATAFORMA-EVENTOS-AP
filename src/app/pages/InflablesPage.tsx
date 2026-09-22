@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand } from "../contexts/BrandContext";
+import { getLocalDateString } from "../lib/date";
 import { apiRequest, API_BASE_URL } from "../lib/api";
 import { canManageResources } from "../lib/auth";
 
@@ -183,7 +184,7 @@ export function InflablesPage() {
   const [showNewInflable, setShowNewInflable] = useState(false);
   const [showNewAlerta, setShowNewAlerta] = useState(false);
   const [showNewReservaCarrito, setShowNewReservaCarrito] = useState(false);
-  const [mainTab, setMainTab] = useState<"inflables" | "carritos" | "mantenimiento" | "calendario">("inflables");
+  const [mainTab, setMainTab] = useState<"inflables" | "carritos" | "mantenimiento" | "calendario">("calendario");
   const [reservaSubmitting, setReservaSubmitting] = useState(false);
   const [reservaCarritoSubmitting, setReservaCarritoSubmitting] = useState(false);
   const [inflableSubmitting, setInflableSubmitting] = useState(false);
@@ -225,7 +226,7 @@ export function InflablesPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
 
   const loadData = async () => {
     if (!brand) return;
@@ -459,7 +460,8 @@ export function InflablesPage() {
   // Stats
   const totalInflables = inflables.reduce((s, i) => s + i.cantidadUnidades, 0);
   const reservadosInflablesHoy = inflables.reduce((s, i) => s + getReservedCount(i.id, todayStr), 0);
-  const totalCarritos = carritos.length;
+  // `carritos` agrupa por tipo; el total y lo reservado se cuentan en unidades físicas
+  const totalCarritos = carritos.reduce((s, c) => s + c.cantidadTotal, 0);
   const reservadosCarritosHoy = carritos.reduce((s, c) => s + getCarritoReservedCount(c.id, todayStr), 0);
   const alertasPendientes = alertas.filter(a => a.estado === "pendiente").length;
   const alertasCriticas = alertas.filter(a => a.severidad === "critica" && a.estado !== "resuelta").length;
@@ -467,7 +469,7 @@ export function InflablesPage() {
   // Max capacity for calendar
   const calendarMaxCap = mainTab === "inflables"
     ? (selectedType ? selectedType.cantidadUnidades : totalInflables)
-    : totalCarritos;
+    : (selectedCarrito ? selectedCarrito.cantidadTotal : totalCarritos);
 
   // ── Handlers ──────────────────────────────────────────────────────────
 

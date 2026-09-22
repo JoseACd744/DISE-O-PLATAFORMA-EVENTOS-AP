@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigation, MapPin, Clock3, CheckCircle2, PlayCircle, PauseCircle, AlertCircle, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { getLocalDateString } from "../lib/date";
 import { getAuthUser } from "../lib/auth";
 
 type AssignmentStatus = "programada" | "en-curso" | "completada";
@@ -47,7 +48,7 @@ export function DriverHomePage() {
   const [lastSentAt, setLastSentAt] = useState<string>("");
   const watcherRef = useRef<number | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const choferId = Number(authUser?.id || 0);
 
   const loadData = async () => {
@@ -174,7 +175,7 @@ export function DriverHomePage() {
       if (!popup) return;
 
       const escapeHtml = (val: string) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-      const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+      const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
       const rowsHtml = fullFichas.map((f, idx) => {
         const total = Number(f.cotizacion || 0) * (1 - Number(f.descuento || 0) / 100);

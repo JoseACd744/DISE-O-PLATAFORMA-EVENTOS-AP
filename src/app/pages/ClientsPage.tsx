@@ -145,7 +145,7 @@ export function ClientsPage() {
           phone: c.telefono || "",
           address: c.direccion || "",
           city: c.ciudad || "",
-          canal: c.canal || "Referidos",
+          canal: c.canal || "",
           totalOrders: c.total_orders || 0,
           lastOrder: c.last_order || "",
           status: c.status,
@@ -186,7 +186,7 @@ export function ClientsPage() {
           telefono: newClient.phone,
           direccion: newClient.address,
           ciudad: newClient.city,
-          canal: newClient.canal,
+          canal: newClient.canal || null,
           status: newClient.status,
           creado_por: newClient.creadoPor,
           anio_registro: newClient.anioRegistro ? Number(newClient.anioRegistro) : null,
@@ -224,7 +224,7 @@ export function ClientsPage() {
           telefono: editingClient.phone,
           direccion: editingClient.address,
           ciudad: editingClient.city,
-          canal: editingClient.canal,
+          canal: editingClient.canal || null,
           status: editingClient.status,
           anio_registro: editingClient.anioRegistro,
           fichas_base: editingClient.fichasBase,
@@ -461,7 +461,7 @@ export function ClientsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]">
-                      {client.canal}
+                      {client.canal || "Sin canal"}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -656,6 +656,7 @@ export function ClientsPage() {
                     onChange={(e) => setNewClient({ ...newClient, canal: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
+                    <option value="">Sin canal</option>
                     {canalesDisponibles(newClient.canal).map((canal) => (
                       <option key={canal} value={canal}>{canal}</option>
                     ))}
@@ -717,7 +718,8 @@ export function ClientsPage() {
                 </button>
                 <button
                   onClick={handleAddClient}
-                  disabled={isSavingClient}
+                  disabled={isSavingClient || !newClient.nombre || !newClient.phone || !newClient.address || !newClient.city}
+                  title={!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city ? "Completa los campos obligatorios (*)" : undefined}
                   className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSavingClient ? "Guardando..." : "Guardar Cliente"}
@@ -816,6 +818,7 @@ export function ClientsPage() {
                     onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
                   >
+                    <option value="">Sin canal</option>
                     {canalesDisponibles(editingClient.canal).map((canal) => (
                       <option key={canal} value={canal}>{canal}</option>
                     ))}

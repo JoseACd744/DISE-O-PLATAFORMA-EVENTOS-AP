@@ -2,6 +2,9 @@ const AUTH_TOKEN_KEY = "authToken";
 const AUTH_USER_KEY = "authUser";
 const AUTH_FLAG_KEY = "isAuthenticated";
 
+/** Se emite en window al iniciar o cerrar sesión, para que los contextos recarguen sus datos. */
+export const AUTH_CHANGED_EVENT = "auth-session-changed";
+
 export type AuthUser = {
   id: string;
   nombre: string;
@@ -15,6 +18,7 @@ export function setAuthSession(token: string, user: AuthUser) {
   localStorage.setItem(AUTH_TOKEN_KEY, token);
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
   localStorage.setItem(AUTH_FLAG_KEY, "true");
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 export function getAuthToken() {
@@ -82,4 +86,5 @@ export function clearAuthSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
   localStorage.removeItem(AUTH_FLAG_KEY);
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }

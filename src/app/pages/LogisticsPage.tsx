@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map, FileText, Download } from "lucide-react";
 import { useBrand } from "../contexts/BrandContext";
+import { getLocalDateString } from "../lib/date";
 import { apiRequest } from "../lib/api";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { canManageResources } from "../lib/auth";
@@ -124,7 +125,7 @@ export function LogisticsPage() {
   // Vehiculo form
   const [vehiculoForm, setVehiculoForm] = useState({ placa: "", modelo: "", marca: "", marcasAsignadas: ["donofrio"] as ("donofrio" | "jugueton")[], estado: "disponible" as EstadoVehiculo, ultimoMantenimiento: "", fechaVencimientoSoat: "" });
   // Asignacion form
-  const [asignacionForm, setAsignacionForm] = useState({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [] as ("donofrio" | "jugueton")[], fichasIds: [] as number[] });
+  const [asignacionForm, setAsignacionForm] = useState({ choferId: 0, vehiculoId: 0, fecha: getLocalDateString(), ruta: "", entregas: 0, marcaEntregas: [] as ("donofrio" | "jugueton")[], fichasIds: [] as number[] });
   const [fichasSearch, setFichasSearch] = useState("");
   const [fichasSort, setFichasSort] = useState<"hora" | "distrito" | "cliente">("hora");
 
@@ -248,7 +249,7 @@ export function LogisticsPage() {
   // Stats
   const choferesDisponibles = choferes.filter(c => c.estado === "disponible").length;
   const vehiculosDisponibles = vehiculos.filter(v => v.estado === "disponible").length;
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const asignacionesHoy = asignaciones.filter(a => a.fecha === today).length;
   const rutasCompartidas = asignaciones.filter(a => a.marcaEntregas.length > 1).length;
 
@@ -361,9 +362,9 @@ export function LogisticsPage() {
         }),
       });
       setShowAddAsignacion(false);
-      setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: new Date().toISOString().split("T")[0], ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
+      setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: getLocalDateString(), ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
       setFichasSearch("");
-      setFichasSort("fecha");
+      setFichasSort("hora");
       await loadLogisticsData();
     } finally {
       logisticsLockRef.current.asignacion = false;
@@ -668,8 +669,8 @@ export function LogisticsPage() {
                   const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");
                   if (!popup) return;
 
-                  const escapeHtml = (val: string) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-                  const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+                  const escapeHtml = (val?: string | null) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+                  const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
                   const rowsHtml = fullFichas.map((f, idx) => {
                     const total = Number(f.cotizacion || 0) * (1 - Number(f.descuento || 0) / 100);
