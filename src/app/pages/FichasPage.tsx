@@ -317,6 +317,14 @@ function getDescuentoLinea(subtotal: number, { descuentoTipo, descuentoValor }: 
   return Math.min(subtotal, Math.max(0, monto));
 }
 
+function formatearContenidoPaquete(contenido: { productoNombre: string; cantidad: number }[]) {
+  if (contenido.length === 0) return "";
+  const parts = contenido.map((item) => `${item.cantidad} ${item.productoNombre}`);
+  if (parts.length === 1) return parts[0];
+  const last = parts.pop()!;
+  return `${parts.join(", ")} y ${last}`;
+}
+
 function mapDescuentoApi(row: any): LineaDescuento {
   return {
     descuentoTipo: row?.descuento_tipo === "monto" ? "monto" : "porcentaje",
@@ -1526,14 +1534,6 @@ export function FichasPage() {
   };
 
   const getFichaTitulo = (ficha: Ficha) => ficha.titulo || `Ficha #${String(ficha.id).padStart(7, "0")}`;
-
-  const formatearContenidoPaquete = (contenido: { productoNombre: string; cantidad: number }[]) => {
-    if (contenido.length === 0) return "";
-    const parts = contenido.map(item => `${item.cantidad} ${item.productoNombre}`);
-    if (parts.length === 1) return parts[0];
-    const last = parts.pop()!;
-    return `${parts.join(", ")} y ${last}`;
-  };
 
   const handleGenerarProforma = (ficha: Ficha) => {
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
