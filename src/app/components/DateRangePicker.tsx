@@ -20,6 +20,10 @@ export function DateRangePicker({ selectedRange, onRangeChange, onClear, label =
       return "Seleccionar rango de fechas";
     }
     
+    if (selectedRange?.from && selectedRange?.to && selectedRange.from.toDateString() === selectedRange.to.toDateString()) {
+      return format(selectedRange.from, "dd MMM yyyy", { locale: es });
+    }
+
     if (selectedRange?.from && selectedRange?.to) {
       return `${format(selectedRange.from, "dd MMM yyyy", { locale: es })} - ${format(selectedRange.to, "dd MMM yyyy", { locale: es })}`;
     }
@@ -131,7 +135,8 @@ export function DateRangePicker({ selectedRange, onRangeChange, onClear, label =
             <DayPicker
               mode="range"
               selected={selectedRange}
-              onSelect={onRangeChange}
+              // Un solo clic deja el rango sin "to"; se toma como ese único día, no "desde ese día"
+              onSelect={(range) => onRangeChange(range?.from && !range.to ? { from: range.from, to: range.from } : range)}
               locale={es}
               numberOfMonths={2}
               showOutsideDays

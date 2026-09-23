@@ -1271,10 +1271,11 @@ export function FichasPage() {
   }).sort((a, b) => {
     if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
     if (sortBy === "created_asc") return (a.created_at || "").localeCompare(b.created_at || "");
-    const fechaA = a.fecha_evento || a.fecha || "";
-    const fechaB = b.fecha_evento || b.fecha || "";
-    if (sortBy === "evento_asc") return fechaA.localeCompare(fechaB);
-    return fechaB.localeCompare(fechaA);
+    // Fecha del evento y, dentro del mismo día, hora de entrega
+    const claveA = `${(a.fecha_evento || a.fecha || "").slice(0, 10)} ${a.hora_entrega || ""}`;
+    const claveB = `${(b.fecha_evento || b.fecha || "").slice(0, 10)} ${b.hora_entrega || ""}`;
+    if (sortBy === "evento_asc") return claveA.localeCompare(claveB);
+    return claveB.localeCompare(claveA);
   });
 
   // Paginación de la grilla de fichas
@@ -3169,7 +3170,13 @@ export function FichasPage() {
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <DateRangePicker label="Fecha del Evento" selectedRange={dateRange} onRangeChange={setDateRange} onClear={() => setDateRange(undefined)} />
+          <DateRangePicker label="Fecha del Evento" selectedRange={dateRange}
+            onRangeChange={(range) => {
+              setDateRange(range);
+              // Al filtrar por fecha de evento lo natural es verlas en orden cronológico
+              if (range?.from && (sortBy === "created_desc" || sortBy === "created_asc")) setSortBy("evento_asc");
+            }}
+            onClear={() => setDateRange(undefined)} />
           <DateRangePicker label="Fecha de Contacto del Cliente" selectedRange={contactDateRange} onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
         </div>
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
