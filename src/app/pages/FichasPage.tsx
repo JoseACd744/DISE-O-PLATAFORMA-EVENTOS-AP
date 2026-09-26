@@ -2715,6 +2715,17 @@ export function FichasPage() {
     await uploadAbonoInicialComprobanteFile(renamedFile);
   };
 
+  const stockDisponibleRecurso = (recursoId: number) => {
+    const recurso = recursos.find((r) => r.id === recursoId);
+    if (!recurso) return null;
+    const yaAsignado = editingFichaId !== null
+      ? (fichas.find((f) => f.id === editingFichaId)?.recursos ?? [])
+          .filter((r) => r.recurso_id === recursoId)
+          .reduce((sum, r) => sum + Number(r.cantidad || 0), 0)
+      : 0;
+    return Number(recurso.stockActual || 0) + yaAsignado;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!brand) {
@@ -2728,6 +2739,19 @@ export function FichasPage() {
       return;
     }
     setTipoEventoMissing(false);
+    // Sin stock suficiente el servidor rechaza la ficha: se avisa antes y con el nombre del recurso
+    if (formData.transporte !== "delivery") {
+      const pedidos = new Map<number, number>();
+      formData.recursos.filter((r) => r.recursoId > 0).forEach((r) => pedidos.set(r.recursoId, (pedidos.get(r.recursoId) ?? 0) + Number(r.cantidad || 0)));
+      for (const [recursoId, cantidad] of pedidos) {
+        const disponible = stockDisponibleRecurso(recursoId);
+        if (disponible !== null && cantidad > disponible) {
+          const nombre = recursos.find((r) => r.id === recursoId);
+          setFormError(`No hay stock suficiente de «${nombre?.recurso ?? "recurso"}${nombre?.sku ? ` · ${nombre.sku}` : ""}»: ${disponible === 1 ? "queda 1" : `quedan ${disponible}`} y pediste ${cantidad}. Baja la cantidad, elige otro o quítalo de la ficha.`);
+          return;
+        }
+      }
+    }
     if (isUploadingAbonoInicialComprobante) {
       setFormError("Espera a que termine de subirse el comprobante del abono inicial.");
       return;
@@ -2845,7 +2869,8 @@ export function FichasPage() {
 
       await cerrarTrasGuardar();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      const conflictosRespuesta = (err instanceof ApiError ? (err.body as { conflicts?: unknown[] } | null)?.conflicts : undefined) ?? [];
+      if (err instanceof ApiError && err.status === 409 && conflictosRespuesta.length > 0) {
         const body = err.body as { error?: string; conflicts?: Record<string, unknown>[] };
         const conflicts = body.conflicts ?? [];
         if (conflicts.length > 0 && "inflable_id" in conflicts[0]) {
@@ -3949,9 +3974,14 @@ export function FichasPage() {
                             <div key={`${item.recursoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
                               <select value={item.recursoId} onChange={(e) => handleRecursoChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
                                 <option value={0}>Seleccionar recurso...</option>
-                                {availableRecursos.map((recurso) => (
-                                  <option key={recurso.id} value={recurso.id}>{recurso.recurso} · {recurso.sku}</option>
-                                ))}
+                                {availableRecursos.map((recurso) => {
+                                  const disponible = stockDisponibleRecurso(recurso.id) ?? 0;
+                                  return (
+                                    <option key={recurso.id} value={recurso.id} disabled={disponible <= 0 && recurso.id !== item.recursoId}>
+                                      {recurso.recurso} · {recurso.sku} · {disponible > 0 ? `${disponible} disp.` : "sin stock"}
+                                    </option>
+                                  );
+                                })}
                               </select>
                               <input type="number" min={1} value={item.cantidad} onChange={(e) => handleRecursoCantidadChange(idx, Number(e.target.value))} className={`${inputClass} w-full text-sm`} />
                               {formData.recursos.length > 1 ? (
