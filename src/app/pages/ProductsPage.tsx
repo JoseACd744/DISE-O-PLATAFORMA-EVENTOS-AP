@@ -6,6 +6,11 @@ import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, PaqueteInflableIncluido, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
 import { obtenerFichasConDetalle } from "../lib/queries";
+import { Modal } from "../components/ui/modal";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { Button } from "../components/ui/button";
+import { mensajeDeError, notify } from "../lib/notify";
 import { getLocalDateString } from "../lib/date";
 import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
@@ -276,6 +281,10 @@ export function ProductsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteDialogSubmitting, setDeleteDialogSubmitting] = useState(false);
   const [deleteDialogError, setDeleteDialogError] = useState("");
+  const [productFormError, setProductFormError] = useState("");
+  const [paqueteFormError, setPaqueteFormError] = useState("");
+  const [carritoFormError, setCarritoFormError] = useState("");
+  const [editCarritoError, setEditCarritoError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<
     | { kind: "product"; product: FlatProduct }
     | { kind: "category"; categoryId: number; categoryName: string; productCount: number }
@@ -369,11 +378,12 @@ export function ProductsPage() {
       } else {
         await addPersonal(payload);
       }
+      notify.ok(editingPersonal ? "Datos del personal actualizados" : `${payload.nombre_completo} agregado al personal`);
       setShowPersonalModal(false);
       setPersonalForm(emptyPersonalForm);
       setEditingPersonal(null);
     } catch (err) {
-      setPersonalFormError(err instanceof Error ? err.message : "No se pudo guardar. Verifica los datos.");
+      setPersonalFormError(mensajeDeError(err, "No se pudo guardar. Verifica los datos."));
     } finally {
       setPersonalFormSubmitting(false);
     }
@@ -803,9 +813,16 @@ export function ProductsPage() {
 
   // Add/Update product via context
   const handleSaveProduct = async () => {
-    if (!newProduct.producto || !newProduct.sku) return;
+    if (!newProduct.producto.trim() || !newProduct.sku.trim()) {
+      setProductFormError("Completa el nombre y el SKU del producto.");
+      return;
+    }
     const catName = newProduct.nuevaCategoria || newProduct.categoria;
-    if (!catName) return;
+    if (!catName) {
+      setProductFormError("Elige una categoría existente o escribe una nueva.");
+      return;
+    }
+    setProductFormError("");
     if (formLocksRef.current.product || productFormSubmitting) return;
 
     // Si es una categoría existente, resolver su id dentro de las categorías de la marca activa
@@ -830,6 +847,7 @@ export function ProductsPage() {
       } else {
         await addProduct(catName, payload, categoriaId);
       }
+      notify.ok(editingProduct ? `Producto «${payload.producto}» actualizado` : `Producto «${payload.producto}» creado`);
 
       setShowAddProduct(false);
       setEditingProduct(null);
@@ -840,6 +858,8 @@ export function ProductsPage() {
         sku: "",
         precio: 0,
       });
+    } catch (err) {
+      setProductFormError(mensajeDeError(err, "No se pudo guardar el producto."));
     } finally {
       formLocksRef.current.product = false;
       setProductFormSubmitting(false);
@@ -850,6 +870,7 @@ export function ProductsPage() {
     setShowAddPaquete(false);
     setEditingPaquete(null);
     setPaqueteFormErrors({ nombre: false, tipo: false });
+    setPaqueteFormError("");
     setNewPaquete({
       nombre: "",
       brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
@@ -883,8 +904,10 @@ export function ProductsPage() {
     const errors = { nombre: !newPaquete.nombre.trim(), tipo: !newPaquete.tipo };
     if (errors.nombre || errors.tipo) {
       setPaqueteFormErrors(errors);
+      setPaqueteFormError(errors.nombre && errors.tipo ? "Completa el nombre y el tipo del paquete." : errors.nombre ? "Completa el nombre del paquete." : "Elige el tipo del paquete.");
       return;
     }
+    setPaqueteFormError("");
     if (formLocksRef.current.paquete || paqueteFormSubmitting) return;
 
     formLocksRef.current.paquete = true;
@@ -908,7 +931,10 @@ export function ProductsPage() {
       } else {
         await addPaquete(payload);
       }
+      notify.ok(editingPaquete ? `Paquete «${payload.nombre}» actualizado` : `Paquete «${payload.nombre}» creado`);
       closePaqueteModal();
+    } catch (err) {
+      setPaqueteFormError(mensajeDeError(err, "No se pudo guardar el paquete."));
     } finally {
       formLocksRef.current.paquete = false;
       setPaqueteFormSubmitting(false);
@@ -935,6 +961,8 @@ export function ProductsPage() {
     try {
       const data = await apiRequest<CarritoTipo[]>("/carritos/tipos");
       setCarritoTipos(data);
+    } catch (err) {
+      notify.error(err, "No se pudieron cargar los tipos de carrito.", { id: "tipos-carrito" });
     } finally {
       setCarritoTiposLoading(false);
     }
@@ -957,6 +985,11 @@ export function ProductsPage() {
       }
       setNuevoTipoNombre("");
       setShowNuevoTipoInput(false);
+      notify.ok(`Tipo «${created.nombre}» creado`);
+    } catch (err) {
+      const mensaje = mensajeDeError(err, "No se pudo crear el tipo de carrito.");
+      if (targetForm === "add") setCarritoFormError(mensaje);
+      else setEditCarritoError(mensaje);
     } finally {
       setNuevoTipoSubmitting(false);
     }
@@ -965,8 +998,12 @@ export function ProductsPage() {
   const handleAddCarrito = async () => {
     const codigo = newCarrito.codigo.trim();
     const modelo = newCarrito.modelo.trim();
-    if (!codigo || !modelo || newCarrito.tipoId === 0) return;
+    if (!codigo || !modelo || newCarrito.tipoId === 0) {
+      setCarritoFormError("Completa el código, el modelo y el tipo del carrito.");
+      return;
+    }
     if (formLocksRef.current.carrito || carritoFormSubmitting) return;
+    setCarritoFormError("");
 
     formLocksRef.current.carrito = true;
     setCarritoFormSubmitting(true);
@@ -981,8 +1018,11 @@ export function ProductsPage() {
         estado: newCarrito.estado,
       });
 
+      notify.ok(`Carrito ${codigo} creado`);
       setShowAddCarrito(false);
       setNewCarrito({ modelo: "", codigo: "", tipoId: 0, descripcion: "", estado: "disponible" });
+    } catch (err) {
+      setCarritoFormError(mensajeDeError(err, "No se pudo crear el carrito."));
     } finally {
       formLocksRef.current.carrito = false;
       setCarritoFormSubmitting(false);
@@ -1008,8 +1048,12 @@ export function ProductsPage() {
     if (editingCarritoId === null) return;
     const codigo = editCarritoForm.codigo.trim();
     const modelo = editCarritoForm.modelo.trim();
-    if (!codigo || !modelo || editCarritoForm.tipoId === 0) return;
+    if (!codigo || !modelo || editCarritoForm.tipoId === 0) {
+      setEditCarritoError("Completa el código, el modelo y el tipo del carrito.");
+      return;
+    }
     if (editCarritoSubmitting) return;
+    setEditCarritoError("");
 
     setEditCarritoSubmitting(true);
     try {
@@ -1021,8 +1065,11 @@ export function ProductsPage() {
         descripcion: editCarritoForm.descripcion.trim(),
         estado: editCarritoForm.estado,
       });
+      notify.ok(`Carrito ${codigo} actualizado`);
       setShowEditCarrito(false);
       setEditingCarritoId(null);
+    } catch (err) {
+      setEditCarritoError(mensajeDeError(err, "No se pudieron guardar los cambios del carrito."));
     } finally {
       setEditCarritoSubmitting(false);
     }
@@ -1077,7 +1124,7 @@ export function ProductsPage() {
     } catch (error) {
       setRecursoStockHistoryState({
         loading: false,
-        error: error instanceof Error ? error.message : "No se pudo cargar el historial.",
+        error: mensajeDeError(error, "No se pudo cargar el historial."),
         movements: [],
       });
     }
@@ -1101,12 +1148,13 @@ export function ProductsPage() {
           : Math.max(0, selectedRecurso.stockActual - recursoStockMovementForm.cantidad),
         motivo: recursoStockMovementForm.motivo.trim(),
       });
+      notify.ok(recursoStockMovementType === "entrada" ? "Entrada de stock registrada" : "Salida de stock registrada");
       setShowRecursoStockMovementModal(false);
     } catch (error) {
       setRecursoStockMovementForm((prev) => ({
         ...prev,
         submitting: false,
-        error: error instanceof Error ? error.message : "No se pudo registrar el movimiento.",
+        error: mensajeDeError(error, "No se pudo registrar el movimiento."),
       }));
       return;
     }
@@ -1130,12 +1178,13 @@ export function ProductsPage() {
         stockMinimo: recursoStockAdjustmentForm.stockMinimo,
         motivo: recursoStockAdjustmentForm.motivo.trim(),
       });
+      notify.ok("Stock ajustado");
       setShowRecursoStockAdjustmentModal(false);
     } catch (error) {
       setRecursoStockAdjustmentForm((prev) => ({
         ...prev,
         submitting: false,
-        error: error instanceof Error ? error.message : "No se pudo ajustar el stock.",
+        error: mensajeDeError(error, "No se pudo ajustar el stock."),
       }));
       return;
     }
@@ -1158,10 +1207,11 @@ export function ProductsPage() {
         stockActual: Number(recursoForm.stockActual || 0),
         stockMinimo: Number(recursoForm.stockMinimo || 0),
       });
+      notify.ok(`Recurso «${recursoForm.recurso.trim()}» creado`);
       setShowRecursoModal(false);
       setRecursoForm(emptyRecursoForm);
     } catch (err) {
-      setRecursoFormError(err instanceof Error ? err.message : "No se pudo guardar el recurso.");
+      setRecursoFormError(mensajeDeError(err, "No se pudo guardar el recurso."));
     } finally {
       setRecursoFormSubmitting(false);
     }
@@ -1214,8 +1264,9 @@ export function ProductsPage() {
       }
       setDeleteDialogOpen(false);
       setDeleteTarget(null);
+      notify.ok("Eliminado correctamente");
     } catch (error) {
-      setDeleteDialogError(error instanceof Error ? error.message : "No se pudo eliminar el elemento.");
+      setDeleteDialogError(mensajeDeError(error, "No se pudo eliminar el elemento."));
     } finally {
       setDeleteDialogSubmitting(false);
     }
@@ -1232,6 +1283,7 @@ export function ProductsPage() {
           if (!open) {
             setDeleteTarget(null);
             setDeleteDialogSubmitting(false);
+            setDeleteDialogError("");
           }
         }}
         title={
@@ -1268,24 +1320,15 @@ export function ProductsPage() {
         loadingLabel="Eliminando..."
         loading={deleteDialogSubmitting}
         onConfirm={confirmDeleteTarget}
+        error={deleteDialogError}
       />
-      {deleteDialogError ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
-          {deleteDialogError}
-        </div>
-      ) : null}
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Catálogo de Productos</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Gestiona productos, stock, paquetes y carritos para eventos
-        </p>
-      </div>
+      <PageHeader title="Catálogo de Productos" subtitle="Gestiona productos, stock, paquetes y carritos para eventos" />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 md:mb-8 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full sm:w-fit overflow-x-auto">
+      <div className="flex gap-1 mb-6 md:mb-8 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-full sm:w-fit max-w-full overflow-x-auto">
         <button
           onClick={() => { setActiveTab("productos"); setCurrentPage(1); setSearchTerm(""); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg transition-colors text-sm shrink-0 whitespace-nowrap ${
             activeTab === "productos"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1296,7 +1339,7 @@ export function ProductsPage() {
         </button>
         <button
           onClick={() => { setActiveTab("paquetes"); setCurrentPage(1); setSearchTerm(""); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg transition-colors text-sm shrink-0 whitespace-nowrap ${
             activeTab === "paquetes"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1307,7 +1350,7 @@ export function ProductsPage() {
         </button>
         <button
           onClick={() => { setActiveTab("carritos"); setCurrentPage(1); setSearchTerm(""); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg transition-colors text-sm shrink-0 whitespace-nowrap ${
             activeTab === "carritos"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1318,7 +1361,7 @@ export function ProductsPage() {
         </button>
         <button
           onClick={() => { setActiveTab("recursos"); setCurrentPage(1); setSearchTerm(""); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg transition-colors text-sm shrink-0 whitespace-nowrap ${
             activeTab === "recursos"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1329,7 +1372,7 @@ export function ProductsPage() {
         </button>
         <button
           onClick={() => { setActiveTab("personal"); setCurrentPage(1); setSearchTerm(""); }}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg transition-colors text-sm ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg transition-colors text-sm shrink-0 whitespace-nowrap ${
             activeTab === "personal"
               ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1340,57 +1383,14 @@ export function ProductsPage() {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6 mb-6 md:mb-8">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
-              <Package className="w-5 h-5 text-brand-navy dark:text-blue-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Total Productos</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{productsDeLaMarca.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-orange/10 dark:bg-brand-orange/20 p-2 rounded-lg">
-              <Filter className="w-5 h-5 text-brand-orange" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Categorías</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{categoriesDeLaMarca.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
-              <Layers className="w-5 h-5 text-green-600 dark:text-green-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Paquetes</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{paquetesDeLaMarca.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
-              <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Carritos</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{carritos.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
-              <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Personal</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{personales.length}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Disponibles: {personales.filter((p) => p.estado === "disponible").length}
-          </p>
-        </div>
-
+      {/* Indicadores */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
+        <StatCard label="Total Productos" value={productsDeLaMarca.length} icon={<Package className="text-brand-navy dark:text-blue-400" />} />
+        <StatCard label="Categorías" value={categoriesDeLaMarca.length} icon={<Filter className="text-brand-orange" />} />
+        <StatCard label="Paquetes" value={paquetesDeLaMarca.length} icon={<Layers className="text-green-600 dark:text-green-400" />} />
+        <StatCard label="Carritos" value={carritos.length} icon={<ShoppingCart className="text-blue-600 dark:text-blue-400" />} />
+        <StatCard label="Personal" value={personales.length} icon={<Users className="text-purple-600 dark:text-purple-400" />}
+          detail={`Disponibles: ${personales.filter((p) => p.estado === "disponible").length}`} />
       </div>
 
       {activeTab === "productos" && categoriesDeLaMarca.length > 0 && (
@@ -1446,11 +1446,11 @@ export function ProductsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-3 w-full lg:w-auto">
+              <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full lg:w-auto">
                 <select
                   value={selectedCategory}
                   onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                  className="flex-1 min-w-0 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 >
                   {categoryNames.map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -1469,7 +1469,7 @@ export function ProductsPage() {
                       });
                       setShowAddProduct(true);
                     }}
-                    className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap"
+                    className="bg-brand-orange text-white px-4 sm:px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 whitespace-nowrap w-full sm:w-auto"
                   >
                     <Plus className="w-5 h-5" />
                     Nuevo Producto
@@ -1859,7 +1859,11 @@ export function ProductsPage() {
                               {canManage ? (
                                 <select
                                   value={c.estado}
-                                  onChange={(e) => updateCarritoEstado(c.id, e.target.value as Carrito["estado"])}
+                                  onChange={(e) => {
+                                    updateCarritoEstado(c.id, e.target.value as Carrito["estado"])
+                                      .then(() => notify.ok(`Estado de ${c.codigo} actualizado`))
+                                      .catch((err) => notify.error(err, "No se pudo cambiar el estado del carrito."));
+                                  }}
                                   onClick={(e) => e.stopPropagation()}
                                   className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-brand-orange ${estadoSelectColors[c.estado]}`}
                                 >
@@ -2041,28 +2045,18 @@ export function ProductsPage() {
 
           {/* Modal de Detalles del Día — Carritos */}
           {showCarritoCalendarDayModal && selectedCarritoCalendarDayDate && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-                <button
-                  onClick={() => setShowCarritoCalendarDayModal(false)}
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <div className="mb-6">
-                  <h3 className="text-2xl text-gray-900 dark:text-white mb-2">
-                    {new Date(`${selectedCarritoCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", {
+            <Modal
+              open
+              onClose={() => setShowCarritoCalendarDayModal(false)}
+              title={<>{new Date(`${selectedCarritoCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", {
                       weekday: "long",
                       day: "numeric",
                       month: "long",
                       year: "numeric",
-                    })}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {carritoCalendarByDate[selectedCarritoCalendarDayDate]?.length || 0} evento(s) registrado(s)
-                  </p>
-                </div>
+                    })}</>}
+              size="lg"
+              description={<>{carritoCalendarByDate[selectedCarritoCalendarDayDate]?.length || 0} evento(s) registrado(s)</>}
+            >
 
                 {carritoCalendarByDate[selectedCarritoCalendarDayDate]?.length > 0 ? (
                   <div className="space-y-4">
@@ -2131,8 +2125,7 @@ export function ProductsPage() {
                 >
                   Cerrar
                 </button>
-              </div>
-            </div>
+            </Modal>
           )}
         </>
       )}
@@ -2196,12 +2189,12 @@ export function ProductsPage() {
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             {canManage && (
                               <>
-                                <button type="button" onClick={() => handleRecursoStockMovement(r, "entrada")} className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400">+ Entrada</button>
-                                <button type="button" onClick={() => handleRecursoStockMovement(r, "salida")} className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400">- Salida</button>
-                                <button type="button" onClick={() => handleRecursoStockAdjustment(r)} className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400">Ajustar</button>
+                                <button type="button" onClick={() => handleRecursoStockMovement(r, "entrada")} className="rounded-lg px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 dark:text-green-400">+ Entrada</button>
+                                <button type="button" onClick={() => handleRecursoStockMovement(r, "salida")} className="rounded-lg px-2 py-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 dark:text-amber-400">- Salida</button>
+                                <button type="button" onClick={() => handleRecursoStockAdjustment(r)} className="rounded-lg px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 dark:text-blue-400">Ajustar</button>
                               </>
                             )}
-                            <button type="button" onClick={() => handleShowRecursoStockMovements(r)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200"><History className="h-3 w-3" />Historial</button>
+                            <button type="button" onClick={() => handleShowRecursoStockMovements(r)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"><History className="h-3 w-3" />Historial</button>
                             {canManage && (
                               <button type="button" onClick={() => handleDeleteRecurso(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></button>
                             )}
@@ -2501,28 +2494,18 @@ export function ProductsPage() {
 
           {/* Modal de Detalles del Día */}
           {showPersonalCalendarDayModal && selectedPersonalCalendarDayDate && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-                <button 
-                  onClick={() => setShowPersonalCalendarDayModal(false)} 
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                
-                <div className="mb-6">
-                  <h3 className="text-2xl text-gray-900 dark:text-white mb-2">
-                    {new Date(`${selectedPersonalCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", { 
+            <Modal
+              open
+              onClose={() => setShowPersonalCalendarDayModal(false)}
+              title={<>{new Date(`${selectedPersonalCalendarDayDate}T12:00:00`).toLocaleDateString("es-PE", { 
                       weekday: "long", 
                       day: "numeric", 
                       month: "long", 
                       year: "numeric" 
-                    })}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {personalCalendarByDate[selectedPersonalCalendarDayDate]?.length || 0} evento(s) registrado(s)
-                  </p>
-                </div>
+                    })}</>}
+              size="lg"
+              description={<>{personalCalendarByDate[selectedPersonalCalendarDayDate]?.length || 0} evento(s) registrado(s)</>}
+            >
 
                 {personalCalendarByDate[selectedPersonalCalendarDayDate] && 
                  personalCalendarByDate[selectedPersonalCalendarDayDate].length > 0 ? (
@@ -2600,22 +2583,35 @@ export function ProductsPage() {
                 >
                   Cerrar
                 </button>
-              </div>
-            </div>
+            </Modal>
           )}
         </>
       )}
 
       {/* ── Personal Modal (Add / Edit) ────────────────────────── */}
       {showPersonalModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowPersonalModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">
-              {editingPersonal ? "Editar Personal" : "Nuevo Personal"}
-            </h3>
+        <Modal
+          open
+          onClose={() => setShowPersonalModal(false)}
+          title={<>{editingPersonal ? "Editar Personal" : "Nuevo Personal"}</>}
+          size="md"
+          footer={<>
+            <button
+                  onClick={() => setShowPersonalModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  disabled={personalFormSubmitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSubmitPersonal}
+                  disabled={personalFormSubmitting}
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60"
+                >
+                  {personalFormSubmitting ? "Guardando..." : editingPersonal ? "Actualizar" : "Guardar"}
+                </button>
+          </>}
+        >
 
             <div className="space-y-4">
               <div>
@@ -2698,34 +2694,24 @@ export function ProductsPage() {
                 <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{personalFormError}</p>
               )}
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowPersonalModal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  disabled={personalFormSubmitting}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSubmitPersonal}
-                  disabled={personalFormSubmitting}
-                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60"
-                >
-                  {personalFormSubmitting ? "Guardando..." : editingPersonal ? "Actualizar" : "Guardar"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Recurso Stock Movement Modal ────────────────────── */}
       {showRecursoStockMovementModal && selectedRecurso && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
-            <button onClick={() => setShowRecursoStockMovementModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">{recursoStockMovementType === "entrada" ? "+ Entrada" : "- Salida"} de Stock</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
+        <Modal
+          open
+          onClose={() => setShowRecursoStockMovementModal(false)}
+          title={<>{recursoStockMovementType === "entrada" ? "+ Entrada" : "- Salida"} de Stock</>}
+          size="sm"
+          description={<>{selectedRecurso.recurso}</>}
+          footer={<>
+            <button onClick={() => setShowRecursoStockMovementModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={submitRecursoStockMovement} disabled={recursoStockMovementForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockMovementForm.submitting ? "Guardando..." : "Guardar"}</button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
@@ -2736,22 +2722,24 @@ export function ProductsPage() {
                 <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               {recursoStockMovementForm.error && <p className="text-sm text-red-500">{recursoStockMovementForm.error}</p>}
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowRecursoStockMovementModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={submitRecursoStockMovement} disabled={recursoStockMovementForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockMovementForm.submitting ? "Guardando..." : "Guardar"}</button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Recurso Stock Adjustment Modal ──────────────────── */}
       {showRecursoStockAdjustmentModal && selectedRecurso && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
-            <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Ajustar Stock</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
+        <Modal
+          open
+          onClose={() => setShowRecursoStockAdjustmentModal(false)}
+          title="Ajustar Stock"
+          size="sm"
+          description={<>{selectedRecurso.recurso}</>}
+          footer={<>
+            <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={submitRecursoStockAdjustment} disabled={recursoStockAdjustmentForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}</button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Actual *</label>
@@ -2766,22 +2754,20 @@ export function ProductsPage() {
                 <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               {recursoStockAdjustmentForm.error && <p className="text-sm text-red-500">{recursoStockAdjustmentForm.error}</p>}
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={submitRecursoStockAdjustment} disabled={recursoStockAdjustmentForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}</button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Recurso Stock History Modal ──────────────────────── */}
       {showRecursoStockHistoryModal && selectedRecurso && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowRecursoStockHistoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">Historial de Movimientos</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">{selectedRecurso.recurso}</p>
+        <Modal
+          open
+          onClose={() => setShowRecursoStockHistoryModal(false)}
+          title="Historial de Movimientos"
+          size="xl"
+          description={<>{selectedRecurso.recurso}</>}
+        >
             {recursoStockHistoryState.loading && <p className="text-sm text-gray-500 dark:text-gray-400">Cargando historial...</p>}
             {!recursoStockHistoryState.loading && recursoStockHistoryState.error && <p className="text-sm text-red-500">{recursoStockHistoryState.error}</p>}
             {!recursoStockHistoryState.loading && !recursoStockHistoryState.error && recursoStockHistoryState.movements.length === 0 && <p className="text-sm text-gray-500 dark:text-gray-400">Sin movimientos registrados.</p>}
@@ -2813,18 +2799,27 @@ export function ProductsPage() {
                 </table>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Add Product Modal ──────────────────────────────────── */}
       {showAddProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
-            <button onClick={() => setShowAddProduct(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">{editingProduct ? "Editar Producto" : "Nuevo Producto"}</h3>
+        <Modal
+          open
+          onClose={() => { setShowAddProduct(false); setProductFormError(""); }}
+          error={productFormError || undefined}
+          busy={productFormSubmitting}
+          title={<>{editingProduct ? "Editar Producto" : "Nuevo Producto"}</>}
+          size="md"
+          footer={<>
+            <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleSaveProduct} disabled={productFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {productFormSubmitting ? "Guardando..." : editingProduct ? "Actualizar Producto" : "Guardar Producto"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Categoría existente</label>
@@ -2883,32 +2878,30 @@ export function ProductsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleSaveProduct} disabled={productFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                  {productFormSubmitting ? "Guardando..." : editingProduct ? "Actualizar Producto" : "Guardar Producto"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Add Paquete Modal (with catalog selector) ──────────── */}
       {showAddPaquete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full p-6 my-8 relative">
-            <button onClick={closePaqueteModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-2">
-              {editingPaquete ? "Editar Paquete" : "Nuevo Paquete"}
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Selecciona productos del catálogo para armar el paquete.
-            </p>
+        <Modal
+          open
+          onClose={closePaqueteModal}
+          error={paqueteFormError || undefined}
+          busy={paqueteFormSubmitting}
+          title={<>{editingPaquete ? "Editar Paquete" : "Nuevo Paquete"}</>}
+          size="lg"
+          description={<>Selecciona productos del catálogo para armar el paquete.</>}
+          footer={<>
+            <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleSavePaquete} disabled={paqueteFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {paqueteFormSubmitting ? "Guardando..." : editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Paquete *</label>
@@ -3109,27 +3102,29 @@ export function ProductsPage() {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-2">
-                <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleSavePaquete} disabled={paqueteFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                  {paqueteFormSubmitting ? "Guardando..." : editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Add Carrito Modal ─────────────────────────────────── */}
       {showAddCarrito && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
-            <button onClick={() => setShowAddCarrito(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Carrito</h3>
+        <Modal
+          open
+          onClose={() => { setShowAddCarrito(false); setCarritoFormError(""); }}
+          error={carritoFormError || undefined}
+          busy={carritoFormSubmitting}
+          title="Nuevo Carrito"
+          size="md"
+          footer={<>
+            <button onClick={() => setShowAddCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {carritoFormSubmitting ? "Guardando..." : "Guardar Carrito"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -3210,27 +3205,29 @@ export function ProductsPage() {
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                  {carritoFormSubmitting ? "Guardando..." : "Guardar Carrito"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Edit Carrito Modal ───────────────────────────────── */}
       {showEditCarrito && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
-            <button onClick={() => setShowEditCarrito(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Editar Carrito</h3>
+        <Modal
+          open
+          onClose={() => { setShowEditCarrito(false); setEditCarritoError(""); }}
+          error={editCarritoError || undefined}
+          busy={editCarritoSubmitting}
+          title="Editar Carrito"
+          size="md"
+          footer={<>
+            <button onClick={() => setShowEditCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleSaveEditCarrito} disabled={editCarritoSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                  {editCarritoSubmitting ? "Guardando..." : "Guardar Cambios"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -3311,25 +3308,23 @@ export function ProductsPage() {
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowEditCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleSaveEditCarrito} disabled={editCarritoSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
-                  {editCarritoSubmitting ? "Guardando..." : "Guardar Cambios"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Add Recurso Modal ──────────────────────────────────── */}
       {showRecursoModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative">
-            <button onClick={() => setShowRecursoModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Recurso</h3>
+        <Modal
+          open
+          onClose={() => setShowRecursoModal(false)}
+          title="Nuevo Recurso"
+          size="md"
+          footer={<>
+            <button onClick={() => setShowRecursoModal(false)} disabled={recursoFormSubmitting} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+                <button onClick={handleSaveRecurso} disabled={recursoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoFormSubmitting ? "Guardando..." : "Guardar Recurso"}</button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Recurso *</label>
@@ -3363,13 +3358,9 @@ export function ProductsPage() {
                 </div>
               </div>
               {recursoFormError && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{recursoFormError}</p>}
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowRecursoModal(false)} disabled={recursoFormSubmitting} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={handleSaveRecurso} disabled={recursoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoFormSubmitting ? "Guardando..." : "Guardar Recurso"}</button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
     </div>

@@ -23,8 +23,13 @@ import {
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
-import { apiRequest, API_BASE_URL } from "../lib/api";
+import { apiRequest, apiUpload, API_BASE_URL } from "../lib/api";
 import { obtenerFichasConDetalle } from "../lib/queries";
+import { Modal } from "../components/ui/modal";
+import { ErrorBanner } from "../components/ui/feedback";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { mensajeDeError, notify } from "../lib/notify";
 import { canManageResources } from "../lib/auth";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -175,6 +180,10 @@ export function InflablesPage() {
   const [fichasCalendario, setFichasCalendario] = useState<FichaCalendario[]>([]);
   const [selectedFichaCal, setSelectedFichaCal] = useState<FichaCalendario | null>(null);
   const [error, setError] = useState("");
+  // Error del formulario abierto: se muestra dentro del modal, junto a los botones
+  const [formError, setFormError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [reservasIncompletas, setReservasIncompletas] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<InflableType | null>(null);
   const [selectedCarrito, setSelectedCarrito] = useState<Carrito | null>(null);
@@ -241,8 +250,8 @@ export function InflablesPage() {
         apiRequest<any[]>("/maintenance"),
         obtenerFichasConDetalle(brand),
         apiRequest<any[]>("/inflables"),
-        apiRequest<any[]>("/inflables/reservas").catch(() => []),
-        apiRequest<any[]>("/carritos/reservas").catch(() => []),
+        apiRequest<any[]>("/inflables/reservas").catch(() => null),
+        apiRequest<any[]>("/carritos/reservas").catch(() => null),
       ]);
 
       const inflablesMapped: InflableType[] = inflablesTiposApi.map((i) => ({
@@ -287,7 +296,8 @@ export function InflablesPage() {
 
       // Reservas manuales de inflables (se guardan con el id del tipo en inflable_id).
       // Antes se pedían a /inflables/tipos/:id/reservas, que no existe, y nunca se mostraban.
-      const manualReservasInflables: Reserva[] = reservasInflablesApi.map((r) => ({
+      setReservasIncompletas(reservasInflablesApi === null || reservasCarritosApi === null);
+      const manualReservasInflables: Reserva[] = (reservasInflablesApi ?? []).map((r) => ({
         id: r.id,
         inflableId: r.inflable_id,
         clienteNombre: r.cliente_nombre || "",
@@ -318,7 +328,7 @@ export function InflablesPage() {
       });
 
       // Reservas manuales de carritos
-      const manualReservasCarritos: ReservaCarrito[] = reservasCarritosApi.map((r: any) => {
+      const manualReservasCarritos: ReservaCarrito[] = (reservasCarritosApi ?? []).map((r: any) => {
         const unitId: number = r.carrito_id;
         return {
           id: r.id,
@@ -384,7 +394,7 @@ export function InflablesPage() {
       setAlertas(alertasMapped);
       setFichasCalendario(fichasCalendarioMapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar inflables y carritos");
+      setError(mensajeDeError(err, "No se pudieron cargar los inflables y carritos."));
     }
   };
 
@@ -468,15 +478,19 @@ export function InflablesPage() {
   // ── Handlers ──────────────────────────────────────────────────────────
 
   const handleAddReserva = async () => {
-    if (!newReserva.inflableId || !newReserva.clienteNombre || !newReserva.fecha || !newReserva.cantidad) return;
-    if (submitLocksRef.current.reserva || reservaSubmitting) return;
-    const inflable = inflables.find(i => i.id === newReserva.inflableId);
-    if (!inflable) return;
-    const reserved = getReservedCount(newReserva.inflableId, newReserva.fecha);
-    if (reserved + newReserva.cantidad > inflable.cantidadUnidades) {
-      alert(`Solo hay ${inflable.cantidadUnidades - reserved} unidad(es) disponible(s) de "${inflable.nombre}" para esa fecha.`);
+    if (!newReserva.inflableId || !newReserva.clienteNombre || !newReserva.fecha || !newReserva.cantidad) {
+      setFormError("Completa el tipo de inflable, el cliente, la fecha y la cantidad.");
       return;
     }
+    if (submitLocksRef.current.reserva || reservaSubmitting) return;
+    const inflable = inflables.find(i => i.id === newReserva.inflableId);
+    if (!inflable) { setFormError("El tipo de inflable elegido ya no existe."); return; }
+    const reserved = getReservedCount(newReserva.inflableId, newReserva.fecha);
+    if (reserved + newReserva.cantidad > inflable.cantidadUnidades) {
+      setFormError(`Solo hay ${inflable.cantidadUnidades - reserved} unidad(es) disponible(s) de "${inflable.nombre}" para esa fecha.`);
+      return;
+    }
+    setFormError("");
     submitLocksRef.current.reserva = true;
     setReservaSubmitting(true);
     try {
@@ -492,7 +506,10 @@ export function InflablesPage() {
       });
       setShowNewReserva(false);
       setNewReserva({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
+      notify.ok("Reserva de inflable creada");
       await loadData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo crear la reserva."));
     } finally {
       submitLocksRef.current.reserva = false;
       setReservaSubmitting(false);
@@ -500,15 +517,19 @@ export function InflablesPage() {
   };
 
   const handleAddReservaCarrito = async () => {
-    if (!newResCarrito.carritoId || !newResCarrito.clienteNombre || !newResCarrito.fecha || !newResCarrito.cantidad) return;
-    if (submitLocksRef.current.reservaCarrito || reservaCarritoSubmitting) return;
-    const carrito = carritos.find(c => c.id === newResCarrito.carritoId);
-    if (!carrito) return;
-    const reserved = getCarritoReservedCount(newResCarrito.carritoId, newResCarrito.fecha);
-    if (reserved + newResCarrito.cantidad > carrito.cantidadTotal) {
-      alert(`Solo hay ${carrito.cantidadTotal - reserved} unidad(es) disponible(s) del Carrito ${carrito.modelo} para esa fecha. No se puede crear la reserva para evitar sobreventa.`);
+    if (!newResCarrito.carritoId || !newResCarrito.clienteNombre || !newResCarrito.fecha || !newResCarrito.cantidad) {
+      setFormError("Completa el carrito, el cliente, la fecha y la cantidad.");
       return;
     }
+    if (submitLocksRef.current.reservaCarrito || reservaCarritoSubmitting) return;
+    const carrito = carritos.find(c => c.id === newResCarrito.carritoId);
+    if (!carrito) { setFormError("El carrito elegido ya no existe."); return; }
+    const reserved = getCarritoReservedCount(newResCarrito.carritoId, newResCarrito.fecha);
+    if (reserved + newResCarrito.cantidad > carrito.cantidadTotal) {
+      setFormError(`Solo hay ${carrito.cantidadTotal - reserved} unidad(es) disponible(s) del carrito ${carrito.modelo} para esa fecha.`);
+      return;
+    }
+    setFormError("");
     submitLocksRef.current.reservaCarrito = true;
     setReservaCarritoSubmitting(true);
     try {
@@ -526,7 +547,10 @@ export function InflablesPage() {
       });
       setShowNewReservaCarrito(false);
       setNewResCarrito({ carritoId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
+      notify.ok("Reserva de carrito creada");
       await loadData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo crear la reserva."));
     } finally {
       submitLocksRef.current.reservaCarrito = false;
       setReservaCarritoSubmitting(false);
@@ -571,33 +595,11 @@ export function InflablesPage() {
         setInflableImagen({ url: "", path: "", name: "" });
       }
 
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("folder", "inflables");
-
-      const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: fd });
-
-      if (!response.ok) {
-        const ct = response.headers.get("content-type") || "";
-        const errorData = ct.includes("application/json") ? await response.json() : { error: `HTTP ${response.status}` };
-        throw new Error((errorData as any).error || "Error al subir la imagen");
-      }
-
-      const data = await response.json();
-      const rawUrl = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";
-      const rawPath = data?.path || data?.filePath || data?.data?.path || extractStoragePathFromUrl(rawUrl);
-
-      if (!rawUrl) throw new Error("La API respondió sin URL del archivo subido");
-      if (!rawPath) throw new Error("La API respondió sin path del archivo subido");
-
-      const normalizedUrl =
-        typeof rawUrl === "string" && rawUrl.startsWith("/")
-          ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
-          : rawUrl;
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "inflables");
 
       setInflableImagen({ url: normalizedUrl, path: rawPath, name: file.name });
     } catch (err) {
-      setUploadImagenError(err instanceof Error ? err.message : "Error al subir la imagen");
+      setUploadImagenError(mensajeDeError(err, "No se pudo subir la imagen."));
       setInflableImagen({ url: "", path: "", name: "" });
     } finally {
       setIsUploadingImagen(false);
@@ -624,7 +626,7 @@ export function InflablesPage() {
     });
     setEditInflableImagen({ url: inflable.imagen.startsWith("http") ? inflable.imagen : "", path: "", name: "" });
     setUploadEditImagenError("");
-    setShowEditInflable(true);
+    (setFormError(""), setShowEditInflable(true));
   };
 
   const handleEditInflableImagenUpload = async (file: File) => {
@@ -637,31 +639,11 @@ export function InflablesPage() {
         setEditInflableImagen({ url: "", path: "", name: "" });
       }
 
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("folder", "inflables");
-
-      const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: fd });
-      if (!response.ok) {
-        const ct = response.headers.get("content-type") || "";
-        const errorData = ct.includes("application/json") ? await response.json() : { error: `HTTP ${response.status}` };
-        throw new Error((errorData as any).error || "Error al subir la imagen");
-      }
-
-      const data = await response.json();
-      const rawUrl = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";
-      const rawPath = data?.path || data?.filePath || data?.data?.path || extractStoragePathFromUrl(rawUrl);
-
-      if (!rawUrl) throw new Error("La API respondió sin URL del archivo subido");
-      if (!rawPath) throw new Error("La API respondió sin path del archivo subido");
-
-      const normalizedUrl = typeof rawUrl === "string" && rawUrl.startsWith("/")
-        ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
-        : rawUrl;
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "inflables");
 
       setEditInflableImagen({ url: normalizedUrl, path: rawPath, name: file.name });
     } catch (err) {
-      setUploadEditImagenError(err instanceof Error ? err.message : "Error al subir la imagen");
+      setUploadEditImagenError(mensajeDeError(err, "No se pudo subir la imagen."));
     } finally {
       setIsUploadingEditImagen(false);
     }
@@ -677,8 +659,13 @@ export function InflablesPage() {
   };
 
   const handleUpdateInflable = async () => {
-    if (!editInflableData || !editInflableForm.nombre || !editInflableForm.descripcion || !editInflableForm.precioAlquiler) return;
+    if (!editInflableData) return;
+    if (!editInflableForm.nombre || !editInflableForm.descripcion || !editInflableForm.precioAlquiler) {
+      setFormError("Completa el nombre, la descripción y el precio de alquiler.");
+      return;
+    }
     if (editInflableSubmitting) return;
+    setFormError("");
     setEditInflableSubmitting(true);
     setUploadEditImagenError("");
     try {
@@ -698,26 +685,26 @@ export function InflablesPage() {
       setShowEditInflable(false);
       setEditInflableData(null);
       setUploadEditImagenError("");
+      notify.ok(`Inflable «${editInflableForm.nombre}» actualizado`);
       await loadData();
     } catch (err) {
-      let cleanupFailed = false;
-      if (editInflableImagen.path) {
-        setIsCleaningEditImagen(true);
-        const cleaned = await deleteUploadedImagen(editInflableImagen.path);
-        setIsCleaningEditImagen(false);
-        cleanupFailed = !cleaned;
-        if (cleaned) setEditInflableImagen({ url: "", path: "", name: "" });
-      }
-      const base = err instanceof Error ? err.message : "No se pudo actualizar el inflable";
-      setUploadEditImagenError(cleanupFailed ? `${base}. Además, no se pudo eliminar la imagen subida.` : base);
+      setFormError(mensajeDeError(err, "No se pudo actualizar el inflable."));
     } finally {
       setEditInflableSubmitting(false);
     }
   };
 
   const handleAddInflable = async () => {
-    if (!newInflable.nombre || !newInflable.descripcion || !newInflable.precioAlquiler || !inflableImagen.url) return;
+    if (!newInflable.nombre || !newInflable.descripcion || !newInflable.precioAlquiler) {
+      setFormError("Completa el nombre, la descripción y el precio de alquiler.");
+      return;
+    }
+    if (!inflableImagen.url) {
+      setFormError(isUploadingImagen ? "Espera a que termine de subirse la imagen." : "Sube una imagen del inflable.");
+      return;
+    }
     if (submitLocksRef.current.inflable || inflableSubmitting) return;
+    setFormError("");
     submitLocksRef.current.inflable = true;
     setInflableSubmitting(true);
     setUploadImagenError("");
@@ -739,19 +726,11 @@ export function InflablesPage() {
       setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
       setInflableImagen({ url: "", path: "", name: "" });
       setUploadImagenError("");
+      notify.ok(`Inflable «${newInflable.nombre}» creado`);
       await loadData();
     } catch (err) {
-      // Guardado falló — intentar limpiar la imagen huérfana
-      let cleanupFailed = false;
-      if (inflableImagen.path) {
-        setIsCleaningImagen(true);
-        const cleaned = await deleteUploadedImagen(inflableImagen.path);
-        setIsCleaningImagen(false);
-        cleanupFailed = !cleaned;
-        if (cleaned) setInflableImagen({ url: "", path: "", name: "" });
-      }
-      const base = err instanceof Error ? err.message : "No se pudo guardar el tipo de inflable";
-      setUploadImagenError(cleanupFailed ? `${base}. Además, no se pudo eliminar la imagen subida.` : base);
+      // La imagen subida se conserva para reintentar; si se cierra sin guardar, se limpia
+      setFormError(mensajeDeError(err, "No se pudo guardar el tipo de inflable."));
     } finally {
       submitLocksRef.current.inflable = false;
       setInflableSubmitting(false);
@@ -759,8 +738,12 @@ export function InflablesPage() {
   };
 
   const handleAddUnidad = async () => {
-    if (!newUnidad.tipoId || !newUnidad.codigo.trim()) return;
+    if (!newUnidad.tipoId || !newUnidad.codigo.trim()) {
+      setFormError("Elige el tipo de inflable y escribe el código de la unidad.");
+      return;
+    }
     if (submitLocksRef.current.unidad || unidadSubmitting) return;
+    setFormError("");
     submitLocksRef.current.unidad = true;
     setUnidadSubmitting(true);
     try {
@@ -774,8 +757,11 @@ export function InflablesPage() {
         }),
       });
       setShowNewUnidad(false);
+      notify.ok(`Unidad ${newUnidad.codigo.trim()} creada`);
       setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible", fechaAdquisicion: "" });
       await loadData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo crear la unidad."));
     } finally {
       submitLocksRef.current.unidad = false;
       setUnidadSubmitting(false);
@@ -792,35 +778,41 @@ export function InflablesPage() {
     if (!deleteTarget) return;
 
     setDeleteSubmitting(true);
+    setDeleteError("");
     try {
       if (deleteTarget.kind === "reserva") {
         const reserva = reservas.find((item) => item.id === deleteTarget.id);
-        if (!reserva) return;
+        if (!reserva) throw new Error("La reserva ya no existe o fue eliminada.");
         await apiRequest(`/inflables/${reserva.inflableId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
       } else if (deleteTarget.kind === "reservaCarrito") {
         const reserva = reservasCarritos.find((item) => item.id === deleteTarget.id);
-        if (!reserva) return;
+        if (!reserva) throw new Error("La reserva ya no existe o fue eliminada.");
         await apiRequest(`/carritos/${reserva.unitId}/reservas/${deleteTarget.id}`, { method: "DELETE" });
       } else {
         await apiRequest(`/inflables/tipos/${deleteTarget.id}`, { method: "DELETE" });
         if (selectedType?.id === deleteTarget.id) setSelectedType(null);
       }
       setDeleteTarget(null);
+      notify.ok("Eliminado correctamente");
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el registro");
+      setDeleteError(mensajeDeError(err, "No se pudo eliminar el registro."));
     } finally {
       setDeleteSubmitting(false);
     }
   };
 
   const handleAddAlerta = async () => {
-    if (!newAlerta.recursoId || !newAlerta.titulo || !newAlerta.descripcion) return;
+    if (!newAlerta.recursoId || !newAlerta.titulo || !newAlerta.descripcion) {
+      setFormError("Elige el recurso y completa el título y la descripción del problema.");
+      return;
+    }
     if (submitLocksRef.current.alerta || alertaSubmitting) return;
     const recurso = newAlerta.recursoTipo === "inflable"
       ? inflables.find(i => i.id === newAlerta.recursoId)
       : carritos.find(c => c.id === newAlerta.recursoId);
-    if (!recurso) return;
+    if (!recurso) { setFormError("El recurso elegido ya no existe."); return; }
+    setFormError("");
     submitLocksRef.current.alerta = true;
     setAlertaSubmitting(true);
     try {
@@ -840,22 +832,35 @@ export function InflablesPage() {
       });
       setShowNewAlerta(false);
       setNewAlerta({ recursoTipo: "inflable", recursoId: 0, severidad: "advertencia", titulo: "", descripcion: "", reportadoPor: "" });
+      notify.ok("Problema reportado");
       await loadData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo reportar el problema."));
     } finally {
       submitLocksRef.current.alerta = false;
       setAlertaSubmitting(false);
     }
   };
 
+  const [alertaActualizando, setAlertaActualizando] = useState<number | null>(null);
   const handleUpdateAlertaEstado = async (id: number, nuevoEstado: EstadoAlerta) => {
-    await apiRequest(`/maintenance/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        estado: nuevoEstado,
-        ...(nuevoEstado === "resuelta" ? { fecha_resolucion: todayStr } : {}),
-      }),
-    });
-    await loadData();
+    if (alertaActualizando !== null) return;
+    setAlertaActualizando(id);
+    try {
+      await apiRequest(`/maintenance/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          estado: nuevoEstado,
+          ...(nuevoEstado === "resuelta" ? { fecha_resolucion: todayStr } : {}),
+        }),
+      });
+      notify.ok(nuevoEstado === "resuelta" ? "Alerta marcada como resuelta" : "Reparación iniciada");
+      await loadData();
+    } catch (err) {
+      notify.error(err, "No se pudo actualizar el estado de la alerta.");
+    } finally {
+      setAlertaActualizando(null);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -867,52 +872,47 @@ export function InflablesPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(""); } }}
+        title={deleteTarget?.kind === "inflable" ? `Eliminar ${deleteTarget.label}` : "Eliminar reserva"}
+        description={deleteTarget?.kind === "inflable"
+          ? "¿Seguro que quieres eliminar este tipo de inflable? Esta acción no se puede deshacer."
+          : `¿Seguro que quieres eliminar la reserva de ${deleteTarget?.label ?? ""}? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        loadingLabel="Eliminando..."
+        loading={deleteSubmitting}
+        onConfirm={confirmDeleteTarget}
+        error={deleteError}
+      />
       {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <ErrorBanner className="mb-4" onRetry={() => void loadData()}>{error}</ErrorBanner>
+      ) : null}
+      {reservasIncompletas && !error ? (
+        <ErrorBanner tone="warning" className="mb-4" onRetry={() => void loadData()}>
+          No se pudieron cargar las reservas manuales: la disponibilidad que ves puede no estar completa. Revisa antes de confirmar una reserva.
+        </ErrorBanner>
       ) : null}
 
       {/* Header */}
-      <div className="mb-5 md:mb-6">
-        <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Inflables y Carritos</h1>
-        <p className="text-gray-600 dark:text-gray-400">Gestión de alquiler, stock y mantenimiento</p>
-      </div>
+      <PageHeader title="Inflables y Carritos" subtitle="Gestión de alquiler, stock y mantenimiento" />
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4 mb-5 md:mb-6">
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><Wind className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Inflables</span></div>
-          <p className="text-2xl text-gray-900 dark:text-white">{totalInflables - reservadosInflablesHoy}<span className="text-sm text-gray-400">/{totalInflables}</span></p>
-          <p className="text-[10px] text-gray-400">disponibles hoy</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><ShoppingCart className="w-4 h-4 text-brand-orange" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Carritos</span></div>
-          <p className="text-2xl text-gray-900 dark:text-white">{totalCarritos - reservadosCarritosHoy}<span className="text-sm text-gray-400">/{totalCarritos}</span></p>
-          <p className="text-[10px] text-gray-400">disponibles hoy</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><Calendar className="w-4 h-4 text-green-500" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Rsv. Inflables</span></div>
-          <p className="text-2xl text-green-600 dark:text-green-400">{reservas.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><Calendar className="w-4 h-4 text-purple-500" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Rsv. Carritos</span></div>
-          <p className="text-2xl text-purple-600 dark:text-purple-400">{reservasCarritos.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><AlertTriangle className="w-4 h-4 text-amber-500" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Alertas Pend.</span></div>
-          <p className="text-2xl text-amber-600 dark:text-amber-400">{alertasPendientes}</p>
-        </div>
-        <div className={`p-4 rounded-xl border ${alertasCriticas > 0 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"}`}>
-          <div className="flex items-center gap-2 mb-1"><AlertCircle className={`w-4 h-4 ${alertasCriticas > 0 ? "text-red-500" : "text-gray-400"}`} /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Críticas</span></div>
-          <p className={`text-2xl ${alertasCriticas > 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>{alertasCriticas}</p>
-          {alertasCriticas > 0 && <p className="text-[10px] text-red-500">Requiere atención</p>}
-        </div>
+      {/* Indicadores */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4 mb-5 md:mb-6">
+        <StatCard label="Inflables disponibles hoy" value={`${totalInflables - reservadosInflablesHoy}/${totalInflables}`} icon={<Wind className="text-brand-navy dark:text-blue-400" />} />
+        <StatCard label="Carritos disponibles hoy" value={`${totalCarritos - reservadosCarritosHoy}/${totalCarritos}`} icon={<ShoppingCart className="text-brand-orange" />} />
+        <StatCard label="Reservas de inflables" value={reservas.length} tone="green" icon={<Calendar className="text-green-500" />} />
+        <StatCard label="Reservas de carritos" value={reservasCarritos.length} tone="purple" icon={<Calendar className="text-purple-500" />} />
+        <StatCard label="Alertas pendientes" value={alertasPendientes} tone="amber" icon={<AlertTriangle className="text-amber-500" />} />
+        <StatCard label="Alertas críticas" value={alertasCriticas} tone={alertasCriticas > 0 ? "red" : "default"}
+          icon={<AlertCircle className={alertasCriticas > 0 ? "text-red-500" : "text-gray-400"} />}
+          detail={alertasCriticas > 0 ? "Requiere atención" : undefined}
+          className={alertasCriticas > 0 ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800" : undefined} />
       </div>
 
       {/* Main Tabs */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 mb-6">
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+        <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
           {([
             { key: "calendario" as const, label: "Calendario", icon: Calendar },
             { key: "inflables" as const, label: "Inflables", icon: Wind },
@@ -922,7 +922,7 @@ export function InflablesPage() {
             const Icon = tab.icon;
             return (
               <button key={tab.key} onClick={() => { setMainTab(tab.key); setSearchTerm(""); setSelectedType(null); setSelectedCarrito(null); setSelectedDate(null); setSelectedFichaCal(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors relative ${mainTab === tab.key ? "bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
+                className={`flex-1 shrink-0 whitespace-nowrap flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors relative ${mainTab === tab.key ? "bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 {tab.badge && <span className="absolute top-2 right-[calc(50%-40px)] w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />}
               </button>
@@ -948,10 +948,10 @@ export function InflablesPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-brand-orange">Fichas de Eventos</span></p>
                 {canManage && (
                   <>
-                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); setShowNewUnidad(true); }} className="border border-brand-navy text-brand-navy dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); (setFormError(""), setShowNewUnidad(true)); }} className="border border-brand-navy text-brand-navy dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nueva Unidad
                     </button>
-                    <button onClick={() => setShowNewInflable(true)} className="bg-brand-navy text-white px-5 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                    <button onClick={() => (setFormError(""), setShowNewInflable(true))} className="bg-brand-navy text-white px-5 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nuevo Tipo
                     </button>
                   </>
@@ -1233,7 +1233,7 @@ export function InflablesPage() {
           {/* Header */}
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 mb-6">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(["all", "pendiente", "en-proceso", "resuelta"] as const).map(f => (
                   <button key={f} onClick={() => setAlertaFilter(f)}
                     className={`px-4 py-2 rounded-lg text-xs transition-colors ${alertaFilter === f
@@ -1247,7 +1247,7 @@ export function InflablesPage() {
                 ))}
               </div>
               {canManage && (
-                <button onClick={() => setShowNewAlerta(true)} className="bg-red-500 text-white px-5 py-2.5 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                <button onClick={() => (setFormError(""), setShowNewAlerta(true))} className="bg-red-500 text-white px-5 py-2.5 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                   <Plus className="w-4 h-4" /> Reportar Problema
                 </button>
               )}
@@ -1259,7 +1259,7 @@ export function InflablesPage() {
             {filteredAlertas.length === 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
                 <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
-                <p className="text-gray-500 dark:text-gray-400">No hay alertas {alertaFilter !== "all" ? `con estado "${alertaFilter}"` : ""}</p>
+                <p className="text-gray-500 dark:text-gray-400">{alertaFilter === "all" ? "No hay alertas de mantenimiento" : `No hay alertas ${alertaFilter === "pendiente" ? "pendientes" : alertaFilter === "en-proceso" ? "en proceso" : "resueltas"}`}</p>
               </div>
             )}
 
@@ -1287,8 +1287,8 @@ export function InflablesPage() {
 
                     <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{alerta.descripcion}</p>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 text-[10px] text-gray-400">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
                         <span>Reportado por: {alerta.reportadoPor}</span>
                         <span>{alerta.fechaReporte}</span>
                         {alerta.fechaResolucion && <span className="text-green-500">Resuelto: {alerta.fechaResolucion}</span>}
@@ -1297,13 +1297,13 @@ export function InflablesPage() {
                       {alerta.estado !== "resuelta" && canManage && (
                         <div className="flex gap-1.5">
                           {alerta.estado === "pendiente" && (
-                            <button onClick={() => handleUpdateAlertaEstado(alerta.id, "en-proceso")}
-                              className="px-3 py-1.5 text-[10px] rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1">
+                            <button onClick={() => handleUpdateAlertaEstado(alerta.id, "en-proceso")} disabled={alertaActualizando !== null}
+                              className="px-3 py-1.5 text-xs disabled:opacity-50 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1">
                               <Wrench className="w-3 h-3" /> Iniciar Reparación
                             </button>
                           )}
-                          <button onClick={() => handleUpdateAlertaEstado(alerta.id, "resuelta")}
-                            className="px-3 py-1.5 text-[10px] rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex items-center gap-1">
+                          <button onClick={() => handleUpdateAlertaEstado(alerta.id, "resuelta")} disabled={alertaActualizando !== null}
+                            className="px-3 py-1.5 text-xs disabled:opacity-50 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Marcar Resuelta
                           </button>
                         </div>
@@ -1424,8 +1424,7 @@ export function InflablesPage() {
 
       {/* New Reserva Inflable Modal */}
       {showNewReserva && (
-        <ModalWrapper onClose={() => setShowNewReserva(false)}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nueva Reserva de Inflable</h3>
+        <ModalWrapper error={formError} onClose={() => setShowNewReserva(false)} title="Nueva Reserva de Inflable" footer={<ModalButtons onCancel={() => setShowNewReserva(false)} onConfirm={handleAddReserva} label="Crear Reserva" submitting={reservaSubmitting} />}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Inflable *</label>
@@ -1458,15 +1457,14 @@ export function InflablesPage() {
               <input type="text" placeholder="Ej: Cumpleaños..." value={newReserva.evento} onChange={e => setNewReserva({ ...newReserva, evento: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
               <textarea placeholder="Observaciones..." value={newReserva.notas} onChange={e => setNewReserva({ ...newReserva, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
-            <ModalButtons onCancel={() => setShowNewReserva(false)} onConfirm={handleAddReserva} label="Crear Reserva" submitting={reservaSubmitting} />
+            
           </div>
         </ModalWrapper>
       )}
 
       {/* New Reserva Carrito Modal */}
       {showNewReservaCarrito && (
-        <ModalWrapper onClose={() => setShowNewReservaCarrito(false)}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-brand-orange" /> Nueva Reserva de Carrito</h3>
+        <ModalWrapper error={formError} onClose={() => setShowNewReservaCarrito(false)} title={<><ShoppingCart className="w-5 h-5 text-brand-orange" /> Nueva Reserva de Carrito</>} footer={<ModalButtons onCancel={() => setShowNewReservaCarrito(false)} onConfirm={handleAddReservaCarrito} label="Crear Reserva" submitting={reservaCarritoSubmitting} />}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Modelo de Carrito *</label>
@@ -1499,22 +1497,33 @@ export function InflablesPage() {
               <input type="text" placeholder="Ej: Feria escolar..." value={newResCarrito.evento} onChange={e => setNewResCarrito({ ...newResCarrito, evento: e.target.value })} className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
               <textarea placeholder="Observaciones..." value={newResCarrito.notas} onChange={e => setNewResCarrito({ ...newResCarrito, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
-            <ModalButtons onCancel={() => setShowNewReservaCarrito(false)} onConfirm={handleAddReservaCarrito} label="Crear Reserva" submitting={reservaCarritoSubmitting} />
+            
           </div>
         </ModalWrapper>
       )}
 
       {/* New Inflable Modal */}
       {showNewInflable && (
-        <ModalWrapper onClose={async () => {
+        <ModalWrapper error={formError} onClose={async () => {
           if (inflableSubmitting || isUploadingImagen || isCleaningImagen) return;
           const ok = await cleanupInflableImagen();
           if (!ok) { setUploadImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
           setShowNewInflable(false);
           setUploadImagenError("");
           setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
-        }}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nuevo Tipo de Inflable</h3>
+        }} title="Nuevo Tipo de Inflable" footer={<ModalButtons
+              onCancel={async () => {
+                if (inflableSubmitting || isUploadingImagen || isCleaningImagen) return;
+                const ok = await cleanupInflableImagen();
+                if (!ok) { setUploadImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+                setShowNewInflable(false);
+                setUploadImagenError("");
+                setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
+              }}
+              onConfirm={handleAddInflable}
+              label="Guardar Tipo"
+              submitting={inflableSubmitting || isCleaningImagen}
+            />}>
           <div className="space-y-4">
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label><input type="text" value={newInflable.nombre} onChange={e => setNewInflable({ ...newInflable, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label><textarea value={newInflable.descripcion} onChange={e => setNewInflable({ ...newInflable, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} /></div>
@@ -1550,27 +1559,14 @@ export function InflablesPage() {
                 </div>
               )}
             </div>
-            <ModalButtons
-              onCancel={async () => {
-                if (inflableSubmitting || isUploadingImagen || isCleaningImagen) return;
-                const ok = await cleanupInflableImagen();
-                if (!ok) { setUploadImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
-                setShowNewInflable(false);
-                setUploadImagenError("");
-                setNewInflable({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
-              }}
-              onConfirm={handleAddInflable}
-              label="Guardar Tipo"
-              submitting={inflableSubmitting || isCleaningImagen}
-            />
+            
           </div>
         </ModalWrapper>
       )}
 
       {/* New Unidad Modal */}
       {showNewUnidad && (
-        <ModalWrapper onClose={() => setShowNewUnidad(false)}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6">Nueva Unidad Física</h3>
+        <ModalWrapper error={formError} onClose={() => setShowNewUnidad(false)} title="Nueva Unidad Física" footer={<ModalButtons onCancel={() => setShowNewUnidad(false)} onConfirm={handleAddUnidad} label="Guardar Unidad" submitting={unidadSubmitting} />}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Inflable *</label>
@@ -1595,25 +1591,34 @@ export function InflablesPage() {
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de adquisición</label>
               <input type="date" value={newUnidad.fechaAdquisicion} onChange={e => setNewUnidad({ ...newUnidad, fechaAdquisicion: e.target.value })} className={inputClass} />
             </div>
-            <ModalButtons onCancel={() => setShowNewUnidad(false)} onConfirm={handleAddUnidad} label="Guardar Unidad" submitting={unidadSubmitting} />
+            
           </div>
         </ModalWrapper>
       )}
 
       {/* Edit Inflable Modal */}
       {showEditInflable && editInflableData && (
-        <ModalWrapper onClose={async () => {
+        <ModalWrapper error={formError} onClose={async () => {
           if (editInflableSubmitting || isUploadingEditImagen || isCleaningEditImagen) return;
           const ok = await cleanupEditInflableImagen();
           if (!ok) { setUploadEditImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
           setShowEditInflable(false);
           setEditInflableData(null);
           setUploadEditImagenError("");
-        }}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-            <Pencil className="w-5 h-5 text-brand-navy dark:text-blue-400" />
-            Editar Inflable
-          </h3>
+        }} title={<><Pencil className="w-5 h-5 text-brand-navy dark:text-blue-400" />
+            Editar Inflable</>} footer={<ModalButtons
+              onCancel={async () => {
+                if (editInflableSubmitting || isUploadingEditImagen || isCleaningEditImagen) return;
+                const ok = await cleanupEditInflableImagen();
+                if (!ok) { setUploadEditImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
+                setShowEditInflable(false);
+                setEditInflableData(null);
+                setUploadEditImagenError("");
+              }}
+              onConfirm={handleUpdateInflable}
+              label="Guardar Cambios"
+              submitting={editInflableSubmitting || isCleaningEditImagen}
+            />}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
@@ -1661,27 +1666,14 @@ export function InflablesPage() {
                 </div>
               )}
             </div>
-            <ModalButtons
-              onCancel={async () => {
-                if (editInflableSubmitting || isUploadingEditImagen || isCleaningEditImagen) return;
-                const ok = await cleanupEditInflableImagen();
-                if (!ok) { setUploadEditImagenError("No se pudo eliminar la imagen subida. Intenta nuevamente antes de cerrar."); return; }
-                setShowEditInflable(false);
-                setEditInflableData(null);
-                setUploadEditImagenError("");
-              }}
-              onConfirm={handleUpdateInflable}
-              label="Guardar Cambios"
-              submitting={editInflableSubmitting || isCleaningEditImagen}
-            />
+            
           </div>
         </ModalWrapper>
       )}
 
       {/* New Alerta Modal */}
       {showNewAlerta && (
-        <ModalWrapper onClose={() => setShowNewAlerta(false)}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> Reportar Problema</h3>
+        <ModalWrapper error={formError} onClose={() => setShowNewAlerta(false)} title={<><AlertTriangle className="w-5 h-5 text-red-500" /> Reportar Problema</>} footer={<ModalButtons onCancel={() => setShowNewAlerta(false)} onConfirm={handleAddAlerta} label="Reportar Problema" confirmColor="bg-red-500 hover:bg-red-600" submitting={alertaSubmitting} />}>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1720,7 +1712,7 @@ export function InflablesPage() {
               <textarea value={newAlerta.descripcion} onChange={e => setNewAlerta({ ...newAlerta, descripcion: e.target.value })} placeholder="Describa el problema, ubicación del daño, urgencia..." rows={3} className={`${inputClass} resize-none`} /></div>
             <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Reportado por</label>
               <input type="text" value={newAlerta.reportadoPor} onChange={e => setNewAlerta({ ...newAlerta, reportadoPor: e.target.value })} placeholder="Nombre del responsable" className={inputClass} /></div>
-            <ModalButtons onCancel={() => setShowNewAlerta(false)} onConfirm={handleAddAlerta} label="Reportar Problema" confirmColor="bg-red-500 hover:bg-red-600" submitting={alertaSubmitting} />
+            
           </div>
         </ModalWrapper>
       )}
@@ -1730,20 +1722,20 @@ export function InflablesPage() {
 
 // ── Shared sub-components ──────────────────────────────────────────────────
 
-function ModalWrapper({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+// Modales de la página sobre el Modal común (Esc, foco, pie fijo con botones y error visible)
+function ModalWrapper({ children, onClose, title, footer, error }: {
+  children: React.ReactNode; onClose: () => void; title: React.ReactNode; footer?: React.ReactNode; error?: string;
+}) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-        {children}
-      </div>
-    </div>
+    <Modal open onClose={onClose} title={title} footer={footer} error={error || undefined} size="md">
+      {children}
+    </Modal>
   );
 }
 
 function ModalButtons({ onCancel, onConfirm, label, confirmColor, submitting }: { onCancel: () => void; onConfirm: () => void; label: string; confirmColor?: string; submitting?: boolean }) {
   return (
-    <div className="flex gap-3 pt-2">
+    <div className="flex gap-3 w-full">
       <button onClick={onCancel} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm">Cancelar</button>
       <button onClick={onConfirm} disabled={submitting} className={`flex-1 text-white px-4 py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed ${confirmColor || "bg-brand-orange hover:bg-brand-orange-hover"}`}>{submitting ? "Guardando..." : label}</button>
     </div>
@@ -1767,15 +1759,15 @@ function renderCalendar(
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+        <h2 className="min-w-0 text-lg text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
           <Calendar className="w-5 h-5 text-brand-navy dark:text-blue-400" />
           Calendario de Disponibilidad
           {subtitle && <span className="text-sm text-brand-orange ml-2">— {subtitle}</span>}
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-5 h-5" /></button>
-          <span className="text-gray-900 dark:text-white min-w-[140px] text-center">{MONTH_NAMES[month]} {year}</span>
+          <span className="text-gray-900 dark:text-white min-w-[120px] text-center whitespace-nowrap">{MONTH_NAMES[month]} {year}</span>
           <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-5 h-5" /></button>
         </div>
       </div>
@@ -1794,9 +1786,9 @@ function renderCalendar(
           const isSel = dateStr === selectedDate;
 
           let bgClass = "bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700";
-          if (pct >= 1) bgClass = "bg-red-100 dark:bg-red-900/30 hover:bg-red-200";
-          else if (pct >= 0.5) bgClass = "bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200";
-          else if (count > 0) bgClass = "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100";
+          if (pct >= 1) bgClass = "bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50";
+          else if (pct >= 0.5) bgClass = "bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50";
+          else if (count > 0) bgClass = "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40";
 
           return (
             <button key={day} onClick={() => setSelectedDate(isSel ? null : dateStr)}
@@ -1808,7 +1800,7 @@ function renderCalendar(
         })}
       </div>
 
-      <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600"></div> Libre</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Parcial</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800"></div> {"> 50%"}</div>
@@ -1834,14 +1826,14 @@ function renderFichasCalendar(
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+        <h2 className="min-w-0 text-lg text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
           <Calendar className="w-5 h-5 text-brand-navy dark:text-blue-400" />
           Calendario de Fichas
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-5 h-5" /></button>
-          <span className="text-gray-900 dark:text-white min-w-[140px] text-center">{MONTH_NAMES[month]} {year}</span>
+          <span className="text-gray-900 dark:text-white min-w-[120px] text-center whitespace-nowrap">{MONTH_NAMES[month]} {year}</span>
           <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronRight className="w-5 h-5" /></button>
         </div>
       </div>
@@ -1859,7 +1851,7 @@ function renderFichasCalendar(
           const isSel = dateStr === selectedDate;
 
           const bgClass = count > 0
-            ? "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100"
+            ? "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40"
             : "bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700";
 
           return (
@@ -1872,7 +1864,7 @@ function renderFichasCalendar(
         })}
       </div>
 
-      <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600"></div> Sin fichas</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Con fichas</div>
         <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-brand-navy"></div> Hoy</div>

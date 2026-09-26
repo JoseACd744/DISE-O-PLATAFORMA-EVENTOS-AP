@@ -4,6 +4,11 @@ import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTri
 import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
 import { apiRequest } from "../lib/api";
+import { Modal } from "../components/ui/modal";
+import { ErrorBanner, LoadingState } from "../components/ui/feedback";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { mensajeDeError, notify } from "../lib/notify";
 import { invalidarAsignaciones, obtenerFichasConDetalle, obtenerFichasLista } from "../lib/queries";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { canManageResources } from "../lib/auth";
@@ -102,6 +107,9 @@ export function LogisticsPage() {
   const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
   const [fichasRutas, setFichasRutas] = useState<FichaResumen[]>([]);
   const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [cargando, setCargando] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddChofer, setShowAddChofer] = useState(false);
   const [showAddVehiculo, setShowAddVehiculo] = useState(false);
@@ -141,6 +149,7 @@ export function LogisticsPage() {
   const loadLogisticsData = async () => {
     if (!brand) return;
     setError("");
+    setCargando(true);
     try {
       const [choferesApi, vehiculosApi, asignacionesApi, fichasApi] = await Promise.all([
         apiRequest<any[]>("/personal?rol=chofer"),
@@ -212,7 +221,9 @@ export function LogisticsPage() {
         })
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar logística");
+      setError(mensajeDeError(err, "No se pudieron cargar los datos de logística."));
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -278,23 +289,23 @@ export function LogisticsPage() {
     if (logisticsLockRef.current.chofer || choferSubmitting) return;
 
     if (!nombre) {
-      setError("El nombre completo del chofer es obligatorio.");
+      setFormError("El nombre completo del chofer es obligatorio.");
       return;
     }
     if (!/^\d{8}$/.test(dni)) {
-      setError("El DNI del chofer debe tener 8 dígitos.");
+      setFormError("El DNI del chofer debe tener 8 dígitos.");
       return;
     }
     if (!isValidChoferPhone(celular)) {
-      setError("El celular del chofer debe tener entre 7 y 15 dígitos y puede usar +, espacios o guiones.");
+      setFormError("El celular del chofer debe tener entre 7 y 15 dígitos y puede usar +, espacios o guiones.");
       return;
     }
     if (!licencia) {
-      setError("La licencia es obligatoria para chofer.");
+      setFormError("La licencia es obligatoria para chofer.");
       return;
     }
 
-    setError("");
+    setFormError("");
     logisticsLockRef.current.chofer = true;
     setChoferSubmitting(true);
     try {
@@ -309,16 +320,27 @@ export function LogisticsPage() {
         }),
       });
       setShowAddChofer(false);
+      notify.ok(`Chofer «${nombre}» registrado`);
       setChoferForm({ nombre: "", dni: "", celular: "", licencia: "A-IIb" });
       await loadLogisticsData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo registrar el chofer."));
     } finally {
       logisticsLockRef.current.chofer = false;
       setChoferSubmitting(false);
     }
   };
   const handleAddVehiculo = async () => {
-    if (!vehiculoForm.placa || !vehiculoForm.modelo) return;
+    if (!vehiculoForm.placa.trim() || !vehiculoForm.modelo.trim()) {
+      setFormError("Completa la placa y el modelo del vehículo.");
+      return;
+    }
+    if (!vehiculoForm.marcasAsignadas.length) {
+      setFormError("Elige al menos una marca para el vehículo.");
+      return;
+    }
     if (logisticsLockRef.current.vehiculo || vehiculoSubmitting) return;
+    setFormError("");
     logisticsLockRef.current.vehiculo = true;
     setVehiculoSubmitting(true);
     try {
@@ -335,18 +357,36 @@ export function LogisticsPage() {
         }),
       });
       setShowAddVehiculo(false);
+      notify.ok(`Vehículo «${vehiculoForm.placa}» registrado`);
       setVehiculoForm({ placa: "", modelo: "", marca: "", marcasAsignadas: ["donofrio"], estado: "disponible", ultimoMantenimiento: "", fechaVencimientoSoat: "" });
       await loadLogisticsData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo registrar el vehículo."));
     } finally {
       logisticsLockRef.current.vehiculo = false;
       setVehiculoSubmitting(false);
     }
   };
   const handleAddAsignacion = async () => {
-    if (!asignacionForm.choferId || !asignacionForm.vehiculoId) return;
+    if (!asignacionForm.choferId || !asignacionForm.vehiculoId) {
+      setFormError("Elige el chofer y el vehículo de la ruta.");
+      return;
+    }
+    if (!asignacionForm.fecha) {
+      setFormError("Elige la fecha de la ruta.");
+      return;
+    }
+    if (!asignacionForm.fichasIds.length) {
+      setFormError("Elige al menos una ficha para la ruta.");
+      return;
+    }
     const totalCarritos = getTotalCarritosByIds(asignacionForm.fichasIds);
-    if (totalCarritos > MAX_CARRITOS_POR_VEHICULO) return;
+    if (totalCarritos > MAX_CARRITOS_POR_VEHICULO) {
+      setFormError(`Un vehículo puede llevar hasta ${MAX_CARRITOS_POR_VEHICULO} carritos; esta ruta suma ${totalCarritos}.`);
+      return;
+    }
     if (logisticsLockRef.current.asignacion || asignacionSubmitting) return;
+    setFormError("");
     logisticsLockRef.current.asignacion = true;
     setAsignacionSubmitting(true);
     try {
@@ -368,7 +408,10 @@ export function LogisticsPage() {
       setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: getLocalDateString(), ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
       setFichasSearch("");
       setFichasSort("hora");
+      notify.ok("Ruta asignada");
       await loadLogisticsData();
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo crear la asignación."));
     } finally {
       logisticsLockRef.current.asignacion = false;
       setAsignacionSubmitting(false);
@@ -389,7 +432,7 @@ export function LogisticsPage() {
   const handleOpenEditChofer = (chofer: Chofer) => {
     setEditChoferId(chofer.id);
     setEditChoferForm({ nombre: chofer.nombre, dni: chofer.dni, celular: chofer.celular, licencia: chofer.licencia || "A-IIb" });
-    setShowEditChofer(true);
+    (setFormError(""), setShowEditChofer(true));
   };
 
   const handleUpdateChofer = async () => {
@@ -398,11 +441,11 @@ export function LogisticsPage() {
     const celular = editChoferForm.celular.trim();
     const licencia = editChoferForm.licencia.trim();
     if (!editChoferId || editChoferSubmitting) return;
-    if (!nombre) { setError("El nombre completo del chofer es obligatorio."); return; }
-    if (!/^\d{8}$/.test(dni)) { setError("El DNI del chofer debe tener 8 dígitos."); return; }
-    if (!isValidChoferPhone(celular)) { setError("El celular del chofer debe tener entre 7 y 15 dígitos."); return; }
-    if (!licencia) { setError("La licencia es obligatoria para chofer."); return; }
-    setError("");
+    if (!nombre) { setFormError("El nombre completo del chofer es obligatorio."); return; }
+    if (!/^\d{8}$/.test(dni)) { setFormError("El DNI del chofer debe tener 8 dígitos."); return; }
+    if (!isValidChoferPhone(celular)) { setFormError("El celular del chofer debe tener entre 7 y 15 dígitos."); return; }
+    if (!licencia) { setFormError("La licencia es obligatoria para chofer."); return; }
+    setFormError("");
     setEditChoferSubmitting(true);
     try {
       await apiRequest(`/personal/${editChoferId}`, {
@@ -411,9 +454,10 @@ export function LogisticsPage() {
       });
       setShowEditChofer(false);
       setEditChoferId(null);
+      notify.ok("Datos del chofer actualizados");
       await loadLogisticsData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el chofer");
+      setFormError(mensajeDeError(err, "No se pudo actualizar el chofer."));
     } finally {
       setEditChoferSubmitting(false);
     }
@@ -423,6 +467,7 @@ export function LogisticsPage() {
     if (!deleteTarget) return;
 
     setDeleteSubmitting(true);
+    setDeleteError("");
     try {
       if (deleteTarget.kind === "chofer") {
         await apiRequest(`/personal/${deleteTarget.id}`, { method: "DELETE" });
@@ -430,9 +475,10 @@ export function LogisticsPage() {
         await apiRequest(`/logistics/vehiculos/${deleteTarget.id}`, { method: "DELETE" });
       }
       setDeleteTarget(null);
+      notify.ok("Eliminado correctamente");
       await loadLogisticsData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el registro");
+      setDeleteError(mensajeDeError(err, "No se pudo eliminar el registro."));
     } finally {
       setDeleteSubmitting(false);
     }
@@ -464,48 +510,30 @@ export function LogisticsPage() {
         loadingLabel="Eliminando..."
         loading={deleteSubmitting}
         onConfirm={confirmDeleteTarget}
+        error={deleteError}
       />
       {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <ErrorBanner className="mb-4" onRetry={() => void loadLogisticsData()}>{error}</ErrorBanner>
       ) : null}
 
-      {/* Header */}
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Logística y Recursos</h1>
-        <p className="text-gray-600 dark:text-gray-400">Gestiona choferes, vehículos y asignaciones de rutas</p>
-      </div>
+      <PageHeader title="Logística y Recursos" subtitle="Gestiona choferes, vehículos y asignaciones de rutas" />
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-green-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Choferes Disponibles</span></div>
-          <p className="text-2xl text-green-600 dark:text-green-400">{choferesDisponibles}<span className="text-sm text-gray-400">/{choferes.length}</span></p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><Truck className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-xs text-gray-500 dark:text-gray-400">Vehículos Disponibles</span></div>
-          <p className="text-2xl text-brand-navy dark:text-blue-400">{vehiculosDisponibles}<span className="text-sm text-gray-400">/{vehiculos.length}</span></p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><MapPin className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-500 dark:text-gray-400">Asignaciones Hoy</span></div>
-          <p className="text-2xl text-brand-orange">{asignacionesHoy}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><Shield className="w-4 h-4 text-purple-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Rutas Compartidas</span></div>
-          <p className="text-2xl text-purple-600 dark:text-purple-400">{rutasCompartidas}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">Multi-marca en un vehículo</p>
-        </div>
+      {/* Indicadores */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <StatCard label="Choferes disponibles" value={`${choferesDisponibles}/${choferes.length}`} tone="green" icon={<User className="text-green-500" />} loading={cargando && !choferes.length} />
+        <StatCard label="Vehículos disponibles" value={`${vehiculosDisponibles}/${vehiculos.length}`} tone="navy" icon={<Truck className="text-brand-navy dark:text-blue-400" />} loading={cargando && !vehiculos.length} />
+        <StatCard label="Asignaciones hoy" value={asignacionesHoy} tone="orange" icon={<MapPin className="text-brand-orange" />} loading={cargando && !asignaciones.length} />
+        <StatCard label="Rutas compartidas" value={rutasCompartidas} tone="purple" icon={<Shield className="text-purple-500" />} detail="Multi-marca en un vehículo" loading={cargando && !asignaciones.length} />
       </div>
 
       {/* Tabs */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+        <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
           {tabs.map(tab => {
             const Icon = tab.icon;
             return (
               <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSearchTerm(""); }}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors ${activeTab === tab.key ? "bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
+                className={`flex-1 shrink-0 whitespace-nowrap flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors ${activeTab === tab.key ? "bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 <span className={`text-xs px-2 py-0.5 rounded-full ${activeTab === tab.key ? "bg-brand-orange/20 text-brand-orange" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"}`}>{tab.count}</span>
               </button>
@@ -513,8 +541,8 @@ export function LogisticsPage() {
           })}
         </div>
         {/* Search + Add row */}
-        <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               placeholder={activeTab === "choferes" ? "Buscar por nombre o DNI..." : activeTab === "vehiculos" ? "Buscar por placa o modelo..." : "Buscar asignación..."}
@@ -522,11 +550,11 @@ export function LogisticsPage() {
           </div>
           {canManage && (
             <button onClick={() => {
-              if (activeTab === "choferes") setShowAddChofer(true);
-              else if (activeTab === "vehiculos") setShowAddVehiculo(true);
-              else setShowAddAsignacion(true);
+              if (activeTab === "choferes") (setFormError(""), setShowAddChofer(true));
+              else if (activeTab === "vehiculos") (setFormError(""), setShowAddVehiculo(true));
+              else (setFormError(""), setShowAddAsignacion(true));
             }}
-              className="bg-brand-orange text-white px-5 py-2.5 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 text-sm whitespace-nowrap">
+              className="bg-brand-orange text-white px-5 py-2.5 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 text-sm whitespace-nowrap">
               <Plus className="w-4 h-4" /> {activeTab === "choferes" ? "Nuevo Chofer" : activeTab === "vehiculos" ? "Nuevo Vehículo" : "Nueva Asignación"}
             </button>
           )}
@@ -573,7 +601,7 @@ export function LogisticsPage() {
               </tbody>
             </table>
             {filteredChoferes.length === 0 && (
-              <div className="text-center py-12"><User className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 dark:text-gray-500 text-sm">No se encontraron choferes</p></div>
+              (cargando ? <LoadingState /> : <div className="text-center py-12"><User className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 dark:text-gray-500 text-sm">No se encontraron choferes</p></div>)
             )}
           </div>
         )}
@@ -613,7 +641,6 @@ export function LogisticsPage() {
                     {canManage && (
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button className="p-2 text-gray-400 hover:text-brand-orange hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit className="w-4 h-4" /></button>
                           <button onClick={() => handleDeleteVehiculo(vehiculo.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
@@ -623,7 +650,7 @@ export function LogisticsPage() {
               </tbody>
             </table>
             {filteredVehiculos.length === 0 && (
-              <div className="text-center py-12"><Truck className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 dark:text-gray-500 text-sm">No se encontraron vehículos</p></div>
+              (cargando ? <LoadingState /> : <div className="text-center py-12"><Truck className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 dark:text-gray-500 text-sm">No se encontraron vehículos</p></div>)
             )}
           </div>
         )}
@@ -777,7 +804,7 @@ export function LogisticsPage() {
                   popup.document.write(html);
                   popup.document.close();
                 } catch (err) {
-                  alert("Error al generar la hoja de ruta");
+                  notify.error(err, "No se pudo generar la hoja de ruta.");
                 }
               };
 
@@ -789,17 +816,17 @@ export function LogisticsPage() {
                       ? "cursor-pointer hover:shadow-lg hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-gray-700"
                       : "hover:shadow-md"
                   }`}>
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-brand-navy/10 dark:bg-brand-navy/20 flex items-center justify-center">
+                  <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 shrink-0 rounded-lg bg-brand-navy/10 dark:bg-brand-navy/20 flex items-center justify-center">
                         <Truck className="w-5 h-5 text-brand-navy dark:text-blue-400" />
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-900 dark:text-white">{asig.ruta}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-white truncate" title={asig.ruta}>{asig.ruta}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{asig.fecha}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={handleGenerarHojaRuta}
                         className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange/10 rounded-lg transition-colors"
@@ -871,7 +898,7 @@ export function LogisticsPage() {
               );
             })}
             {asignaciones.length === 0 && (
-              <div className="text-center py-12"><MapPin className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 text-sm">No hay asignaciones</p></div>
+              (cargando ? <LoadingState /> : <div className="text-center py-12"><MapPin className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" /><p className="text-gray-400 text-sm">No hay asignaciones</p></div>)
             )}
           </div>
         )}
@@ -880,10 +907,23 @@ export function LogisticsPage() {
 
       {/* ── EDIT CHOFER MODAL ───────────────────────────────── */}
       {showEditChofer && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowEditChofer(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><User className="w-5 h-5 text-brand-orange" /> Editar Chofer</h3>
+        <Modal
+          open
+          onClose={() => setShowEditChofer(false)}
+          error={formError || undefined}
+          title={<span className="flex items-center gap-2"><User className="w-5 h-5 text-brand-orange" /> Editar Chofer</span>}
+          size="md"
+          footer={<>
+            <button onClick={() => setShowEditChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                <button
+                  onClick={handleUpdateChofer}
+                  disabled={editChoferSubmitting}
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editChoferSubmitting ? "Guardando..." : "Actualizar Chofer"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
@@ -901,27 +941,30 @@ export function LogisticsPage() {
                     <option value="A-IIIb">A-IIIb (Camión pesado)</option>
                   </select></div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowEditChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button
-                  onClick={handleUpdateChofer}
-                  disabled={!editChoferForm.nombre.trim() || !/^\d{8}$/.test(editChoferForm.dni) || !isValidChoferPhone(editChoferForm.celular) || !editChoferForm.licencia.trim() || editChoferSubmitting}
-                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {editChoferSubmitting ? "Guardando..." : "Actualizar Chofer"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── ADD CHOFER MODAL ────────────────────────────────── */}
       {showAddChofer && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowAddChofer(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><User className="w-5 h-5 text-brand-orange" /> Nuevo Chofer</h3>
+        <Modal
+          open
+          onClose={() => setShowAddChofer(false)}
+          error={formError || undefined}
+          title={<span className="flex items-center gap-2"><User className="w-5 h-5 text-brand-orange" /> Nuevo Chofer</span>}
+          size="md"
+          footer={<>
+            <button onClick={() => setShowAddChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                <button
+                  onClick={handleAddChofer}
+                  disabled={choferSubmitting}
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {choferSubmitting ? "Guardando..." : "Guardar Chofer"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
@@ -940,27 +983,24 @@ export function LogisticsPage() {
                   </select></div>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">Se enviarán únicamente: rol, nombre_completo, dni, celular y licencia.</p>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddChofer(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button
-                  onClick={handleAddChofer}
-                  disabled={!choferForm.nombre.trim() || !/^\d{8}$/.test(choferForm.dni) || !isValidChoferPhone(choferForm.celular) || !choferForm.licencia.trim()}
-                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {choferSubmitting ? "Guardando..." : "Guardar Chofer"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── ADD VEHICULO MODAL ──────────────────────────────── */}
       {showAddVehiculo && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowAddVehiculo(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><Truck className="w-5 h-5 text-brand-navy dark:text-blue-400" /> Nuevo Vehículo</h3>
+        <Modal
+          open
+          onClose={() => setShowAddVehiculo(false)}
+          error={formError || undefined}
+          title={<span className="flex items-center gap-2"><Truck className="w-5 h-5 text-brand-navy dark:text-blue-400" /> Nuevo Vehículo</span>}
+          size="md"
+          footer={<>
+            <button onClick={() => setShowAddVehiculo(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                <button onClick={handleAddVehiculo} disabled={vehiculoSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed">{vehiculoSubmitting ? "Guardando..." : "Guardar Vehículo"}</button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Placa *</label>
@@ -1013,21 +1053,24 @@ export function LogisticsPage() {
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1">Los vehículos pueden asignarse a ambas marcas para compartir rutas</p>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddVehiculo(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button onClick={handleAddVehiculo} disabled={!vehiculoForm.placa || !vehiculoForm.modelo || vehiculoSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed">{vehiculoSubmitting ? "Guardando..." : "Guardar Vehículo"}</button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── ADD ASIGNACION MODAL ────────────────────────────── */}
       {showAddAsignacion && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowAddAsignacion(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><ChevronRight className="w-5 h-5 text-brand-orange" /> Nueva Asignación de Ruta</h3>
+        <Modal
+          open
+          onClose={() => setShowAddAsignacion(false)}
+          error={formError || undefined}
+          title={<span className="flex items-center gap-2"><ChevronRight className="w-5 h-5 text-brand-orange" /> Nueva Asignación de Ruta</span>}
+          size="md"
+          footer={<>
+            <button onClick={() => setShowAddAsignacion(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                <button onClick={handleAddAsignacion} disabled={asignacionSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed">{asignacionSubmitting ? "Guardando..." : "Crear Asignación"}</button>
+          </>}
+        >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Chofer *</label>
@@ -1175,13 +1218,9 @@ export function LogisticsPage() {
                   </label>
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddAsignacion(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
-                <button onClick={handleAddAsignacion} disabled={!asignacionForm.choferId || !asignacionForm.vehiculoId || asignacionForm.fichasIds.length === 0 || asignacionSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover text-sm disabled:opacity-50 disabled:cursor-not-allowed">{asignacionSubmitting ? "Guardando..." : "Crear Asignación"}</button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );
