@@ -3120,7 +3120,7 @@ export function FichasPage() {
                       <CreditCard className="w-5 h-5" />
                     </button>
                   )}
-                  <button onClick={() => openFichaDetail(ficha)}
+                  <button onClick={() => openFichaDetail(ficha)} aria-label="Ver detalle" title="Ver detalle"
                     className="p-2 text-gray-400 hover:text-brand-orange hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
                   </button>
@@ -3292,8 +3292,8 @@ export function FichasPage() {
 
       {/* ── Detail Modal ──────────────────────────────────────── */}
       {showDetailModal && selectedFicha && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-4 sm:p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-6">
               <div className="min-w-0">
                 <h3 className="text-xl sm:text-2xl text-gray-900 dark:text-white mb-2 break-words">{getFichaTitulo(selectedFicha)}</h3>
@@ -3303,7 +3303,7 @@ export function FichasPage() {
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
-              <button onClick={closeFichaDetail} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
+              <button onClick={closeFichaDetail} aria-label="Cerrar" className="shrink-0 -mr-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:text-gray-200 dark:hover:bg-gray-700"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-6">
@@ -3607,45 +3607,30 @@ export function FichasPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-6">
-              <button
-                onClick={() => handleGenerarProforma(selectedFicha)}
-                className="flex-1 bg-brand-navy text-white py-3 rounded-lg hover:bg-brand-navy-hover transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                <FileText className="w-4 h-4" /> Generar Proforma
-              </button>
+            {/* Acciones: barra compacta fija al pie del detalle (el ✕ de arriba cierra) */}
+            <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 mt-6 px-4 sm:px-6 py-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-100 dark:border-gray-700 rounded-b-xl flex flex-wrap items-center gap-2">
+              <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarProforma(selectedFicha)} title="Generar proforma">
+                <FileText /> Proforma
+              </Button>
               {selectedFicha.brand === "jugueton" && (
-                <button
-                  onClick={() => handleGenerarContrato(selectedFicha)}
-                  className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 text-sm"
-                >
-                  <FileSignature className="w-4 h-4" /> Generar Contrato
-                </button>
+                <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarContrato(selectedFicha)} title="Generar contrato">
+                  <FileSignature /> Contrato
+                </Button>
               )}
               {canEditFicha(selectedFicha) && (
-                <>
-                  <button onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
-                    className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 text-sm">
-                    <CreditCard className="w-4 h-4" /> Registrar Abono
-                  </button>
-                  <button
-                    onClick={() => handleOpenEditModal(selectedFicha)}
-                    className="flex-1 border border-brand-navy text-brand-navy dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Edit className="w-4 h-4" /> Editar
-                  </button>
-                  <button
-                    onClick={() => handleDeleteFicha(selectedFicha)}
-                    className="flex-1 bg-red-500 text-white py-3 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
-                  >
-                    <Trash2 className="w-4 h-4" /> Eliminar
-                  </button>
-                </>
+                <div className="flex flex-wrap items-center gap-2 max-sm:w-full sm:ml-auto [&>*:not(:first-child)]:max-sm:grow">
+                  <Button variant="ghost" onClick={() => handleDeleteFicha(selectedFicha)} title="Eliminar ficha"
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300">
+                    <Trash2 /> <span className="max-sm:sr-only">Eliminar</span>
+                  </Button>
+                  <Button variant="subtle" onClick={() => handleOpenEditModal(selectedFicha)}>
+                    <Edit /> Editar
+                  </Button>
+                  <Button variant="brand" onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}>
+                    <CreditCard /> Registrar abono
+                  </Button>
+                </div>
               )}
-              <button onClick={closeFichaDetail}
-                className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">
-                Cerrar
-              </button>
             </div>
           </div>
         </div>

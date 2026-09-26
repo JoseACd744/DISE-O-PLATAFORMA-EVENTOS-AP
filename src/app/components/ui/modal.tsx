@@ -84,9 +84,16 @@ export function Modal({
           <div className={cn("flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-4", bodyClassName)}>{children}</div>
 
           {(footer || error) && (
-            <div className="px-5 sm:px-6 py-4 border-t border-gray-100 dark:border-gray-700 space-y-3">
+            <div className="px-5 sm:px-6 py-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
               {error ? <ModalError>{error}</ModalError> : null}
-              {footer ? <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">{footer}</div> : null}
+              {/* Botones compactos y del ancho de su texto, alineados a la derecha. Las reglas `[&>*]` se imponen
+                  sobre las clases de cada botón (flex-1, py-3, h-11…) para que todos los modales se vean igual;
+                  en móvil se reparten el ancho en una fila y bajan a otra si no entran. */}
+              {footer ? (
+                <div className="flex flex-wrap items-center justify-end gap-2 [&>*]:h-10 [&>*]:py-0 [&>*]:px-4 [&>*]:text-sm [&>*]:rounded-lg [&>*]:whitespace-nowrap [&>*]:flex-none max-sm:[&>*]:flex-1 max-sm:[&>*]:basis-auto">
+                  {footer}
+                </div>
+              ) : null}
             </div>
           )}
         </DialogPrimitive.Content>
