@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Plus, Edit2, Trash2, Box, X, Layers, DollarSign, Loader2 } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { Modal } from "../components/ui/modal";
+import { Button } from "../components/ui/button";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { ErrorBanner } from "../components/ui/feedback";
+import { mensajeDeError, notify } from "../lib/notify";
 import { isAdminUser } from "../lib/auth";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 
@@ -53,6 +59,7 @@ export function AssetsPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // ── Data ──────────────────────────────────────────────────────────────
 
@@ -62,7 +69,7 @@ export function AssetsPage() {
       const data = await apiRequest<Activo[]>("/activos");
       setAssets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar los activos");
+      setError(mensajeDeError(err, "No se pudieron cargar los activos."));
     } finally {
       setLoading(false);
     }
@@ -102,7 +109,8 @@ export function AssetsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nombre.trim()) return setFormError("El nombre es requerido");
+    if (!form.nombre.trim()) return setFormError("Ingresa el nombre del activo.");
+    if (Number(form.cantidad) < 0 || Number(form.costo) < 0) return setFormError("La cantidad y el costo no pueden ser negativos.");
 
     setSubmitting(true);
     setFormError("");
@@ -126,10 +134,15 @@ export function AssetsPage() {
         });
       }
 
-      await loadAssets();
       setShowForm(false);
+      notify.ok(editingId ? `Activo «${payload.nombre}» actualizado` : `Activo «${payload.nombre}» creado`);
+      try {
+        await loadAssets();
+      } catch {
+        notify.aviso("Se guardó, pero no se pudo actualizar la lista. Recarga la página.");
+      }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Error al guardar");
+      setFormError(mensajeDeError(err, "No se pudo guardar el activo."));
     } finally {
       setSubmitting(false);
     }
@@ -138,12 +151,14 @@ export function AssetsPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteSubmitting(true);
+    setDeleteError("");
     try {
       await apiRequest(`/activos/${deleteTarget.id}`, { method: "DELETE" });
-      await loadAssets();
+      notify.ok(`Activo «${deleteTarget.label}» eliminado`);
       setDeleteTarget(null);
+      await loadAssets();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Error al eliminar");
+      setDeleteError(mensajeDeError(err, "No se pudo eliminar el activo."));
     } finally {
       setDeleteSubmitting(false);
     }
@@ -155,51 +170,22 @@ export function AssetsPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-        <div>
-          <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Gestión de Activos</h1>
-          <p className="text-gray-600 dark:text-gray-400">Inventario general de equipos y recursos</p>
-        </div>
-        {isAdmin && (
-          <button
-            onClick={openCreate}
-            className="flex items-center justify-center gap-2 bg-brand-navy text-white px-4 py-2 rounded-lg hover:bg-[#162a63] transition-colors shadow-sm shrink-0"
-          >
+      <PageHeader
+        title="Gestión de Activos"
+        subtitle="Inventario general de equipos y recursos"
+        actions={isAdmin && (
+          <Button variant="navy" onClick={openCreate} className="w-full sm:w-auto">
             <Plus className="w-4 h-4" /> Nuevo Activo
-          </button>
+          </Button>
         )}
-      </div>
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
-              <Box className="w-5 h-5 text-brand-navy dark:text-blue-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Total de Activos</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{stats.totalActivos}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
-              <Layers className="w-5 h-5 text-green-600 dark:text-green-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Unidades en Stock</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{stats.totalUnidades}</p>
-        </div>
-        <div className="bg-brand-navy text-white rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-white/10 p-2 rounded-lg">
-              <DollarSign className="w-5 h-5" />
-            </div>
-            <span className="text-sm opacity-80">Valor del Inventario</span>
-          </div>
-          <p className="text-3xl">{formatMoney(stats.valorTotal)}</p>
-        </div>
+      {/* Resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mb-6">
+        <StatCard label="Total de Activos" value={stats.totalActivos} icon={<Box />} tone="navy" loading={loading} />
+        <StatCard label="Unidades en Stock" value={stats.totalUnidades} icon={<Layers />} tone="green" loading={loading} />
+        <StatCard highlight label="Valor del Inventario" value={formatMoney(stats.valorTotal)} icon={<DollarSign />}
+          loading={loading} className="col-span-2 sm:col-span-1" />
       </div>
 
       {/* Search */}
@@ -224,7 +210,7 @@ export function AssetsPage() {
             Cargando activos...
           </div>
         ) : error ? (
-          <div className="p-12 text-center text-red-500 text-sm">{error}</div>
+          <ErrorBanner className="m-4" onRetry={loadAssets}>{error}</ErrorBanner>
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center">
             <Box className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
@@ -305,22 +291,22 @@ export function AssetsPage() {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 relative">
-            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl text-gray-900 dark:text-white mb-6">
-              {editingId ? "Editar Activo" : "Nuevo Activo"}
-            </h3>
+        <Modal
+          open
+          onClose={() => setShowForm(false)}
+          title={editingId ? "Editar Activo" : "Nuevo Activo"}
+          size="sm"
+          busy={submitting}
+          error={formError || undefined}
+          footer={<>
+            <Button type="button" variant="subtle" size="lg" onClick={() => setShowForm(false)} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="activo-form" variant="navy" size="lg" loading={submitting}>
+              {submitting ? "Guardando..." : "Guardar"}
+            </Button>
+          </>}
+        >
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {formError && (
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm border border-red-100 dark:border-red-800">
-                  {formError}
-                </div>
-              )}
-
+            <form id="activo-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
                 <input
@@ -330,10 +316,11 @@ export function AssetsPage() {
                   className={inputClass}
                   placeholder="Ej: Insuflador Industrial"
                   autoFocus
+                  aria-label="Nombre"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad</label>
                   <input
@@ -357,35 +344,19 @@ export function AssetsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-3 bg-brand-navy text-white rounded-lg hover:bg-[#162a63] disabled:opacity-50 transition-colors"
-                >
-                  {submitting ? "Guardando..." : "Guardar"}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete Confirmation */}
       <DeleteConfirmDialog
         open={!!deleteTarget}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(""); } }}
         onConfirm={handleDelete}
         title="Eliminar Activo"
         description={`¿Estás seguro que deseas eliminar "${deleteTarget?.label}"? Esta acción no se puede deshacer.`}
         loading={deleteSubmitting}
+        error={deleteError}
       />
     </div>
   );

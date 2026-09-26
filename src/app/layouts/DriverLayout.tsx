@@ -42,7 +42,7 @@ export function DriverLayout() {
               <Truck className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-gray-900 dark:text-white">Modulo Chofer</p>
+              <p className="text-sm text-gray-900 dark:text-white">Módulo Chofer</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">{authUser?.nombre || "Chofer"}</p>
             </div>
           </div>

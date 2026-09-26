@@ -4,6 +4,12 @@ import { Pagination } from "../components/Pagination";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
+import { Modal } from "../components/ui/modal";
+import { Button } from "../components/ui/button";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { EmptyState, ErrorBanner } from "../components/ui/feedback";
+import { mensajeDeError, notify } from "../lib/notify";
 import { invalidarClientes } from "../lib/queries";
 import { canManageClients } from "../lib/auth";
 
@@ -51,6 +57,13 @@ const ITEMS_PER_PAGE = 10;
 
 type BrandFilter = "todos" | "donofrio" | "jugueton";
 
+function formatearUltimoPedido(valor: string) {
+  if (!valor) return "—";
+  const fecha = new Date(/^\d{4}-\d{2}-\d{2}$/.test(valor) ? `${valor}T00:00:00` : valor);
+  if (Number.isNaN(fecha.getTime())) return "—";
+  return fecha.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export function ClientsPage() {
   const canManage = canManageClients();
   const { brand } = useBrand();
@@ -65,6 +78,8 @@ export function ClientsPage() {
   const [isSavingClient, setIsSavingClient] = useState(false);
   const [deleteClientId, setDeleteClientId] = useState<string | null>(null);
   const [deleteClientSubmitting, setDeleteClientSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const clientSaveLockRef = useRef(false);
   const [newClient, setNewClient] = useState({
     nombre: "",
@@ -159,7 +174,7 @@ export function ClientsPage() {
         }))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar clientes");
+      setError(mensajeDeError(err, "No se pudieron cargar los clientes."));
     } finally {
       setLoading(false);
     }
@@ -169,12 +184,27 @@ export function ClientsPage() {
     loadClients();
   }, []);
 
+  const validarCliente = (c: { nombre: string; phone: string; address: string; city: string }) => {
+    const faltan = [
+      !c.nombre.trim() && "nombre",
+      !c.phone.trim() && "teléfono",
+      !c.address.trim() && "dirección",
+      !c.city.trim() && "ciudad",
+    ].filter(Boolean);
+    return faltan.length ? `Completa los campos obligatorios: ${faltan.join(", ")}.` : "";
+  };
+
   const handleAddClient = async () => {
-    if (!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city) return;
     if (clientSaveLockRef.current || isSavingClient) return;
+    const invalido = validarCliente(newClient);
+    if (invalido) {
+      setFormError(invalido);
+      return;
+    }
 
     clientSaveLockRef.current = true;
     setIsSavingClient(true);
+    setFormError("");
 
     try {
       await apiRequest("/clients", {
@@ -197,11 +227,12 @@ export function ClientsPage() {
       });
 
       setShowAddModal(false);
+      notify.ok(`Cliente «${newClient.nombre.trim()}» creado`);
       setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active", creadoPor: (brand || "donofrio") as "donofrio" | "jugueton", anioRegistro: "", fichasBase: 0, recomendaciones: 0 });
       invalidarClientes();
       await loadClients();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
+      setFormError(mensajeDeError(err, "No se pudo crear el cliente."));
     } finally {
       clientSaveLockRef.current = false;
       setIsSavingClient(false);
@@ -211,9 +242,15 @@ export function ClientsPage() {
   const handleEditClient = async () => {
     if (!editingClient) return;
     if (clientSaveLockRef.current || isSavingClient) return;
+    const invalido = validarCliente(editingClient);
+    if (invalido) {
+      setFormError(invalido);
+      return;
+    }
 
     clientSaveLockRef.current = true;
     setIsSavingClient(true);
+    setFormError("");
 
     try {
       await apiRequest(`/clients/${editingClient.id}`, {
@@ -235,10 +272,11 @@ export function ClientsPage() {
       });
 
       setEditingClient(null);
+      notify.ok(`Cliente «${editingClient.nombre.trim()}» actualizado`);
       invalidarClientes();
       await loadClients();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el cliente");
+      setFormError(mensajeDeError(err, "No se pudo actualizar el cliente."));
     } finally {
       clientSaveLockRef.current = false;
       setIsSavingClient(false);
@@ -253,13 +291,16 @@ export function ClientsPage() {
     if (!deleteClientId) return;
 
     setDeleteClientSubmitting(true);
+    setDeleteError("");
     try {
       await apiRequest(`/clients/${deleteClientId}`, { method: "DELETE" });
+      const nombre = clients.find((c) => c.id === deleteClientId)?.nombre;
       setDeleteClientId(null);
+      notify.ok(nombre ? `Cliente «${nombre}» eliminado` : "Cliente eliminado");
       invalidarClientes();
       await loadClients();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el cliente");
+      setDeleteError(mensajeDeError(err, "No se pudo eliminar el cliente."));
     } finally {
       setDeleteClientSubmitting(false);
     }
@@ -289,7 +330,7 @@ export function ClientsPage() {
       <DeleteConfirmDialog
         open={deleteClientId !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteClientId(null);
+          if (!open) { setDeleteClientId(null); setDeleteError(""); }
         }}
         title="Eliminar cliente"
         description="¿Seguro que quieres eliminar este cliente? Esta acción no se puede deshacer."
@@ -297,35 +338,26 @@ export function ClientsPage() {
         loadingLabel="Eliminando..."
         loading={deleteClientSubmitting}
         onConfirm={confirmDeleteClient}
+        error={deleteError}
       />
-      {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
-      {/* Header */}
-      <div className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Cartera de Clientes</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Base de datos compartida - filtra por marca creadora
-          </p>
-        </div>
-        {canManage && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
-          >
+      <PageHeader
+        title="Cartera de Clientes"
+        subtitle="Base de datos compartida - filtra por marca creadora"
+        actions={canManage && (
+          <Button variant="brand" size="lg" onClick={() => { setFormError(""); setShowAddModal(true); }} className="w-full sm:w-auto">
             <Plus className="w-5 h-5" />
             Nuevo Cliente
-          </button>
+          </Button>
         )}
-      </div>
+      />
+
+      {error ? (
+        <ErrorBanner className="mb-4" onRetry={loadClients}>{error}</ErrorBanner>
+      ) : null}
 
       {/* Search, Brand Filter and Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 mb-6">
-        <div className="md:col-span-2 lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 md:gap-4 mb-6">
+        <div className="col-span-2 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -339,15 +371,15 @@ export function ClientsPage() {
         </div>
 
         {/* Brand Filter Buttons */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="col-span-2 xl:col-span-1 min-w-0 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="w-4 h-4 text-gray-400" />
             <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Creado por</span>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             <button
               onClick={() => handleBrandFilterChange("todos")}
-              className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              className={`flex-1 whitespace-nowrap px-2 py-1.5 rounded-md text-xs transition-colors ${
                 brandFilter === "todos"
                   ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -357,7 +389,7 @@ export function ClientsPage() {
             </button>
             <button
               onClick={() => handleBrandFilterChange("donofrio")}
-              className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              className={`flex-1 whitespace-nowrap px-2 py-1.5 rounded-md text-xs transition-colors ${
                 brandFilter === "donofrio"
                   ? "bg-brand-navy text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -367,7 +399,7 @@ export function ClientsPage() {
             </button>
             <button
               onClick={() => handleBrandFilterChange("jugueton")}
-              className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+              className={`flex-1 whitespace-nowrap px-2 py-1.5 rounded-md text-xs transition-colors ${
                 brandFilter === "jugueton"
                   ? "bg-brand-orange text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -378,25 +410,8 @@ export function ClientsPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
-              <Package className="w-5 h-5 text-brand-navy dark:text-blue-400" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Total Clientes</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{clients.length}</p>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-brand-orange/10 dark:bg-brand-orange/20 p-2 rounded-lg">
-              <Filter className="w-5 h-5 text-brand-orange" />
-            </div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Mostrando</span>
-          </div>
-          <p className="text-3xl text-gray-900 dark:text-white">{filteredClients.length}</p>
-        </div>
+        <StatCard label="Total Clientes" value={clients.length} icon={<Package />} tone="navy" loading={loading} />
+        <StatCard label="Mostrando" value={filteredClients.length} icon={<Filter />} tone="orange" loading={loading} />
       </div>
 
       {/* Clients Table */}
@@ -479,11 +494,7 @@ export function ClientsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                      {new Date(client.lastOrder).toLocaleDateString("es-PE", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {formatearUltimoPedido(client.lastOrder)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -501,13 +512,15 @@ export function ClientsPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => setEditingClient({ ...client })}
+                          onClick={() => { setFormError(""); setEditingClient({ ...client }); }}
+                          aria-label={`Editar ${client.nombre}`}
                           className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteClient(client.id)}
+                          aria-label={`Eliminar ${client.nombre}`}
                           className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -533,23 +546,35 @@ export function ClientsPage() {
         )}
       </div>
 
-      {filteredClients.length === 0 && (
-        <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 mt-6">
-          <p className="text-gray-500 dark:text-gray-400">No se encontraron clientes</p>
-        </div>
+      {!loading && !error && filteredClients.length === 0 && (
+        <EmptyState className="mt-6" title={clients.length === 0 ? "Aún no hay clientes registrados" : "No se encontraron clientes con estos filtros"} />
       )}
 
       {/* Add Client Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-lg w-full relative">
+        <Modal
+          open
+          onClose={() => setShowAddModal(false)}
+          title="Nuevo Cliente"
+          size="md"
+          busy={isSavingClient}
+          error={formError || undefined}
+          footer={<>
             <button
-              onClick={() => setShowAddModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Cliente</h2>
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAddClient}
+                  disabled={isSavingClient}
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSavingClient ? "Guardando..." : "Guardar Cliente"}
+                </button>
+          </>}
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca *</label>
@@ -678,7 +703,7 @@ export function ClientsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
                   <input
@@ -713,38 +738,36 @@ export function ClientsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowAddModal(false)}
+              
+            </div>
+        </Modal>
+      )}
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <Modal
+          open
+          onClose={() => setEditingClient(null)}
+          title="Editar Cliente"
+          size="md"
+          busy={isSavingClient}
+          error={formError || undefined}
+          footer={<>
+            <button
+                  onClick={() => setEditingClient(null)}
                   className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleAddClient}
-                  disabled={isSavingClient || !newClient.nombre || !newClient.phone || !newClient.address || !newClient.city}
-                  title={!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city ? "Completa los campos obligatorios (*)" : undefined}
-                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  onClick={handleEditClient}
+                  disabled={isSavingClient}
+                  className="flex-1 bg-brand-navy text-white px-4 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isSavingClient ? "Guardando..." : "Guardar Cliente"}
+                  {isSavingClient ? "Guardando..." : "Actualizar Cliente"}
                 </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Client Modal */}
-      {editingClient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-lg w-full relative">
-            <button
-              onClick={() => setEditingClient(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-xl text-gray-900 dark:text-white mb-2">Editar Cliente</h2>
+          </>}
+        >
             <div className="mb-6">{getBrandBadge(editingClient.creadoPor)}</div>
             <div className="space-y-4">
               <div>
@@ -840,7 +863,7 @@ export function ClientsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
                   <input
@@ -873,24 +896,9 @@ export function ClientsPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setEditingClient(null)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleEditClient}
-                  disabled={isSavingClient}
-                  className="flex-1 bg-brand-navy text-white px-4 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSavingClient ? "Guardando..." : "Actualizar Cliente"}
-                </button>
-              </div>
+              
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

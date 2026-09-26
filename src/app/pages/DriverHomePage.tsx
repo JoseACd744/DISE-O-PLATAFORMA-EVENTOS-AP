@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigation, MapPin, Clock3, CheckCircle2, PlayCircle, PauseCircle, AlertCircle, Download } from "lucide-react";
+import { Navigation, MapPin, Clock3, CheckCircle2, PlayCircle, PauseCircle, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
-import { getLocalDateString } from "../lib/date";
+import { getLocalDateString, parseLocalDate } from "../lib/date";
 import { getAuthUser } from "../lib/auth";
+import { mensajeDeError, notify } from "../lib/notify";
+import { ErrorBanner } from "../components/ui/feedback";
+import { Button } from "../components/ui/button";
+
+const MENSAJES_GPS: Record<number, string> = {
+  1: "Permiso de ubicación denegado. Actívalo en la configuración del navegador para compartir tu ubicación.",
+  2: "No se pudo determinar tu ubicación. Revisa que el GPS esté encendido.",
+  3: "El GPS tardó demasiado en responder. Inténtalo de nuevo al aire libre.",
+};
 
 type AssignmentStatus = "programada" | "en-curso" | "completada";
 
@@ -58,6 +67,7 @@ export function DriverHomePage() {
   const [gpsError, setGpsError] = useState("");
   const [lastPosition, setLastPosition] = useState<GpsSnapshot | null>(null);
   const [lastSentAt, setLastSentAt] = useState<string>("");
+  const [actualizando, setActualizando] = useState<number | null>(null);
   const watcherRef = useRef<number | null>(null);
   const ultimoEnvioRef = useRef<{ t: number; lat: number; lng: number } | null>(null);
 
@@ -65,7 +75,11 @@ export function DriverHomePage() {
   const choferId = Number(authUser?.id || 0);
 
   const loadData = async () => {
-    if (!choferId) return;
+    if (!choferId) {
+      setLoading(false);
+      setError("No se pudo identificar tu usuario de chofer. Cierra sesión y vuelve a ingresar.");
+      return;
+    }
 
     setError("");
     setLoading(true);
@@ -88,7 +102,7 @@ export function DriverHomePage() {
       }, {});
       setFichasById(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar tus rutas");
+      setError(mensajeDeError(err, "No se pudieron cargar tus rutas."));
     } finally {
       setLoading(false);
     }
@@ -108,7 +122,7 @@ export function DriverHomePage() {
 
   const startTracking = () => {
     if (!navigator.geolocation) {
-      setGpsError("Este dispositivo no soporta geolocalizacion");
+      setGpsError("Este dispositivo no permite obtener la ubicación.");
       return;
     }
 
@@ -141,6 +155,7 @@ export function DriverHomePage() {
         try {
           await apiRequest("/logistics/positions", {
             method: "POST",
+            silencioso: true,
             body: JSON.stringify({
               chofer_id: choferId,
               lat: snapshot.lat,
@@ -150,14 +165,16 @@ export function DriverHomePage() {
               timestamp: snapshot.timestamp,
             }),
           });
-          setLastSentAt(new Date().toLocaleTimeString());
+          setLastSentAt(new Date().toLocaleTimeString("es-PE"));
         } catch {
           // Fallback local: seguimos enviando al cache.
-          setLastSentAt(`Local ${new Date().toLocaleTimeString()}`);
+          setLastSentAt(`${new Date().toLocaleTimeString("es-PE")} (guardado en el teléfono)`);
         }
       },
       (err) => {
-        setGpsError(err.message || "No se pudo obtener la ubicacion");
+        setGpsError(MENSAJES_GPS[err.code] || "No se pudo obtener la ubicación.");
+        // Sin permiso no tiene sentido seguir intentando
+        if (err.code === 1) stopTracking();
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
@@ -172,14 +189,19 @@ export function DriverHomePage() {
   };
 
   const updateAssignmentStatus = async (assignment: Assignment, status: AssignmentStatus) => {
+    if (actualizando !== null) return;
+    setActualizando(assignment.id);
     try {
       await apiRequest(`/logistics/asignaciones/${assignment.id}`, {
         method: "PUT",
         body: JSON.stringify({ estado: status }),
       });
+      notify.ok(status === "completada" ? "Ruta marcada como completada" : "Ruta iniciada");
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el estado");
+      notify.error(err, "No se pudo actualizar el estado de la ruta.");
+    } finally {
+      setActualizando(null);
     }
   };
 
@@ -191,7 +213,10 @@ export function DriverHomePage() {
       );
 
       const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");
-      if (!popup) return;
+      if (!popup) {
+        notify.aviso("El navegador bloqueó la ventana de la hoja de ruta. Permite las ventanas emergentes e inténtalo de nuevo.");
+        return;
+      }
 
       const escapeHtml = (val: string) => (val || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       const formatMoney = (n: number) => `S/ ${Number(n || 0).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -220,7 +245,7 @@ export function DriverHomePage() {
               ${escapeHtml(f.hora_entrega)}<br/>
               <small>Recojo: ${escapeHtml(f.hora_recojo)}</small>
             </td>
-            <td>${escapeHtml(itemsStr || "Sin items")}</td>
+            <td>${escapeHtml(itemsStr || "Sin productos")}</td>
             <td style="text-align:right; font-weight:bold; color:${saldo > 0 ? "#e11d48" : "#16a34a"};">
               ${formatMoney(saldo)}
             </td>
@@ -260,7 +285,7 @@ export function DriverHomePage() {
                 <p style="margin: 5px 0 0;">${escapeHtml(asig.ruta || "Ruta General")}</p>
               </div>
               <div style="text-align: right;">
-                <p><b>Fecha:</b> ${asig.fecha}</p>
+                <p><b>Fecha:</b> ${parseLocalDate(asig.fecha).toLocaleDateString("es-PE")}</p>
                 <p><b>ID Asignación:</b> #${asig.id}</p>
               </div>
             </div>
@@ -275,7 +300,7 @@ export function DriverHomePage() {
                   <th>Cliente</th>
                   <th>Dirección</th>
                   <th style="width: 100px;">Horario</th>
-                  <th>Items</th>
+                  <th>Productos</th>
                   <th style="width: 80px;">Saldo</th>
                 </tr>
               </thead>
@@ -294,7 +319,7 @@ export function DriverHomePage() {
       popup.document.write(html);
       popup.document.close();
     } catch (err) {
-      alert("Error al generar la hoja de ruta");
+      notify.error(err, "No se pudo generar la hoja de ruta.");
     }
   };
 
@@ -314,11 +339,11 @@ export function DriverHomePage() {
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm text-gray-900 dark:text-white">Tracking GPS</h2>
+          <h2 className="text-sm text-gray-900 dark:text-white">Compartir ubicación</h2>
           {tracking ? (
             <button
               onClick={stopTracking}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300"
             >
               <PauseCircle className="h-4 w-4" />
               Detener
@@ -326,7 +351,7 @@ export function DriverHomePage() {
           ) : (
             <button
               onClick={startTracking}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300"
             >
               <PlayCircle className="h-4 w-4" />
               Iniciar
@@ -335,7 +360,7 @@ export function DriverHomePage() {
         </div>
 
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Ultimo envio: {lastSentAt || "Sin datos"}
+          Último envío: {lastSentAt || "Sin datos"}
         </p>
 
         {lastPosition ? (
@@ -345,40 +370,39 @@ export function DriverHomePage() {
         ) : null}
 
         {gpsError ? (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            {gpsError}
-          </div>
+          <ErrorBanner tone="warning" className="mt-3">{gpsError}</ErrorBanner>
         ) : null}
       </section>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+        <ErrorBanner onRetry={choferId ? loadData : undefined}>{error}</ErrorBanner>
       ) : null}
 
       <section className="space-y-3 pb-6">
         {loading ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
             Cargando rutas...
           </div>
-        ) : assignments.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800">
+        ) : error ? null : assignments.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
             No tienes rutas asignadas para hoy.
           </div>
         ) : (
           assignments.map((assignment) => (
             <article key={assignment.id} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm text-gray-900 dark:text-white">{assignment.ruta || `Ruta #${assignment.id}`}</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-900 dark:text-white truncate">{assignment.ruta || `Ruta #${assignment.id}`}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {assignment.fecha} · {assignment.vehiculo?.placa || "Sin vehiculo"}
+                    {parseLocalDate(assignment.fecha).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })} · {assignment.vehiculo?.placa || "Sin vehículo"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     onClick={() => handleGenerarHojaRuta(assignment)}
-                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-brand-navy/10 rounded-lg transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-brand-navy/10 dark:hover:text-blue-400 rounded-lg transition-colors"
                     title="Descargar Hoja de Ruta"
+                    aria-label="Descargar Hoja de Ruta"
                   >
                     <Download className="h-4 w-4" />
                   </button>
@@ -392,10 +416,10 @@ export function DriverHomePage() {
                   if (!ficha) return null;
                   const destination = `${ficha.direccion}, ${ficha.distrito}`;
                   return (
-                    <div key={fichaId} className="rounded-lg border border-gray-100 p-3 dark:border-gray-700">
-                      <p className="text-sm text-gray-900 dark:text-white">{ficha.cliente_nombre}</p>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        <MapPin className="h-3.5 w-3.5" /> {destination}
+                    <div key={fichaId} className="min-w-0 rounded-lg border border-gray-100 p-3 dark:border-gray-700">
+                      <p className="text-sm text-gray-900 dark:text-white break-words">{ficha.cliente_nombre}</p>
+                      <div className="mt-1 flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" /> <span className="min-w-0 break-words">{destination}</span>
                       </div>
                       {ficha.hora_entrega ? (
                         <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -406,7 +430,7 @@ export function DriverHomePage() {
                         href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"
+                        className="mt-2 inline-flex items-center gap-1 text-xs text-brand-navy dark:text-blue-400 hover:underline"
                       >
                         <Navigation className="h-3.5 w-3.5" /> Navegar
                       </a>
@@ -417,21 +441,19 @@ export function DriverHomePage() {
 
               <div className="mt-3 flex gap-2">
                 {assignment.estado !== "en-curso" ? (
-                  <button
-                    onClick={() => updateAssignmentStatus(assignment, "en-curso")}
-                    className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700"
-                  >
+                  <Button variant="outline" size="sm" className="flex-1 text-blue-700 dark:text-blue-300"
+                    loading={actualizando === assignment.id} disabled={actualizando !== null}
+                    onClick={() => updateAssignmentStatus(assignment, "en-curso")}>
                     Iniciar ruta
-                  </button>
+                  </Button>
                 ) : null}
 
                 {assignment.estado !== "completada" ? (
-                  <button
-                    onClick={() => updateAssignmentStatus(assignment, "completada")}
-                    className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700"
-                  >
+                  <Button variant="outline" size="sm" className="flex-1 text-green-700 dark:text-green-300"
+                    loading={actualizando === assignment.id} disabled={actualizando !== null}
+                    onClick={() => updateAssignmentStatus(assignment, "completada")}>
                     Marcar completada
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </article>
@@ -439,10 +461,6 @@ export function DriverHomePage() {
         )}
       </section>
 
-      <div className="flex items-start gap-2 rounded-lg border border-brand-navy/20 bg-brand-navy/5 px-3 py-2 text-xs text-brand-navy">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        Si el backend aun no tiene /logistics/positions, el tracking queda guardado localmente y no bloquea la operacion.
-      </div>
     </div>
   );
 }
@@ -451,17 +469,17 @@ function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3 text-center dark:border-gray-700 dark:bg-gray-800">
       <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="text-xl text-gray-900 dark:text-white">{value}</p>
+      <p className="text-xl text-gray-900 dark:text-white tabular-nums truncate">{value}</p>
     </div>
   );
 }
 
 function StatusPill({ status }: { status: AssignmentStatus }) {
   if (status === "completada") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-[11px] text-green-700"><CheckCircle2 className="h-3 w-3" /> Completada</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-[11px] text-green-700 dark:bg-green-900/30 dark:text-green-300"><CheckCircle2 className="h-3 w-3" /> Completada</span>;
   }
   if (status === "en-curso") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[11px] text-blue-700">En curso</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[11px] text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">En curso</span>;
   }
-  return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] text-amber-700">Programada</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Programada</span>;
 }

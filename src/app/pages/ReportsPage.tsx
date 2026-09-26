@@ -6,6 +6,7 @@ import {
 import { apiRequest } from "../lib/api";
 import { getLocalDateString, parseLocalDate } from "../lib/date";
 import { obtenerAsignaciones, obtenerClientes, obtenerFichasConDetalle } from "../lib/queries";
+import { StatCard } from "../components/ui/stat-card";
 import { useProducts } from "../contexts/ProductsContext";
 import { useBrand } from "../contexts/BrandContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -140,21 +141,7 @@ function variacion(actual: number, previo: number): Variacion {
 function Tile({ label, valor, detalle, delta, comparacion, subirEsBueno = true }: {
   label: string; valor: string; detalle?: string; delta?: Variacion; comparacion?: string; subirEsBueno?: boolean;
 }) {
-  const bueno = delta?.sube === null || delta?.sube === undefined ? null : delta.sube === subirEsBueno;
-  const Icono = delta?.sube === null ? Minus : delta?.sube ? ArrowUpRight : ArrowDownRight;
-  return (
-    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{label}</p>
-      <p className="text-2xl text-gray-900 dark:text-white">{valor}</p>
-      {delta && (
-        <p className={`mt-1 text-xs flex items-center gap-1 ${bueno === null ? "text-gray-500 dark:text-gray-400" : bueno ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-          <Icono className="w-3.5 h-3.5" />
-          {delta.texto} <span className="text-gray-500 dark:text-gray-400">vs {comparacion}</span>
-        </p>
-      )}
-      {detalle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{detalle}</p>}
-    </div>
-  );
+  return <StatCard label={label} value={valor} detail={detalle} delta={delta} comparacion={comparacion} subirEsBueno={subirEsBueno} />;
 }
 
 type Columna = { titulo: string; valor: (fila: any) => string; derecha?: boolean };
@@ -266,17 +253,22 @@ export function ReportsPage() {
   const [asignaciones, setAsignaciones] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState("");
+  const [sinAsignaciones, setSinAsignaciones] = useState(false);
 
   useEffect(() => {
     if (!brand) return;
     let cancelled = false;
     setCargando(true);
     setErrorCarga("");
+    setSinAsignaciones(false);
     Promise.all([
       obtenerFichasConDetalle(brand),
       obtenerClientes(brand),
       // Sin asignaciones el informe igual se muestra; solo falta saber quién lleva cada ficha
-      obtenerAsignaciones().catch(() => []),
+      obtenerAsignaciones().catch(() => {
+        if (!cancelled) setSinAsignaciones(true);
+        return [];
+      }),
     ])
       .then(([f, c, a]) => {
         if (cancelled) return;
@@ -577,6 +569,11 @@ export function ReportsPage() {
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>{errorCarga}</span>
           </div>
         )}
+        {!errorCarga && sinAsignaciones && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>No se pudieron cargar las asignaciones de choferes: los eventos pueden aparecer como «Sin asignar» aunque ya tengan chofer.</span>
+          </div>
+        )}
       </div>
 
       {/* ══ HOY Y PRÓXIMOS DÍAS ══ */}
@@ -631,7 +628,7 @@ export function ReportsPage() {
       </Seccion>
 
       {/* Filtro de período: una sola fila para todas las secciones de análisis */}
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 py-3 mb-6 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-y border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
+      <div className="sticky top-[61px] lg:top-0 z-[5] -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 py-3 mb-6 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-y border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
         <span className="text-sm text-gray-600 dark:text-gray-400">Período:</span>
         <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
           {(["month", "day", "range"] as const).map((m) => (
@@ -752,6 +749,7 @@ export function ReportsPage() {
             {cobranza.vencidas.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 py-10 text-center">No hay saldos de eventos pasados</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
@@ -770,6 +768,7 @@ export function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

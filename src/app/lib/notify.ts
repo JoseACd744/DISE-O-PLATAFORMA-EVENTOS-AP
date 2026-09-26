@@ -95,6 +95,10 @@ export const notify = {
   ok: (mensaje: string) => toast.success(mensaje),
   aviso: (mensaje: string) => toast.warning(mensaje, { duration: 7000 }),
   // `id` evita apilar el mismo aviso varias veces (p. ej. varias peticiones que fallan a la vez)
+  // Un 403 ya se avisa desde apiRequest con el id "sin-permiso": se reutiliza para no mostrarlo dos veces
   error: (err: unknown, porDefecto?: string, opciones: { id?: string } = {}) =>
-    toast.error(mensajeDeError(err, porDefecto), { duration: 7000, id: opciones.id }),
+    toast.error(mensajeDeError(err, porDefecto), {
+      duration: 7000,
+      id: opciones.id ?? ((err as { status?: number } | null)?.status === 403 ? "sin-permiso" : undefined),
+    }),
 };

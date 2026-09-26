@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, CreditCard, DollarSign, Receipt, Search, X, Eye, ExternalLink, Loader2, Edit, Upload, Trash2 } from "lucide-react";
-import { apiRequest, API_BASE_URL } from "../lib/api";
+import { apiRequest, API_BASE_URL, apiUpload } from "../lib/api";
 import { invalidarFichas, obtenerFichasConDetalle } from "../lib/queries";
+import { Modal } from "../components/ui/modal";
+import { Button } from "../components/ui/button";
+import { StatCard } from "../components/ui/stat-card";
+import { PageHeader } from "../components/ui/page-header";
+import { ErrorBanner } from "../components/ui/feedback";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { mensajeDeError, notify } from "../lib/notify";
 import { useBrand } from "../contexts/BrandContext";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 
@@ -51,7 +58,7 @@ function extractStoragePathFromUrl(value: string) {
 export function PagosPage() {
   const { brand } = useBrand();
   const [pagos,       setPagos]       = useState<PagoRow[]>([]);
-  const [loading,     setLoading]     = useState(false);
+  const [loading,     setLoading]     = useState(true);
   const [filterFrom,  setFilterFrom]  = useState("");
   const [filterTo,    setFilterTo]    = useState("");
   const [filterMedio, setFilterMedio] = useState("Todos");
@@ -61,6 +68,7 @@ export function PagosPage() {
   const [deletingPago, setDeletingPago] = useState<PagoRow | null>(null);
   const [isDeletingPago, setIsDeletingPago] = useState(false);
   const [cargaError, setCargaError] = useState("");
+  const [deletePagoError, setDeletePagoError] = useState("");
 
   // Todas las fichas de la marca con sus abonos en una sola petición (antes: una por ficha).
   // El filtro por fecha se aplica sobre la fecha del PAGO, no sobre la del evento.
@@ -114,11 +122,13 @@ export function PagosPage() {
     setPagos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     // Fichas y Reportes deben ver el cambio la próxima vez que se abran
     void invalidarFichas();
+    notify.ok("Pago actualizado");
   };
 
   const handleDeletePago = async () => {
     if (!deletingPago) return;
     setIsDeletingPago(true);
+    setDeletePagoError("");
     try {
       await apiRequest(`/fichas/${deletingPago.fichaId}/abonos/${deletingPago.id}`, { method: "DELETE" });
 
@@ -126,18 +136,19 @@ export function PagosPage() {
         const path = extractStoragePathFromUrl(deletingPago.comprobanteUrl);
         if (path) {
           try {
-            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }) });
+            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }), silencioso: true });
           } catch {
             // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
           }
         }
       }
 
+      notify.ok(`Pago de ${formatMoney(deletingPago.monto)} eliminado`);
       setPagos((prev) => prev.filter((p) => p.id !== deletingPago.id));
       void invalidarFichas();
       setDeletingPago(null);
     } catch (err) {
-      console.error(err);
+      setDeletePagoError(mensajeDeError(err, "No se pudo eliminar el pago."));
     } finally {
       setIsDeletingPago(false);
     }
@@ -169,15 +180,12 @@ export function PagosPage() {
   return (
     <div className="p-4 sm:p-6 md:p-8">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Registro de Pagos</h1>
-        <p className="text-gray-600 dark:text-gray-400">Comprobantes y abonos registrados por período</p>
-      </div>
+      <PageHeader title="Registro de Pagos" subtitle="Comprobantes y abonos registrados por período" />
 
       {/* Filtros */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6">
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-0 basis-full sm:basis-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -187,11 +195,11 @@ export function PagosPage() {
               className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange text-sm"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto min-w-0">
             <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-            <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className={inputClass} />
+            <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className={`${inputClass} min-w-0 flex-1 sm:flex-none`} aria-label="Desde" />
             <span className="text-gray-400">—</span>
-            <input type="date" value={filterTo} min={filterFrom} onChange={(e) => setFilterTo(e.target.value)} className={inputClass} />
+            <input type="date" value={filterTo} min={filterFrom} onChange={(e) => setFilterTo(e.target.value)} className={`${inputClass} min-w-0 flex-1 sm:flex-none`} aria-label="Hasta" />
           </div>
           <select value={filterMedio} onChange={(e) => setFilterMedio(e.target.value)} className={inputClass}>
             {MEDIOS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -200,31 +208,17 @@ export function PagosPage() {
         </div>
 
         {cargaError && (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
-            {cargaError}
-          </div>
+          <ErrorBanner className="mt-3" onRetry={() => window.location.reload()}>{cargaError}</ErrorBanner>
         )}
       </div>
 
-      {/* Cards de resumen */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="md:col-span-1 bg-brand-navy text-white rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 opacity-80" />
-            <span className="text-xs opacity-80 uppercase tracking-wide">Total cobrado</span>
-          </div>
-          <p className="text-xl">{formatMoney(stats.total)}</p>
-          <p className="text-xs opacity-60 mt-1">{filteredPagos.length} pago{filteredPagos.length !== 1 ? "s" : ""}</p>
-        </div>
+      {/* Resumen */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4 mb-6">
+        <StatCard highlight label="Total cobrado" value={formatMoney(stats.total)} icon={<DollarSign />}
+          detail={`${filteredPagos.length} pago${filteredPagos.length !== 1 ? "s" : ""}`} loading={loading} />
         {stats.porMedio.map(({ medio, monto, count }) => (
-          <div key={medio} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <CreditCard className="w-4 h-4 text-gray-400" />
-              <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{medio}</span>
-            </div>
-            <p className="text-base text-gray-900 dark:text-white">{formatMoney(monto)}</p>
-            <p className="text-xs text-gray-400 mt-1">{count} pago{count !== 1 ? "s" : ""}</p>
-          </div>
+          <StatCard key={medio} label={medio} value={formatMoney(monto)} icon={<CreditCard className="text-gray-400" />}
+            detail={`${count} pago${count !== 1 ? "s" : ""}`} loading={loading} />
         ))}
       </div>
 
@@ -314,43 +308,23 @@ export function PagosPage() {
         )}
       </div>
 
-      {/* Modal de vista previa de comprobante */}
+      {/* Vista previa del comprobante */}
       {previewUrl && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
-          onClick={() => setPreviewUrl(null)}
+        <Modal
+          open
+          onClose={() => setPreviewUrl(null)}
+          title="Comprobante de pago"
+          size="md"
+          bodyClassName="p-0"
+          footer={
+            <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <ExternalLink className="w-4 h-4" /> Abrir en otra pestaña
+            </a>
+          }
         >
-          <div
-            className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden max-w-lg w-full shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-              <span className="text-sm text-gray-700 dark:text-gray-300">Comprobante de pago</span>
-              <div className="flex items-center gap-1">
-                <a
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
-                  title="Abrir en nueva pestaña"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-                <button
-                  onClick={() => setPreviewUrl(null)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <img
-              src={previewUrl}
-              alt="Comprobante"
-              className="w-full max-h-[70vh] object-contain bg-gray-50 dark:bg-gray-900"
-            />
-          </div>
-        </div>
+          <ImageWithFallback src={previewUrl} alt="Comprobante" className="w-full max-h-[65vh] object-contain bg-gray-50 dark:bg-gray-900" />
+        </Modal>
       )}
 
       {/* Modal de edición de pago */}
@@ -365,7 +339,7 @@ export function PagosPage() {
       <DeleteConfirmDialog
         open={deletingPago !== null}
         onOpenChange={(open) => {
-          if (!open) setDeletingPago(null);
+          if (!open) { setDeletingPago(null); setDeletePagoError(""); }
         }}
         title="Eliminar pago"
         description={
@@ -377,6 +351,7 @@ export function PagosPage() {
         loadingLabel="Eliminando..."
         loading={isDeletingPago}
         onConfirm={handleDeletePago}
+        error={deletePagoError}
       />
     </div>
   );
@@ -405,29 +380,10 @@ function EditPagoModal({
     setIsUploading(true);
     setModalError("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "comprobantes");
-
-      const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: formData });
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const isJson = contentType.includes("application/json");
-        const errorData = isJson ? await response.json() : { error: `HTTP ${response.status}` };
-        throw new Error((errorData as any).error || "Error al subir el archivo");
-      }
-
-      const data = await response.json();
-      const rawUrl = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";
-      const rawPath = data?.path || data?.filePath || data?.data?.path || extractStoragePathFromUrl(rawUrl);
-      if (!rawUrl || !rawPath) throw new Error("La API respondió sin URL/path del archivo subido");
-
-      const normalizedUrl = typeof rawUrl === "string" && rawUrl.startsWith("/")
-        ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
-        : rawUrl;
+      const { url: normalizedUrl } = await apiUpload(file, "comprobantes");
       setComprobanteUrl(normalizedUrl);
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al subir el comprobante");
+      setModalError(mensajeDeError(err, "No se pudo subir el comprobante."));
     } finally {
       setIsUploading(false);
     }
@@ -435,9 +391,9 @@ function EditPagoModal({
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
     await uploadFile(file);
-    event.target.value = "";
   };
 
   const handlePaste = async (event: React.ClipboardEvent) => {
@@ -455,7 +411,14 @@ function EditPagoModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const montoNumerico = Number(monto);
-    if (!montoNumerico || montoNumerico <= 0) return;
+    if (!montoNumerico || montoNumerico <= 0) {
+      setModalError("Ingresa un monto mayor a S/ 0.00.");
+      return;
+    }
+    if (isUploading) {
+      setModalError("Espera a que termine de subirse el comprobante.");
+      return;
+    }
 
     setModalError("");
     setIsSaving(true);
@@ -473,7 +436,7 @@ function EditPagoModal({
         const path = extractStoragePathFromUrl(originalComprobanteUrl);
         if (path) {
           try {
-            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }) });
+            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }), silencioso: true });
           } catch {
             // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
           }
@@ -482,7 +445,7 @@ function EditPagoModal({
 
       onClose();
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al guardar el pago");
+      setModalError(mensajeDeError(err, "No se pudo guardar el pago."));
     } finally {
       setIsSaving(false);
     }
@@ -491,25 +454,23 @@ function EditPagoModal({
   const inputClass = "w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white";
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h3 className="text-2xl text-gray-900 dark:text-white">Editar Pago</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Ficha #{pago.fichaId} · {pago.clienteNombre}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {modalError && (
-          <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-            <p className="text-sm text-red-700 dark:text-red-400">{modalError}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open
+      onClose={onClose}
+      title="Editar Pago"
+      description={`Ficha #${pago.fichaId} · ${pago.clienteNombre}`}
+      busy={isSaving}
+      error={modalError || undefined}
+      footer={
+        <>
+          <Button type="button" variant="subtle" size="lg" onClick={onClose} disabled={isSaving}>Cancelar</Button>
+          <Button type="submit" form="pago-form" variant="brand" size="lg" loading={isSaving} disabled={isUploading}>
+            {isSaving ? "Guardando..." : isUploading ? "Subiendo comprobante..." : "Guardar cambios"}
+          </Button>
+        </>
+      }
+    >
+        <form id="pago-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputClass} />
@@ -555,7 +516,7 @@ function EditPagoModal({
             {comprobanteUrl && (
               <div className="mt-3">
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <img src={comprobanteUrl} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+                  <ImageWithFallback src={comprobanteUrl} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
                 </div>
                 <button
                   type="button"
@@ -568,25 +529,7 @@ function EditPagoModal({
               </div>
             )}
           </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={isSaving || isUploading}
-              className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
-            >
-              {isSaving ? "Guardando..." : "Guardar cambios"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
-            >
-              Cancelar
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

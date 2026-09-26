@@ -134,27 +134,27 @@ export function LoginPage() {
       </div>
 
       {/* Right side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-8 bg-white">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-8 bg-white dark:bg-gray-900">
         <div className="w-full max-w-md">
           <div className="mb-8">
             <div className="flex items-center justify-center mb-6">
-              <div className="w-[240px] max-w-full rounded-xl bg-gray-100 flex items-center justify-center p-2 border border-gray-200">
+              <div className="w-[240px] max-w-full rounded-xl bg-gray-100 flex items-center justify-center p-2 border border-gray-200 dark:border-gray-700">
                 <img src={LOGOS.eventosAp} alt="Eventos AP" className="w-full h-auto object-contain rounded-md" />
               </div>
             </div>
-            <h2 className="text-3xl text-gray-900 mb-2">Iniciar Sesión</h2>
-            <p className="text-gray-600">Bienvenido a Eventos AP</p>
+            <h2 className="text-3xl text-gray-900 dark:text-white mb-2">Iniciar Sesión</h2>
+            <p className="text-gray-600 dark:text-gray-400">Bienvenido a Eventos AP</p>
           </div>
 
           <div className="mb-6 space-y-3">
-            <label htmlFor="googleBrand" className="block text-sm text-gray-700">
+            <label htmlFor="googleBrand" className="block text-sm text-gray-700 dark:text-gray-300">
               Marca para primer acceso con Google
             </label>
             <select
               id="googleBrand"
               value={googleBrand}
               onChange={(e) => setGoogleBrand(e.target.value as "donofrio" | "jugueton")}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             >
               <option value="donofrio">D'Onofrio</option>
               <option value="jugueton">Juguetón</option>
@@ -174,7 +174,7 @@ export function LoginPage() {
                 />
               </div>
             ) : (
-              <div className="w-full px-4 py-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-700 text-sm">
+              <div className="w-full px-4 py-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-700 text-sm dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
                 Configura VITE_GOOGLE_CLIENT_ID para habilitar Google Sign-In.
               </div>
             )}
@@ -182,26 +182,26 @@ export function LoginPage() {
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
+              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white text-gray-500">O ingresa con tu cuenta</span>
+              <span className="px-4 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">O ingresa con tu cuenta</span>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {error ? (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300">
                 {error}
               </div>
             ) : sesionExpirada ? (
-              <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
                 Tu sesión expiró. Vuelve a iniciar sesión para continuar.
               </div>
             ) : null}
 
             <div>
-              <label htmlFor="email" className="block text-sm mb-2 text-gray-700">
+              <label htmlFor="email" className="block text-sm mb-2 text-gray-700 dark:text-gray-300">
                 Correo Electrónico
               </label>
               <input
@@ -210,13 +210,13 @@ export function LoginPage() {
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="correo@ejemplo.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm mb-2 text-gray-700">
+              <label htmlFor="password" className="block text-sm mb-2 text-gray-700 dark:text-gray-300">
                 Contraseña
               </label>
               <div className="relative">
@@ -226,13 +226,13 @@ export function LoginPage() {
                   required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent pr-12"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent pr-12"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -245,9 +245,9 @@ export function LoginPage() {
                   type="checkbox"
                   className="w-4 h-4 text-brand-orange border-gray-300 rounded focus:ring-brand-orange"
                 />
-                <span className="ml-2 text-sm text-gray-600">Recordarme</span>
+                <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Recordarme</span>
               </label>
-              <a href="#" className="text-sm text-brand-navy hover:text-[#E64441]">
+              <a href="#" className="text-sm text-brand-navy dark:text-blue-400 hover:text-[#E64441]">
                 ¿Olvidaste tu contraseña?
               </a>
             </div>

@@ -8,6 +8,8 @@ import {
   GripVertical, ChevronsUp, ChevronsDown,
 } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { mensajeDeError } from "../lib/notify";
+import { ErrorBanner, LoadingState } from "../components/ui/feedback";
 import { obtenerFichasLista } from "../lib/queries";
 import { useBrand } from "../contexts/BrandContext";
 
@@ -240,6 +242,9 @@ export function RoutesMapPage() {
   const { brand } = useBrand();
 
   const [vehiculosRuta, setVehiculosRuta] = useState<VehiculoRuta[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [cargaError, setCargaError] = useState("");
+  const [recarga, setRecarga] = useState(0);
   const [selectedVehiculoRuta, setSelectedVehiculoRuta] = useState<VehiculoRuta | null>(null);
   const [fichasPins, setFichasPins] = useState<GeocodedFicha[]>([]);
   const [fichasOrder, setFichasOrder] = useState<GeocodedFicha[]>([]);
@@ -254,6 +259,9 @@ export function RoutesMapPage() {
   // ── Load vehicles ─────────────────────────────────────────────
   useEffect(() => {
     if (!brand) return;
+    let cancelado = false;
+    setCargando(true);
+    setCargaError("");
     (async () => {
       try {
         const [vehiculosApi, asignacionesApi, fichasApi, personalApi] = await Promise.all([
@@ -285,10 +293,15 @@ export function RoutesMapPage() {
             .filter(Boolean) as FichaPin[];
           return { id: v.id, placa: v.placa, modelo: v.modelo || "", chofer: choferNombre, estado: v.estado, fichas };
         });
-        setVehiculosRuta(result);
-      } catch { /* fail silently */ }
+        if (!cancelado) setVehiculosRuta(result);
+      } catch (err) {
+        if (!cancelado) setCargaError(mensajeDeError(err, "No se pudieron cargar los vehículos y sus rutas."));
+      } finally {
+        if (!cancelado) setCargando(false);
+      }
     })();
-  }, [brand]);
+    return () => { cancelado = true; };
+  }, [brand, recarga]);
 
   // ── Sync fichasOrder when geocoding finishes ──────────────────
   useEffect(() => {
@@ -393,7 +406,7 @@ export function RoutesMapPage() {
   const defaultCenter: [number, number] = [-12.0464, -77.0428];
 
   return (
-    <div className="h-[calc(100dvh-56px)] lg:h-screen flex flex-col lg:flex-row">
+    <div className="h-[calc(100dvh-61px)] lg:h-dvh flex flex-col lg:flex-row">
 
       {/* ── Sidebar ───────────────────────────────────── */}
       <div className="lg:w-96 bg-white dark:bg-gray-800 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden lg:h-full max-h-[45vh] lg:max-h-none">
@@ -418,7 +431,11 @@ export function RoutesMapPage() {
 
         {/* Vehicles list */}
         <div className="flex-1 overflow-y-auto p-3">
-          {vehiculosRuta.length === 0 ? (
+          {cargaError ? (
+            <ErrorBanner onRetry={() => setRecarga((n) => n + 1)}>{cargaError}</ErrorBanner>
+          ) : cargando ? (
+            <LoadingState label="Cargando vehículos…" />
+          ) : vehiculosRuta.length === 0 ? (
             <div className="text-center py-10">
               <Car className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
               <p className="text-xs text-gray-400 dark:text-gray-500">Sin vehículos con asignaciones</p>
