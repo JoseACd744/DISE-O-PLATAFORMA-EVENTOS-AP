@@ -35,6 +35,18 @@ type GpsSnapshot = {
 };
 
 const GPS_CACHE_KEY = "driverGpsCache";
+// El GPS entrega una lectura cada pocos segundos: solo se envía/guarda cada 30 s o al moverse 50 m
+const GPS_INTERVALO_MS = 30_000;
+const GPS_DISTANCIA_M = 50;
+
+function distanciaMetros(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6_371_000;
+  const rad = (g: number) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
 export function DriverHomePage() {
   const authUser = getAuthUser();
@@ -47,6 +59,7 @@ export function DriverHomePage() {
   const [lastPosition, setLastPosition] = useState<GpsSnapshot | null>(null);
   const [lastSentAt, setLastSentAt] = useState<string>("");
   const watcherRef = useRef<number | null>(null);
+  const ultimoEnvioRef = useRef<{ t: number; lat: number; lng: number } | null>(null);
 
   const today = getLocalDateString();
   const choferId = Number(authUser?.id || 0);
@@ -101,6 +114,7 @@ export function DriverHomePage() {
 
     setGpsError("");
     setTracking(true);
+    ultimoEnvioRef.current = null;
 
     watcherRef.current = navigator.geolocation.watchPosition(
       async (position) => {
@@ -113,6 +127,11 @@ export function DriverHomePage() {
         };
 
         setLastPosition(snapshot);
+
+        const ultimo = ultimoEnvioRef.current;
+        const ahora = Date.now();
+        if (ultimo && ahora - ultimo.t < GPS_INTERVALO_MS && distanciaMetros(ultimo, snapshot) < GPS_DISTANCIA_M) return;
+        ultimoEnvioRef.current = { t: ahora, lat: snapshot.lat, lng: snapshot.lng };
 
         // Si backend aun no tiene endpoint de posiciones, se guarda local para no perder tracking.
         const localCache = JSON.parse(localStorage.getItem(GPS_CACHE_KEY) || "[]") as GpsSnapshot[];
@@ -166,9 +185,9 @@ export function DriverHomePage() {
 
   const handleGenerarHojaRuta = async (asig: Assignment) => {
     try {
-      // Fetch full ficha details for each ID
+      // Las fichas del día ya están cargadas: solo se piden las que falten
       const fullFichas = await Promise.all(
-        asig.fichas_ids.map(id => apiRequest<any>(`/fichas/${id}`))
+        asig.fichas_ids.map(id => (fichasById[id] as any) ?? apiRequest<any>(`/fichas/${id}`))
       );
 
       const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");

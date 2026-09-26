@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import { apiRequest } from "../lib/api";
+import { obtenerClientes, obtenerFichasLista } from "../lib/queries";
 import { useBrand } from "../contexts/BrandContext";
 
 interface Stats {
@@ -32,8 +33,9 @@ export function DashboardPage() {
     (async () => {
       try {
         const [fichas, clientes, vehiculos, personal] = await Promise.all([
-          apiRequest<any[]>(`/fichas?brand=${brand}`).catch(() => []),
-          apiRequest<any[]>(`/clients?brand=${brand}`).catch(() => []),
+          // Desde la caché compartida: si otra página ya los cargó, no se vuelven a pedir
+          obtenerFichasLista(brand).catch(() => []),
+          obtenerClientes(brand).catch(() => []),
           apiRequest<any[]>(`/logistics/vehiculos?brand=${brand}`).catch(() => []),
           apiRequest<any[]>("/personal").catch(() => []),
         ]);

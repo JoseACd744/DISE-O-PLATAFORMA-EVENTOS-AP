@@ -4,6 +4,7 @@ import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTri
 import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
 import { apiRequest } from "../lib/api";
+import { obtenerFichasConDetalle, obtenerFichasLista } from "../lib/queries";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { canManageResources } from "../lib/auth";
 
@@ -145,7 +146,7 @@ export function LogisticsPage() {
         apiRequest<any[]>("/personal?rol=chofer"),
         apiRequest<any[]>(`/logistics/vehiculos?brand=${brand}`),
         apiRequest<any[]>("/logistics/asignaciones"),
-        apiRequest<any[]>(`/fichas?brand=${brand}`),
+        obtenerFichasLista(brand),
       ]);
 
       setFichasRutas(
@@ -661,9 +662,12 @@ export function LogisticsPage() {
                   const chofer = choferes.find(c => c.id === asig.choferId);
                   const vehiculo = vehiculos.find(v => v.id === asig.vehiculoId);
                   
-                  // Fetch full ficha details for each ID
+                  // Detalle de las fichas de la ruta desde la caché compartida (una sola petición
+                  // para todas); solo si alguna no está se pide aparte
+                  const conDetalle = brand ? await obtenerFichasConDetalle(brand).catch(() => []) : [];
+                  const porId: Record<number, any> = Object.fromEntries(conDetalle.map((f: any) => [f.id, f]));
                   const fullFichas = await Promise.all(
-                    asig.fichasIds.map(id => apiRequest<any>(`/fichas/${id}`))
+                    asig.fichasIds.map(id => porId[id] ?? apiRequest<any>(`/fichas/${id}`))
                   );
 
                   const popup = window.open("", `hoja-ruta-${asig.id}`, "width=1000,height=800");

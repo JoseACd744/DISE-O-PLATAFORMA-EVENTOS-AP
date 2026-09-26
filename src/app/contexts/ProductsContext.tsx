@@ -1,6 +1,6 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { apiRequest } from "../lib/api";
-import { AUTH_CHANGED_EVENT, isAuthenticated } from "../lib/auth";
+import { AUTH_CHANGED_EVENT, isAuthenticated, isDriverUser } from "../lib/auth";
 import {
   mapApiCarritos,
   mapApiCategoriesFromFlatProducts,
@@ -234,9 +234,13 @@ interface ProductsContextType {
   deletePersonal: (id: number) => Promise<void>;
 
   productNames: string[];
-  reloadData: () => Promise<void>;
+  /** Sin argumentos recarga todo; con partes, solo esos catálogos */
+  reloadData: (...partes: ParteCatalogo[]) => Promise<void>;
   isLoadingData: boolean;
 }
+
+export type ParteCatalogo = "productos" | "paquetes" | "carritos" | "inflables" | "personal" | "recursos";
+const TODAS_LAS_PARTES: ParteCatalogo[] = ["productos", "paquetes", "carritos", "inflables", "personal", "recursos"];
 
 const ProductsContext = createContext<ProductsContextType | undefined>(undefined);
 
@@ -249,54 +253,33 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [recursos, setRecursos] = useState<Recurso[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const reloadData = async () => {
-    const [categoriesResult, productsResult, paquetesResult, carritosResult, inflablesResult, personalResult, recursosResult] =
-      await Promise.allSettled([
-        apiRequest<unknown[]>("/products/categories"),
-        apiRequest<unknown[]>("/products"),
-        apiRequest<unknown[]>("/paquetes"),
-        apiRequest<unknown[]>("/carritos"),
-        apiRequest<unknown[]>("/inflables"),
-        apiRequest<unknown[]>("/personal"),
-        apiRequest<unknown[]>("/recursos"),
-      ]);
+  // Recarga solo los catálogos indicados: un cambio en un carrito ya no vuelve a pedir
+  // productos, paquetes, inflables, personal y recursos.
+  const reloadData = async (...partes: ParteCatalogo[]) => {
+    const pedir = new Set<ParteCatalogo>(partes.length ? partes : TODAS_LAS_PARTES);
+    const cargar = async (parte: ParteCatalogo, tarea: () => Promise<void>) => {
+      if (!pedir.has(parte)) return;
+      try {
+        await tarea();
+      } catch (error) {
+        console.error(`No se pudo cargar el catálogo de ${parte}:`, error);
+      }
+    };
 
-    if (categoriesResult.status === "fulfilled" && productsResult.status === "fulfilled") {
-      setCategories(mapApiCategoriesFromFlatProducts(categoriesResult.value as never, productsResult.value as never));
-    } else {
-      if (categoriesResult.status === "rejected") console.error("No se pudo cargar /products/categories:", categoriesResult.reason);
-      if (productsResult.status === "rejected") console.error("No se pudo cargar /products:", productsResult.reason);
-    }
-
-    if (paquetesResult.status === "fulfilled") {
-      setPaquetes(mapApiPaquetes(paquetesResult.value as never));
-    } else {
-      console.error("No se pudo cargar /paquetes:", paquetesResult.reason);
-    }
-
-    if (carritosResult.status === "fulfilled") {
-      setCarritos(mapApiCarritos(carritosResult.value as never));
-    } else {
-      console.error("No se pudo cargar /carritos:", carritosResult.reason);
-    }
-
-    if (inflablesResult.status === "fulfilled") {
-      setInflables(mapApiInflables(inflablesResult.value as never));
-    } else {
-      console.error("No se pudo cargar /inflables:", inflablesResult.reason);
-    }
-
-    if (personalResult.status === "fulfilled") {
-      setPersonales(mapApiPersonal(personalResult.value as never));
-    } else {
-      console.error("No se pudo cargar /personal:", personalResult.reason);
-    }
-
-    if (recursosResult.status === "fulfilled") {
-      setRecursos(mapApiRecursos(recursosResult.value as never));
-    } else {
-      console.error("No se pudo cargar /recursos:", recursosResult.reason);
-    }
+    await Promise.all([
+      cargar("productos", async () => {
+        const [cats, prods] = await Promise.all([
+          apiRequest<unknown[]>("/products/categories"),
+          apiRequest<unknown[]>("/products"),
+        ]);
+        setCategories(mapApiCategoriesFromFlatProducts(cats as never, prods as never));
+      }),
+      cargar("paquetes", async () => setPaquetes(mapApiPaquetes((await apiRequest<unknown[]>("/paquetes")) as never))),
+      cargar("carritos", async () => setCarritos(mapApiCarritos((await apiRequest<unknown[]>("/carritos")) as never))),
+      cargar("inflables", async () => setInflables(mapApiInflables((await apiRequest<unknown[]>("/inflables")) as never))),
+      cargar("personal", async () => setPersonales(mapApiPersonal((await apiRequest<unknown[]>("/personal")) as never))),
+      cargar("recursos", async () => setRecursos(mapApiRecursos((await apiRequest<unknown[]>("/recursos")) as never))),
+    ]);
 
     setIsLoadingData(false);
   };
@@ -305,7 +288,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     // El provider se monta una sola vez (también en /login), así que hay que volver a cargar
     // al iniciar sesión; sin sesión no se pide nada para no disparar 401 en cadena.
     const cargarSiHaySesion = () => {
-      if (!isAuthenticated()) return;
+      // El chofer no usa el catálogo: no se le carga
+      if (!isAuthenticated() || isDriverUser()) return;
       reloadData().catch((error) => {
         console.error("No se pudo cargar data de productos:", error);
       });
@@ -349,7 +333,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       }),
     });
 
-    await reloadData();
+    await reloadData("productos");
   };
 
   const updateProduct = async (id: number, catName: string, product: Omit<Product, "id">, categoriaId?: number) => {
@@ -377,12 +361,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       }),
     });
 
-    await reloadData();
+    await reloadData("productos");
   };
 
   const deleteProduct = async (id: number) => {
     await apiRequest(`/products/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("productos");
   };
 
   const addRecurso = async (recurso: Omit<Recurso, "id">) => {
@@ -397,7 +381,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         stock_minimo: Number(recurso.stockMinimo || 0),
       }),
     });
-    await reloadData();
+    await reloadData("recursos");
   };
 
   const updateRecursoStock = async (
@@ -412,7 +396,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         ...(payload.motivo ? { motivo: payload.motivo } : {}),
       }),
     });
-    await reloadData();
+    await reloadData("recursos");
   };
 
   const getRecursoStockMovements = async (id: number): Promise<RecursoStockMovement[]> => {
@@ -441,12 +425,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
 
   const deleteRecurso = async (id: number) => {
     await apiRequest(`/recursos/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("recursos");
   };
 
   const deleteCategory = async (id: number) => {
     await apiRequest(`/products/categories/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("productos");
   };
 
   const addPaquete = async (paquete: PaqueteInput) => {
@@ -462,7 +446,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       }),
     });
 
-    await reloadData();
+    await reloadData("paquetes");
   };
 
   const updatePaquete = async (id: number, paquete: PaqueteInput) => {
@@ -478,12 +462,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         inflables_incluidos: paquete.inflablesIncluidos.map(mapInflableIncluidoToApi),
       }),
     });
-    await reloadData();
+    await reloadData("paquetes");
   };
 
   const deletePaquete = async (id: number) => {
     await apiRequest(`/paquetes/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("paquetes");
   };
 
   const addCarrito = async (carrito: Omit<Carrito, "id">) => {
@@ -498,7 +482,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         estado: carrito.estado,
       }),
     });
-    await reloadData();
+    await reloadData("carritos");
   };
 
   const updateCarrito = async (id: number, carrito: Omit<Carrito, "id">) => {
@@ -513,7 +497,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         estado: carrito.estado,
       }),
     });
-    await reloadData();
+    await reloadData("carritos");
   };
 
   const updateCarritoEstado = async (id: number, estado: Carrito["estado"]) => {
@@ -521,12 +505,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "PUT",
       body: JSON.stringify({ estado }),
     });
-    await reloadData();
+    await reloadData("carritos");
   };
 
   const deleteCarrito = async (id: number) => {
     await apiRequest(`/carritos/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("carritos");
   };
 
   const addInflable = async (inflable: Omit<Inflable, "id">) => {
@@ -538,12 +522,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         estado: inflable.estado,
       }),
     });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const deleteInflable = async (id: number) => {
     await apiRequest(`/inflables/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const addInflableTipo = async (tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => {
@@ -559,7 +543,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         imagenes: tipo.imagenes.map((img) => img.url),
       }),
     });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const updateInflableTipo = async (id: number, tipo: Omit<InflableTipo, "id" | "cantidadUnidades">) => {
@@ -574,12 +558,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         imagen_url: tipo.imagenUrl,
       }),
     });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const deleteInflableTipo = async (id: number) => {
     await apiRequest(`/inflables/tipos/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("inflables", "paquetes");
   };
 
   const getInflableImages = async (tipoId: number): Promise<InflableImage[]> => {
@@ -600,12 +584,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ image_url: imageUrl }),
     });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const deleteInflableImage = async (tipoId: number, imageId: number) => {
     await apiRequest(`/inflables/tipos/${tipoId}/images/${imageId}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("inflables");
   };
 
   const addPersonal = async (personal: Omit<Personal, "id" | "nombre" | "celular">) => {
@@ -626,7 +610,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    await reloadData();
+    await reloadData("personal");
   };
 
   const updatePersonal = async (
@@ -652,7 +636,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "PUT",
       body: JSON.stringify(payload),
     });
-    await reloadData();
+    await reloadData("personal");
   };
 
   const updatePersonalEstado = async (id: number, estado: Personal["estado"]) => {
@@ -660,12 +644,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "PUT",
       body: JSON.stringify({ estado }),
     });
-    await reloadData();
+    await reloadData("personal");
   };
 
   const deletePersonal = async (id: number) => {
     await apiRequest(`/personal/${id}`, { method: "DELETE" });
-    await reloadData();
+    await reloadData("personal");
   };
 
   return (

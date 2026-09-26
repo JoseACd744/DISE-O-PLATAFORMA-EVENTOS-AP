@@ -41,6 +41,7 @@
     "@radix-ui/react-tooltip": "1.1.8",
     "@react-google-maps/api": "^2.20.8",
     "@react-oauth/google": "^0.13.4",
+    "@tanstack/react-query": "^5.103.3",
     "@types/leaflet": "^1.9.21",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

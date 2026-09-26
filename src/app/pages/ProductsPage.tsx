@@ -5,6 +5,7 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, PaqueteInflableIncluido, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
+import { obtenerFichasConDetalle } from "../lib/queries";
 import { getLocalDateString } from "../lib/date";
 import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
@@ -551,8 +552,8 @@ export function ProductsPage() {
     setCarritoCalendarLoading(true);
     setCarritoCalendarError("");
     try {
-      const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
-      const details = await Promise.all(list.map((item) => apiRequest<any>(`/fichas/${item.id}`)));
+      // Una sola petición con el detalle de todas las fichas; al volver a la pestaña se reutiliza la caché
+      const details = await obtenerFichasConDetalle(brand);
       const mapped: CalendarFicha[] = details.map((f) => {
         const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);
         return {
@@ -582,8 +583,7 @@ export function ProductsPage() {
     setPersonalCalendarError("");
 
     try {
-      const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
-      const details = await Promise.all(list.map((item) => apiRequest<any>(`/fichas/${item.id}`)));
+      const details = await obtenerFichasConDetalle(brand);
 
       const mapped: CalendarFicha[] = details.map((f) => {
         const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);

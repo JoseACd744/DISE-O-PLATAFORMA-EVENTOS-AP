@@ -37,7 +37,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const body = isJson ? await response.json() : null;
 
   if (!response.ok) {
-    if (response.status === 401) {
+    // Con varias peticiones en vuelo, solo la primera en recibir 401 cierra la sesión y redirige
+    if (response.status === 401 && getAuthToken()) {
       clearAuthSession();
       localStorage.removeItem("selectedBrand");
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {

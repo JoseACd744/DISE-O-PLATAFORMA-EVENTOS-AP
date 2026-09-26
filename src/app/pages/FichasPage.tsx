@@ -21,6 +21,7 @@ import {
   type OrigenLineas,
 } from "../lib/cotizacion";
 import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
+import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDetalle, obtenerTarifasEnvio, reemplazarFichaEnCache } from "../lib/queries";
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
 import { buildJuguetonContractHtml, type JuguetonContractItem } from "../lib/juguetonContract";
@@ -838,6 +839,75 @@ function AbonoModal({
 
 // ── Main Component ───────────────────────────────────────────────
 
+// Ficha tal como la devuelve la API (lista con detalle o GET /fichas/:id) → forma de la página
+function mapFichaApi(f: any): Ficha {
+  return {
+    id: f.id,
+    fecha_evento: f.fecha_evento || f.fecha || "",
+    fecha_reserva: f.fecha_reserva || f.fecha || "",
+    fecha: f.fecha_evento || f.fecha || "",
+    distrito: f.distrito || "",
+    transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
+    tipo_evento: f.tipo_evento || "",
+    titulo: f.titulo || "",
+    costo_envio: Number(f.costo_envio || 0),
+    descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
+    direccion: f.direccion || "",
+    referencia: f.referencia || "",
+    hora_entrega: f.hora_entrega || "",
+    hora_entrega_fin: f.hora_entrega_fin || "",
+    hora_recojo: f.hora_recojo || "",
+    hora_recojo_fin: f.hora_recojo_fin || "",
+    paquetes: (f.paquetes || []).map((p: any) => ({
+      paqueteId: p.paquete_id || 0,
+      paqueteNombre: p.paquete_nombre || "",
+      paqueteTipo: p.paquete_tipo || "",
+      cantidad: toMoneyNumber(p.cantidad) || 1,
+      ...mapDescuentoApi(p),
+    })),
+    productosSueltos: (f.productosSueltos || []).map((p: any) => ({
+      productoNombre: p.producto_nombre,
+      cantidad: toMoneyNumber(p.cantidad) || 1,
+      ...mapDescuentoApi(p),
+    })),
+    carritoIds: f.carritoIds || [],
+    inflableIds: f.inflableIds || [],
+    inflablesDescuentos: mapDescuentosPorId(f.inflables, "id"),
+    carritosDescuentos: mapDescuentosPorId(f.carritos, "id"),
+    recursos: (f.recursos || []).map((r: any) => ({
+      id: r.id,
+      recurso_id: r.recurso_id,
+      recurso_nombre: r.recurso_nombre || "",
+      cantidad: toMoneyNumber(r.cantidad) || 1,
+      sku: r.sku || "",
+      precio: String(toMoneyNumber(r.precio)),
+      ...mapDescuentoApi(r),
+    })),
+    aplica_igv: f.aplica_igv === true,
+    comentarios: f.comentarios || "",
+    personalIds: f.personalIds || [],
+    cliente_id: f.cliente_id || null,
+    cliente_nombre: f.cliente_nombre,
+    cliente_celular: f.cliente_celular || "",
+    contacto_nombre: f.contacto_nombre || "",
+    contacto_celular: f.contacto_celular || "",
+    cotizacion: toMoneyNumber(f.cotizacion),
+    descuento: toMoneyNumber(f.descuento),
+    brand: f.brand,
+    created_by: f.created_by || "",
+    created_by_nombre: f.created_by_nombre || "",
+    created_at: f.created_at || "",
+    abonos: (f.abonos || []).map((a: any) => ({
+      id: a.id,
+      fecha: a.fecha,
+      monto: toMoneyNumber(a.monto),
+      numeroOperacion: a.numero_operacion || "",
+      comprobante: a.comprobante_url || "",
+      medio: a.medio,
+    })),
+  };
+}
+
 export function FichasPage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -917,8 +987,22 @@ export function FichasPage() {
     return [...new Set([...names, ...extra])];
   }, [productsDeLaMarca, brand]);
 
+  // Tras guardar o borrar una ficha: fichas al día y, como cambian stock de recursos y estado
+  // del personal de apoyo, solo esos dos catálogos (antes se recargaban los 7).
   const refreshFichasAndCatalogs = async () => {
-    await Promise.all([loadFichas(), reloadData()]);
+    // Las otras vistas de fichas (Dashboard, Logística, Rutas) quedan viejas: se recargan al abrirlas
+    void invalidarFichas();
+    await Promise.all([loadFichas({ forzar: true }), reloadData("recursos", "personal")]);
+  };
+
+  // Tras un cambio en los abonos de una ficha: se vuelve a pedir solo esa ficha
+  const refrescarFicha = async (fichaId: number) => {
+    const raw = await apiRequest<any>(`/fichas/${fichaId}`);
+    if (brand) reemplazarFichaEnCache(brand, raw);
+    const actualizada = mapFichaApi(raw);
+    setFichas((prev) => prev.map((f) => (f.id === fichaId ? actualizada : f)));
+    setSelectedFicha((prev) => (prev && prev.id === fichaId ? { ...prev, abonos: actualizada.abonos } : prev));
+    return actualizada;
   };
 
   // Obtener estado dinámico del personal basado en eventos asignados en una fecha específica
@@ -1110,81 +1194,15 @@ export function FichasPage() {
     setFormData((prev) => (prev.cotizacion === cotizacionSugerida ? prev : { ...prev, cotizacion: cotizacionSugerida }));
   }, [cotizacionMode, cotizacionSugerida]);
 
-  const loadFichas = async () => {
+  // Una sola petición con todas las fichas y su detalle (antes: una por ficha).
+  // Si otra página ya las cargó hace poco, se reutilizan de la caché.
+  const loadFichas = async ({ forzar = false }: { forzar?: boolean } = {}) => {
     if (!brand) return;
     setLoading(true);
     setError("");
     try {
-      const list = await apiRequest<Array<{ id: number }>>(`/fichas?brand=${brand}`);
-      const details = await Promise.all(
-        list.map((item) => apiRequest<any>(`/fichas/${item.id}`))
-      );
-
-      const mapped: Ficha[] = details.map((f) => ({
-        id: f.id,
-        fecha_evento: f.fecha_evento || f.fecha || "",
-        fecha_reserva: f.fecha_reserva || f.fecha || "",
-        fecha: f.fecha_evento || f.fecha || "",
-        distrito: f.distrito || "",
-        transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
-        tipo_evento: f.tipo_evento || "",
-        titulo: f.titulo || "",
-        costo_envio: Number(f.costo_envio || 0),
-        descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
-        direccion: f.direccion || "",
-        referencia: f.referencia || "",
-        hora_entrega: f.hora_entrega || "",
-        hora_entrega_fin: f.hora_entrega_fin || "",
-        hora_recojo: f.hora_recojo || "",
-        hora_recojo_fin: f.hora_recojo_fin || "",
-        paquetes: (f.paquetes || []).map((p: any) => ({
-          paqueteId: p.paquete_id || 0,
-          paqueteNombre: p.paquete_nombre || "",
-          paqueteTipo: p.paquete_tipo || "",
-          cantidad: toMoneyNumber(p.cantidad) || 1,
-          ...mapDescuentoApi(p),
-        })),
-        productosSueltos: (f.productosSueltos || []).map((p: any) => ({
-          productoNombre: p.producto_nombre,
-          cantidad: toMoneyNumber(p.cantidad) || 1,
-          ...mapDescuentoApi(p),
-        })),
-        carritoIds: f.carritoIds || [],
-        inflableIds: f.inflableIds || [],
-        inflablesDescuentos: mapDescuentosPorId(f.inflables, "id"),
-        carritosDescuentos: mapDescuentosPorId(f.carritos, "id"),
-        recursos: (f.recursos || []).map((r: any) => ({
-          id: r.id,
-          recurso_id: r.recurso_id,
-          recurso_nombre: r.recurso_nombre || "",
-          cantidad: toMoneyNumber(r.cantidad) || 1,
-          sku: r.sku || "",
-          precio: String(toMoneyNumber(r.precio)),
-          ...mapDescuentoApi(r),
-        })),
-        aplica_igv: f.aplica_igv === true,
-        comentarios: f.comentarios || "",
-        personalIds: f.personalIds || [],
-        cliente_id: f.cliente_id || null,
-        cliente_nombre: f.cliente_nombre,
-        cliente_celular: f.cliente_celular || "",
-        contacto_nombre: f.contacto_nombre || "",
-        contacto_celular: f.contacto_celular || "",
-        cotizacion: toMoneyNumber(f.cotizacion),
-        descuento: toMoneyNumber(f.descuento),
-        brand: f.brand,
-        created_by: f.created_by || "",
-        created_by_nombre: f.created_by_nombre || "",
-        created_at: f.created_at || "",
-        abonos: (f.abonos || []).map((a: any) => ({
-          id: a.id,
-          fecha: a.fecha,
-          monto: toMoneyNumber(a.monto),
-          numeroOperacion: a.numero_operacion || "",
-          comprobante: a.comprobante_url || "",
-          medio: a.medio,
-        })),
-      }));
+      const details = await obtenerFichasConDetalle(brand, { forzar });
+      const mapped: Ficha[] = details.map(mapFichaApi);
 
       setFichas(mapped);
     } catch (err) {
@@ -1194,9 +1212,9 @@ export function FichasPage() {
     }
   };
 
-  const loadClients = async () => {
+  const loadClients = async ({ forzar = false }: { forzar?: boolean } = {}) => {
     try {
-      const data = await apiRequest<ExistingClient[]>("/clients");
+      const data = await obtenerClientes<ExistingClient>(undefined, { forzar });
       setClients(data || []);
     } catch {
       setClients([]);
@@ -1212,7 +1230,7 @@ export function FichasPage() {
     if (!brand) return;
     const loadDistritos = async () => {
       try {
-        const tarifas = await apiRequest<TarifaEnvio[]>(`/tarifas-envio`);
+        const tarifas = await obtenerTarifasEnvio<TarifaEnvio>();
         const districts = Array.from(new Set((tarifas || []).map(t => (t.distrito || "").trim()).filter(Boolean)));
         districts.sort((a, b) => a.localeCompare(b));
         setDistritosOptions(["Todos", ...districts]);
@@ -1224,15 +1242,20 @@ export function FichasPage() {
     };
 
     void loadDistritos();
-  }, [brand, fichas]);
+    // fichas solo se usa como respaldo si fallan las tarifas: no hace falta volver a pedirlas cuando cambian
+  }, [brand]);
 
   useEffect(() => {
     if (!formData.distrito || !showAddModal) {
       setTarifaCache(null);
       return;
     }
-    apiRequest<TarifaEnvio>(`/tarifas-envio/distrito/${encodeURIComponent(formData.distrito)}`)
-      .then((tarifa) => {
+    // La tarifa del distrito sale de la lista ya cargada (misma fila que /tarifas-envio/distrito/:d)
+    obtenerTarifasEnvio<TarifaEnvio>()
+      .then((tarifas) => {
+        const buscado = formData.distrito.trim().toLowerCase();
+        const tarifa = (tarifas || []).find((t) => (t.distrito || "").trim().toLowerCase() === buscado);
+        if (!tarifa) throw new Error("Distrito sin tarifa");
         setTarifaCache(tarifa);
         setFormData((prev) => ({ ...prev, costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
       })
@@ -2290,7 +2313,8 @@ export function FichasPage() {
 
     if (name === "fecha_evento" && !dateRefreshLockRef.current) {
       dateRefreshLockRef.current = true;
-      void refreshFichasAndCatalogs().finally(() => {
+      // Para ver la disponibilidad del día basta con las fichas; antes recargaba también los 7 catálogos
+      void loadFichas().finally(() => {
         dateRefreshLockRef.current = false;
       });
     }
@@ -2384,7 +2408,8 @@ export function FichasPage() {
         }),
       });
 
-      await loadClients();
+      invalidarClientes();
+      await loadClients({ forzar: true });
       if (created?.id) {
         setFormData((prev) => ({
           ...prev,
@@ -2490,20 +2515,8 @@ export function FichasPage() {
         }),
       });
 
-      await refreshFichasAndCatalogs();
+      await refrescarFicha(fichaId);
       if (selectedFicha && selectedFicha.id === fichaId) {
-        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
-        setSelectedFicha((prev) => prev ? {
-          ...prev,
-          abonos: (refreshed.abonos || []).map((a: any) => ({
-            id: a.id,
-            fecha: a.fecha,
-            monto: Number(a.monto || 0),
-            numeroOperacion: a.numero_operacion || "",
-            comprobante: a.comprobante_url || "",
-            medio: a.medio,
-          })),
-        } : prev);
         await loadFichaImagenes(fichaId);
       }
     } catch (err) {
@@ -2542,21 +2555,7 @@ export function FichasPage() {
         }),
       });
 
-      await refreshFichasAndCatalogs();
-      if (selectedFicha && selectedFicha.id === fichaId) {
-        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
-        setSelectedFicha((prev) => prev ? {
-          ...prev,
-          abonos: (refreshed.abonos || []).map((a: any) => ({
-            id: a.id,
-            fecha: a.fecha,
-            monto: Number(a.monto || 0),
-            numeroOperacion: a.numero_operacion || "",
-            comprobante: a.comprobante_url || "",
-            medio: a.medio,
-          })),
-        } : prev);
-      }
+      await refrescarFicha(fichaId);
     } catch (err) {
       throw err instanceof Error ? err : new Error("Error al actualizar el abono");
     }
@@ -2589,20 +2588,8 @@ export function FichasPage() {
         }
       }
 
-      await refreshFichasAndCatalogs();
+      await refrescarFicha(fichaId);
       if (selectedFicha && selectedFicha.id === fichaId) {
-        const refreshed = await apiRequest<any>(`/fichas/${fichaId}`);
-        setSelectedFicha((prev) => prev ? {
-          ...prev,
-          abonos: (refreshed.abonos || []).map((a: any) => ({
-            id: a.id,
-            fecha: a.fecha,
-            monto: Number(a.monto || 0),
-            numeroOperacion: a.numero_operacion || "",
-            comprobante: a.comprobante_url || "",
-            medio: a.medio,
-          })),
-        } : prev);
         await loadFichaImagenes(fichaId);
       }
       setDeleteAbonoTarget(null);

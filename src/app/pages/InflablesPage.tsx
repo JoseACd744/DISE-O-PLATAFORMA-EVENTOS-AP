@@ -24,6 +24,7 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
 import { apiRequest, API_BASE_URL } from "../lib/api";
+import { obtenerFichasConDetalle } from "../lib/queries";
 import { canManageResources } from "../lib/auth";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -232,18 +233,17 @@ export function InflablesPage() {
     if (!brand) return;
     setError("");
     try {
-      const [inflablesTiposApi, carritosApi, maintenanceApi, fichasListApi, inflablesUnitsApi] = await Promise.all([
+      // Todo en paralelo y en una sola tanda: las fichas llegan con su detalle (inflableIds, carritoIds)
+      // y las reservas manuales en una petición por tabla (antes: una por ficha, tipo y carrito).
+      const [inflablesTiposApi, carritosApi, maintenanceApi, fichasApi, inflablesUnitsApi, reservasInflablesApi, reservasCarritosApi] = await Promise.all([
         apiRequest<any[]>("/inflables/tipos"),
         apiRequest<any[]>("/carritos"),
         apiRequest<any[]>("/maintenance"),
-        apiRequest<any[]>(`/fichas?brand=${brand}`),
+        obtenerFichasConDetalle(brand),
         apiRequest<any[]>("/inflables"),
+        apiRequest<any[]>("/inflables/reservas").catch(() => []),
+        apiRequest<any[]>("/carritos/reservas").catch(() => []),
       ]);
-
-      // El listado de /fichas no incluye inflableIds/carritoIds; se obtiene el detalle de cada ficha
-      const fichasApi = (await Promise.all(
-        fichasListApi.map((item) => apiRequest<any>(`/fichas/${item.id}`).catch(() => null))
-      )).filter((f): f is any => f !== null);
 
       const inflablesMapped: InflableType[] = inflablesTiposApi.map((i) => ({
         id: i.id,
@@ -285,23 +285,18 @@ export function InflablesPage() {
         imagen: units[0].imagen_url || (units[0].tipo_nombre || units[0].modelo || "").toLowerCase(),
       }));
 
-      const [reservasInflablesChunks, reservasCarritosChunks] = await Promise.all([
-        Promise.all(inflablesMapped.map((i) => apiRequest<any[]>(`/inflables/tipos/${i.id}/reservas`).catch(() => []))),
-        Promise.all(carritosApi.map((c: any) => apiRequest<any[]>(`/carritos/${c.id}/reservas`).catch(() => []))),
-      ]);
-
-      // Reservas manuales de inflables
-      const manualReservasInflables: Reserva[] = reservasInflablesChunks.flatMap((chunk) =>
-        chunk.map((r) => ({
-          id: r.id,
-          inflableId: r.inflable_id,
-          clienteNombre: r.cliente_nombre || "",
-          fecha: r.fecha,
-          cantidad: r.cantidad || 0,
-          evento: r.evento || "",
-          notas: r.notas || "",
-        }))
-      );
+      // Reservas manuales de inflables (se guardan con el id del tipo en inflable_id).
+      // Antes se pedían a /inflables/tipos/:id/reservas, que no existe, y nunca se mostraban.
+      const manualReservasInflables: Reserva[] = reservasInflablesApi.map((r) => ({
+        id: r.id,
+        inflableId: r.inflable_id,
+        clienteNombre: r.cliente_nombre || "",
+        // La API manda la fecha con hora ("2026-09-26T00:00:00.000Z"); el calendario compara "YYYY-MM-DD"
+        fecha: String(r.fecha || "").slice(0, 10),
+        cantidad: r.cantidad || 0,
+        evento: r.evento || "",
+        notas: r.notas || "",
+      }));
 
       // Reservas provenientes de Fichas (inflables)
       const fichaReservasInflables: Reserva[] = fichasApi.flatMap((f) => {
@@ -323,19 +318,18 @@ export function InflablesPage() {
       });
 
       // Reservas manuales de carritos
-      const manualReservasCarritos: ReservaCarrito[] = reservasCarritosChunks.flatMap((chunk, i) => {
-        const unitId: number = carritosApi[i].id;
-        const tipoId: number = carritoUnitToTipo.get(unitId) ?? unitId;
-        return chunk.map((r: any) => ({
+      const manualReservasCarritos: ReservaCarrito[] = reservasCarritosApi.map((r: any) => {
+        const unitId: number = r.carrito_id;
+        return {
           id: r.id,
-          carritoId: tipoId,
+          carritoId: carritoUnitToTipo.get(unitId) ?? unitId,
           unitId,
           clienteNombre: r.cliente_nombre || "",
-          fecha: r.fecha,
+          fecha: String(r.fecha || "").slice(0, 10),
           cantidad: r.cantidad || 0,
           evento: r.evento || "",
           notas: r.notas || "",
-        }));
+        };
       });
 
       // Reservas provenientes de Fichas (carritos)

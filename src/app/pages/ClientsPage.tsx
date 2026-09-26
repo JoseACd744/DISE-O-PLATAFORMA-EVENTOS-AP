@@ -4,6 +4,7 @@ import { Pagination } from "../components/Pagination";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { apiRequest } from "../lib/api";
+import { invalidarClientes } from "../lib/queries";
 import { canManageClients } from "../lib/auth";
 
 // Canales de adquisición disponibles. Si un cliente antiguo tiene un canal
@@ -197,6 +198,7 @@ export function ClientsPage() {
 
       setShowAddModal(false);
       setNewClient({ nombre: "", razonSocial: "", dniRuc: "", email: "", phone: "", address: "", city: "", canal: "Referidos", status: "active", creadoPor: (brand || "donofrio") as "donofrio" | "jugueton", anioRegistro: "", fichasBase: 0, recomendaciones: 0 });
+      invalidarClientes();
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el cliente");
@@ -233,6 +235,7 @@ export function ClientsPage() {
       });
 
       setEditingClient(null);
+      invalidarClientes();
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el cliente");
@@ -253,6 +256,7 @@ export function ClientsPage() {
     try {
       await apiRequest(`/clients/${deleteClientId}`, { method: "DELETE" });
       setDeleteClientId(null);
+      invalidarClientes();
       await loadClients();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar el cliente");

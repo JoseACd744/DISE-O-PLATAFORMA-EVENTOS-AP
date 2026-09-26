@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { TrendingUp, Target, Pencil, Percent, AlertCircle, Receipt, CreditCard, Banknote, ArrowDownRight, ArrowUpRight, Loader2, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { obtenerClientes, obtenerFichasConDetalle } from "../lib/queries";
 import { getLocalDateString, parseLocalDate } from "../lib/date";
 import { useProducts } from "../contexts/ProductsContext";
 import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
@@ -87,31 +88,31 @@ export function ReportsPage() {
   const [filterTo, setFilterTo] = useState(getLocalDateString());
   const [selectedFichaHelados, setSelectedFichaHelados] = useState<string | null>(null);
 
-  // Lista liviana de todas las fichas (sin detalles por ficha) — solo para el selector de mes y gráficos que usan campos del listado
+  // Todas las fichas de la marca con su detalle (paquetes, abonos…) en una sola petición.
+  // Cambiar de mes o de rango ya no pide nada: se filtra lo cargado.
   const [allFichas, setAllFichas] = useState<any[]>([]);
   const [allClients, setAllClients] = useState<any[]>([]);
-
-  // Detalles completos (abonos, paquetes) cargados únicamente para el mes seleccionado
-  const [monthFichasDetalle, setMonthFichasDetalle] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [detallesError, setDetallesError] = useState("");
 
-  // Carga inicial: fichas (lista) + clientes, sin detalle individual
   useEffect(() => {
     if (!brand) return;
-    const load = async () => {
-      try {
-        const [fichas, clients] = await Promise.all([
-          apiRequest<any[]>(`/fichas?brand=${brand}`),
-          apiRequest<any[]>(`/clients?brand=${brand}`),
-        ]);
+    let cancelled = false;
+    setLoadingDetails(true);
+    setDetallesError("");
+    Promise.all([obtenerFichasConDetalle(brand), obtenerClientes(brand)])
+      .then(([fichas, clients]) => {
+        if (cancelled) return;
         setAllFichas(fichas);
         setAllClients(clients);
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (cancelled) return;
         console.error("No se pudo cargar reportes:", err);
-      }
-    };
-    load();
+        setDetallesError("No se pudieron cargar los datos del informe. Revisa tu conexión e inténtalo de nuevo.");
+      })
+      .finally(() => { if (!cancelled) setLoadingDetails(false); });
+    return () => { cancelled = true; };
   }, [brand]);
 
   const availableMonths = useMemo(() => {
@@ -141,34 +142,8 @@ export function ReportsPage() {
     });
   }, [allFichas, filterMode, selectedMonth, filterDay, filterFrom, filterTo]);
 
-  // Carga detalles cuando cambia el conjunto de fichas filtradas
-  useEffect(() => {
-    if (!monthFichas.length) {
-      setMonthFichasDetalle([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingDetails(true);
-    // Cada ficha se pide por separado: si una falla, el resto del informe igual se muestra
-    // en vez de quedar en blanco, y se avisa cuántas no se pudieron cargar.
-    Promise.all(
-      monthFichas.map((f) =>
-        apiRequest<any>(`/fichas/${f.id}`).catch((err) => {
-          console.error(`No se pudo cargar la ficha ${f.id}:`, err);
-          return null;
-        })
-      )
-    )
-      .then((detalles) => {
-        if (cancelled) return;
-        const cargadas = detalles.filter((d): d is any => d !== null);
-        setMonthFichasDetalle(cargadas);
-        const fallidas = detalles.length - cargadas.length;
-        setDetallesError(fallidas > 0 ? `No se pudieron cargar ${fallidas} de ${detalles.length} fichas; el informe puede estar incompleto.` : "");
-      })
-      .finally(() => { if (!cancelled) setLoadingDetails(false); });
-    return () => { cancelled = true; };
-  }, [monthFichas]);
+  // Las fichas ya traen su detalle: el informe del período usa las mismas filas
+  const monthFichasDetalle = monthFichas;
 
   // ── Métricas financieras del mes ────────────────────────────────
   const financialMonthly = useMemo(() => {

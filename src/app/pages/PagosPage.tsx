@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, CreditCard, DollarSign, Receipt, Search, X, Eye, ExternalLink, Loader2, Edit, Upload, Trash2 } from "lucide-react";
 import { apiRequest, API_BASE_URL } from "../lib/api";
+import { invalidarFichas, obtenerFichasConDetalle } from "../lib/queries";
 import { useBrand } from "../contexts/BrandContext";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 
@@ -49,7 +50,6 @@ function extractStoragePathFromUrl(value: string) {
 
 export function PagosPage() {
   const { brand } = useBrand();
-  const [allFichas,   setAllFichas]   = useState<any[]>([]);
   const [pagos,       setPagos]       = useState<PagoRow[]>([]);
   const [loading,     setLoading]     = useState(false);
   const [filterFrom,  setFilterFrom]  = useState("");
@@ -62,39 +62,18 @@ export function PagosPage() {
   const [isDeletingPago, setIsDeletingPago] = useState(false);
   const [cargaError, setCargaError] = useState("");
 
-  // 1. Carga liviana de fichas
+  // Todas las fichas de la marca con sus abonos en una sola petición (antes: una por ficha).
+  // El filtro por fecha se aplica sobre la fecha del PAGO, no sobre la del evento.
   useEffect(() => {
     if (!brand) return;
-    apiRequest<any[]>(`/fichas?brand=${brand}`)
-      .then(setAllFichas)
-      .catch(console.error);
-  }, [brand]);
-
-  // 2. Carga los abonos de todas las fichas de la marca; el filtro por fecha se aplica
-  //    sobre la fecha del PAGO, no sobre la fecha del evento.
-  useEffect(() => {
-    if (!allFichas.length) { setPagos([]); return; }
-
     let cancelled = false;
     setLoading(true);
-
-    // Cada ficha se pide por separado: si una falla, igual se muestran los pagos del resto
-    // en vez de dejar la pantalla vacía sin explicación.
-    Promise.all(
-      allFichas.map((f) =>
-        apiRequest<any>(`/fichas/${f.id}`).catch((err) => {
-          console.error(`No se pudo cargar la ficha ${f.id}:`, err);
-          return null;
-        })
-      )
-    )
-      .then((resultados) => {
+    setCargaError("");
+    obtenerFichasConDetalle(brand)
+      .then((fichas) => {
         if (cancelled) return;
-        const detalles = resultados.filter((d): d is any => d !== null);
-        const fallidas = resultados.length - detalles.length;
-        setCargaError(fallidas > 0 ? `No se pudieron cargar ${fallidas} de ${resultados.length} fichas; pueden faltar pagos.` : "");
         const rows: PagoRow[] = [];
-        detalles.forEach((ficha) => {
+        fichas.forEach((ficha) => {
           (ficha.abonos || []).forEach((a: any) => {
             rows.push({
               id: a.id,
@@ -111,10 +90,15 @@ export function PagosPage() {
         rows.sort((a, b) => b.fechaPago.localeCompare(a.fechaPago));
         setPagos(rows);
       })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("No se pudieron cargar los pagos:", err);
+        setPagos([]);
+        setCargaError("No se pudieron cargar los pagos. Revisa tu conexión e inténtalo de nuevo.");
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
-
     return () => { cancelled = true; };
-  }, [allFichas]);
+  }, [brand]);
 
   const handleSavePago = async (updated: PagoRow) => {
     await apiRequest(`/fichas/${updated.fichaId}/abonos/${updated.id}`, {
@@ -128,6 +112,8 @@ export function PagosPage() {
       }),
     });
     setPagos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    // Fichas y Reportes deben ver el cambio la próxima vez que se abran
+    void invalidarFichas();
   };
 
   const handleDeletePago = async () => {
@@ -148,6 +134,7 @@ export function PagosPage() {
       }
 
       setPagos((prev) => prev.filter((p) => p.id !== deletingPago.id));
+      void invalidarFichas();
       setDeletingPago(null);
     } catch (err) {
       console.error(err);

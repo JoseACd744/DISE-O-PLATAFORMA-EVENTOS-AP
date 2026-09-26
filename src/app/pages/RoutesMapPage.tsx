@@ -8,6 +8,7 @@ import {
   GripVertical, ChevronsUp, ChevronsDown,
 } from "lucide-react";
 import { apiRequest } from "../lib/api";
+import { obtenerFichasLista } from "../lib/queries";
 import { useBrand } from "../contexts/BrandContext";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -45,7 +46,27 @@ function sortFichasByTime(fichas: FichaPin[]): FichaPin[] {
 
 // ── Geocoding ────────────────────────────────────────────────────
 
-const geocodeCache = new Map<string, { lat: number; lng: number }>();
+// Las direcciones ya ubicadas se guardan en el navegador: al volver a la página no se piden de nuevo
+const GEOCODE_STORAGE_KEY = "geocodeCache:v1";
+const GEOCODE_MAX = 500;
+
+function leerGeocodeGuardado(): Map<string, { lat: number; lng: number }> {
+  try {
+    const raw = localStorage.getItem(GEOCODE_STORAGE_KEY);
+    return new Map(raw ? (JSON.parse(raw) as [string, { lat: number; lng: number }][]) : []);
+  } catch {
+    return new Map();
+  }
+}
+
+const geocodeCache = leerGeocodeGuardado();
+
+function guardarGeocode() {
+  try {
+    const entradas = Array.from(geocodeCache.entries()).slice(-GEOCODE_MAX);
+    localStorage.setItem(GEOCODE_STORAGE_KEY, JSON.stringify(entradas));
+  } catch { /* sin almacenamiento disponible: solo se pierde la caché */ }
+}
 
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
   const cached = geocodeCache.get(query);
@@ -57,6 +78,7 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
     if (data.length > 0) {
       const loc = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
       geocodeCache.set(query, loc);
+      guardarGeocode();
       return loc;
     }
   } catch { /* skip */ }
@@ -234,12 +256,12 @@ export function RoutesMapPage() {
     if (!brand) return;
     (async () => {
       try {
-        const [vehiculosApi, asignacionesApi, fichasApi] = await Promise.all([
+        const [vehiculosApi, asignacionesApi, fichasApi, personalApi] = await Promise.all([
           apiRequest<any[]>(`/logistics/vehiculos?brand=${brand}`),
           apiRequest<any[]>("/logistics/asignaciones"),
-          apiRequest<any[]>(`/fichas?brand=${brand}`),
+          obtenerFichasLista(brand),
+          apiRequest<any[]>("/personal?rol=chofer").catch(() => []),
         ]);
-        const personalApi = await apiRequest<any[]>("/personal?rol=chofer").catch(() => []);
         const fichaMap = new Map(fichasApi.map((f: any) => [f.id, f]));
         const choferMap = new Map(personalApi.map((p: any) => [p.id, p.nombre_completo || p.nombre || ""]));
 
@@ -284,9 +306,11 @@ export function RoutesMapPage() {
     const results: GeocodedFicha[] = [];
     for (const ficha of sorted) {
       const query = [ficha.direccion, ficha.distrito, "Lima, Perú"].filter(Boolean).join(", ");
+      const yaUbicada = geocodeCache.has(query);
       const loc = await geocodeAddress(query);
       if (loc) results.push({ ...ficha, ...loc });
-      await new Promise(r => setTimeout(r, 1100));
+      // Nominatim permite 1 consulta por segundo; si la dirección ya estaba ubicada no hay que esperar
+      if (!yaUbicada) await new Promise(r => setTimeout(r, 1100));
     }
     setFichasPins(results);
     setIsGeocodingPins(false);
