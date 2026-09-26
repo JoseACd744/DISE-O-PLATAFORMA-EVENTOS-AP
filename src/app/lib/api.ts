@@ -6,11 +6,14 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localh
 export class ApiError extends Error {
   status: number;
   body: unknown;
-  constructor(message: string, status: number, body: unknown) {
+  /** Código de la petición en el log del servidor (X-Request-Id) */
+  requestId?: string;
+  constructor(message: string, status: number, body: unknown, requestId?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.requestId = requestId || undefined;
   }
 }
 
@@ -61,7 +64,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const errorMessage = (body && typeof body === "object" && "error" in body)
       ? String((body as { error: unknown }).error)
       : `HTTP ${response.status}`;
-    throw new ApiError(errorMessage, response.status, body);
+    throw new ApiError(errorMessage, response.status, body, response.headers.get("X-Request-Id") ?? undefined);
   }
 
   return body as T;
@@ -105,7 +108,7 @@ export async function apiUpload(file: File, folder: string): Promise<{ url: stri
   const isJson = (response.headers.get("content-type") || "").includes("application/json");
   const data = isJson ? await response.json().catch(() => null) : null;
   if (!response.ok) {
-    throw new ApiError(String(data?.error || `HTTP ${response.status}`), response.status, data);
+    throw new ApiError(String(data?.error || `HTTP ${response.status}`), response.status, data, response.headers.get("X-Request-Id") ?? undefined);
   }
 
   const rawUrl: string = data?.url || data?.fileUrl || data?.secure_url || data?.location || data?.data?.url || "";

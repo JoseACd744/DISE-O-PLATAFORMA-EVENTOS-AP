@@ -69,9 +69,16 @@ const TRADUCCIONES: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
 // Si el texto ya está en español (el backend tiene varios mensajes así), se muestra tal cual
 const PARECE_ESPANOL = /[áéíóúñ¿¡]|\b(ya|no|el|la|los|las|de|para|una?|debe|tienes|puede|requerid[oa]s?)\b/i;
 
-type ErrorConEstado = { status?: number; message?: string; name?: string };
+type ErrorConEstado = { status?: number; message?: string; name?: string; requestId?: string };
 
 export function mensajeDeError(err: unknown, porDefecto = "Ocurrió un error. Inténtalo de nuevo."): string {
+  const mensaje = traducirError(err, porDefecto);
+  // En fallas del servidor se muestra el código de la petición: con él se ubica el error en el log
+  const e = (err ?? {}) as ErrorConEstado;
+  return e.status && e.status >= 500 && e.requestId ? `${mensaje} (código: ${e.requestId})` : mensaje;
+}
+
+function traducirError(err: unknown, porDefecto: string): string {
   const e = (err ?? {}) as ErrorConEstado;
   const texto = String(e.message ?? (typeof err === "string" ? err : "")).trim();
 
