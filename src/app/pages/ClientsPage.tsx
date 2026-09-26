@@ -12,6 +12,7 @@ import { EmptyState, ErrorBanner } from "../components/ui/feedback";
 import { mensajeDeError, notify } from "../lib/notify";
 import { invalidarClientes } from "../lib/queries";
 import { canManageClients } from "../lib/auth";
+import { campo, etiqueta } from "../lib/ui";
 
 // Canales de adquisición disponibles. Si un cliente antiguo tiene un canal
 // que no está en esta lista, el selector lo agrega para no perder el dato.
@@ -577,7 +578,7 @@ export function ClientsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca *</label>
+                <label className={etiqueta}>Marca *</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -604,86 +605,86 @@ export function ClientsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <label className={etiqueta}>Nombre *</label>
                 <input
                   type="text"
                   value={newClient.nombre}
                   onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })}
                   placeholder="Ej: Maria Lopez"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razon Social (opcional)</label>
+                  <label className={etiqueta}>Razón Social (opcional)</label>
                   <input
                     type="text"
                     value={newClient.razonSocial}
                     onChange={(e) => setNewClient({ ...newClient, razonSocial: e.target.value })}
                     placeholder="Ej: Inversiones Lopez SAC"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <label className={etiqueta}>DNI/RUC (opcional)</label>
                   <input
                     type="text"
                     value={newClient.dniRuc}
                     onChange={(e) => setNewClient({ ...newClient, dniRuc: e.target.value })}
                     placeholder="Ej: 12345678 o 20123456789"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                  <label className={etiqueta}>Email</label>
                   <input
                     type="email"
                     value={newClient.email}
                     onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
                     placeholder="correo@ejemplo.com"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
+                  <label className={etiqueta}>Teléfono *</label>
                   <input
                     type="tel"
                     value={newClient.phone}
                     onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
                     placeholder="+51 987 654 321"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección *</label>
+                <label className={etiqueta}>Dirección *</label>
                 <input
                   type="text"
                   value={newClient.address}
                   onChange={(e) => setNewClient({ ...newClient, address: e.target.value })}
                   placeholder="Av. Principal 123"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Distrito / Ciudad *</label>
+                  <label className={etiqueta}>Distrito / Ciudad *</label>
                   <input
                     type="text"
                     value={newClient.city}
                     onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
                     placeholder="Miraflores"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
+                  <label className={etiqueta}>Canal de adquisición</label>
                   <select
                     value={newClient.canal}
                     onChange={(e) => setNewClient({ ...newClient, canal: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     <option value="">Sin canal</option>
                     {canalesDisponibles(newClient.canal).map((canal) => (
@@ -692,11 +693,11 @@ export function ClientsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <label className={etiqueta}>Estado</label>
                   <select
                     value={newClient.status}
                     onChange={(e) => setNewClient({ ...newClient, status: e.target.value as "active" | "inactive" })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     <option value="active">Activo</option>
                     <option value="inactive">Inactivo</option>
@@ -705,36 +706,36 @@ export function ClientsPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <label className={etiqueta}>Año del cliente</label>
                   <input
                     type="number"
                     value={newClient.anioRegistro}
                     onChange={(e) => setNewClient({ ...newClient, anioRegistro: e.target.value })}
                     placeholder="Ej: 2022"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <label className={etiqueta}>Fichas base</label>
                   <input
                     type="number"
                     min={0}
                     value={newClient.fichasBase}
                     onChange={(e) => setNewClient({ ...newClient, fichasBase: Number(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                   <p className="text-[11px] text-gray-400 mt-1">Fichas que tuvo antes de registrarse en el sistema</p>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <label className={etiqueta}>Recomendaciones</label>
                   <input
                     type="number"
                     min={0}
                     value={newClient.recomendaciones}
                     onChange={(e) => setNewClient({ ...newClient, recomendaciones: Number(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
@@ -771,79 +772,79 @@ export function ClientsPage() {
             <div className="mb-6">{getBrandBadge(editingClient.creadoPor)}</div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <label className={etiqueta}>Nombre *</label>
                 <input
                   type="text"
                   value={editingClient.nombre}
                   onChange={(e) => setEditingClient({ ...editingClient, nombre: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razon Social (opcional)</label>
+                  <label className={etiqueta}>Razón Social (opcional)</label>
                   <input
                     type="text"
                     value={editingClient.razonSocial}
                     onChange={(e) => setEditingClient({ ...editingClient, razonSocial: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <label className={etiqueta}>DNI/RUC (opcional)</label>
                   <input
                     type="text"
                     value={editingClient.dniRuc}
                     onChange={(e) => setEditingClient({ ...editingClient, dniRuc: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                  <label className={etiqueta}>Email</label>
                   <input
                     type="email"
                     value={editingClient.email}
                     onChange={(e) => setEditingClient({ ...editingClient, email: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
+                  <label className={etiqueta}>Teléfono *</label>
                   <input
                     type="tel"
                     value={editingClient.phone}
                     onChange={(e) => setEditingClient({ ...editingClient, phone: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección *</label>
+                <label className={etiqueta}>Dirección *</label>
                 <input
                   type="text"
                   value={editingClient.address}
                   onChange={(e) => setEditingClient({ ...editingClient, address: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Distrito / Ciudad *</label>
+                  <label className={etiqueta}>Distrito / Ciudad *</label>
                   <input
                     type="text"
                     value={editingClient.city}
                     onChange={(e) => setEditingClient({ ...editingClient, city: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
+                  <label className={etiqueta}>Canal de adquisición</label>
                   <select
                     value={editingClient.canal}
                     onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     <option value="">Sin canal</option>
                     {canalesDisponibles(editingClient.canal).map((canal) => (
@@ -852,11 +853,11 @@ export function ClientsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <label className={etiqueta}>Estado</label>
                   <select
                     value={editingClient.status}
                     onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value as "active" | "inactive" })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     <option value="active">Activo</option>
                     <option value="inactive">Inactivo</option>
@@ -865,34 +866,34 @@ export function ClientsPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <label className={etiqueta}>Año del cliente</label>
                   <input
                     type="number"
                     value={editingClient.anioRegistro ?? ""}
                     onChange={(e) => setEditingClient({ ...editingClient, anioRegistro: e.target.value ? Number(e.target.value) : null })}
                     placeholder="Ej: 2022"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <label className={etiqueta}>Fichas base</label>
                   <input
                     type="number"
                     min={0}
                     value={editingClient.fichasBase}
                     onChange={(e) => setEditingClient({ ...editingClient, fichasBase: Number(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                   <p className="text-[11px] text-gray-400 mt-1">Fichas reales en el sistema: {editingClient.fichasReales}</p>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <label className={etiqueta}>Recomendaciones</label>
                   <input
                     type="number"
                     min={0}
                     value={editingClient.recomendaciones}
                     onChange={(e) => setEditingClient({ ...editingClient, recomendaciones: Number(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>

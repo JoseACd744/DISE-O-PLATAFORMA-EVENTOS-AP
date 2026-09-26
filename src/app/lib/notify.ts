@@ -50,6 +50,8 @@ const TRADUCCIONES: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/Recurso \d+ not found/i, "Uno de los recursos ya no existe."],
   [/recursoNombre is required/i, "Falta el nombre de un recurso."],
   [/No file provided/i, "No se recibió ningún archivo."],
+  [/Only images or PDF files are allowed/i, "Solo se pueden subir imágenes (JPG, PNG, WEBP) o PDF."],
+  [/File too large/i, "El archivo es demasiado grande (máximo 10 MB)."],
   [/Invalid (ficha|personal) id/i, "El registro no es válido."],
   [/cannot be empty/i, "Hay un campo obligatorio vacío."],
   [/duplicate key|already exists|unique constraint/i, "Ya existe un registro con esos datos."],

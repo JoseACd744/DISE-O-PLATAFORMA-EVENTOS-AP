@@ -19,6 +19,16 @@ import {
   CheckCircle2,
   Upload,
   Pencil,
+  Castle,
+  Waves,
+  PartyPopper,
+  Flag,
+  Trophy,
+  Tent,
+  FerrisWheel,
+  Package,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useBrand } from "../contexts/BrandContext";
@@ -31,6 +41,7 @@ import { StatCard } from "../components/ui/stat-card";
 import { PageHeader } from "../components/ui/page-header";
 import { mensajeDeError, notify } from "../lib/notify";
 import { canManageResources } from "../lib/auth";
+import { campo, etiqueta } from "../lib/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -110,15 +121,20 @@ interface AlertaMantenimiento {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const EMOJI_MAP: Record<string, string> = {
-  castle: "🏰", slide: "🌊", bounce: "🤸", obstacle: "🏃",
-  foosball: "⚽", mini: "🎪", combo: "🎢",
+// Ícono de respaldo cuando el inflable o carrito no tiene foto
+const ICONO_INFLABLE: Record<string, LucideIcon> = {
+  castle: Castle, slide: Waves, bounce: PartyPopper, obstacle: Flag,
+  foosball: Trophy, mini: Tent, combo: FerrisWheel,
 };
 
-const CARRITO_EMOJI: Record<string, string> = {
-  blanco: "🤍", clasico: "🛒", delgado: "📦", nuevo: "✨",
-  BLANCO: "🤍", CLASICO: "🛒", DELGADO: "📦", NUEVO: "✨",
+const ICONO_CARRITO: Record<string, LucideIcon> = {
+  blanco: ShoppingCart, clasico: ShoppingCart, delgado: Package, nuevo: Sparkles,
 };
+
+function IconoCarrito({ imagen, className }: { imagen?: string; className?: string }) {
+  const Icono = ICONO_CARRITO[(imagen || "").toLowerCase()] || ShoppingCart;
+  return <Icono className={className} aria-hidden="true" />;
+}
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -232,7 +248,7 @@ export function InflablesPage() {
   const [newResCarrito, setNewResCarrito] = useState({ carritoId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
   const [alertaFilter, setAlertaFilter] = useState<"all" | "pendiente" | "en-proceso" | "resuelta">("all");
 
-  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange";
+  const inputClass = campo;
 
   // ── Derived ────────────────────────────────────────────────────────────
 
@@ -986,8 +1002,8 @@ export function InflablesPage() {
                       {inflable.imagen.startsWith("http") ? (
                         <img src={inflable.imagen} alt={inflable.nombre} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-5xl">
-                          {EMOJI_MAP[inflable.imagen] || "🎈"}
+                        <div className="w-full h-full flex items-center justify-center text-brand-orange/70">
+                          {(() => { const Icono = ICONO_INFLABLE[inflable.imagen] || PartyPopper; return <Icono className="w-14 h-14" aria-hidden="true" />; })()}
                         </div>
                       )}
                       
@@ -1114,8 +1130,8 @@ export function InflablesPage() {
                     )}
 
                     <div className="flex items-start gap-3">
-                      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg shrink-0">
-                        {CARRITO_EMOJI[carrito.imagen] || "🛒"}
+                      <div className="w-10 h-10 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg shrink-0 text-brand-orange">
+                        <IconoCarrito imagen={carrito.imagen} className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -1127,7 +1143,7 @@ export function InflablesPage() {
                         {/* Stock bar */}
                         <div className="mb-2">
                           <div className="flex items-center justify-between text-[10px] mb-1">
-                            <span className="text-gray-400">Stock hoy</span>
+                            <span className="text-gray-400">Disponibles hoy</span>
                             <span className={`${availToday <= 0 ? "text-red-500" : availToday <= 1 ? "text-amber-500" : "text-green-500"}`}>{availToday} de {carrito.cantidadTotal}</span>
                           </div>
                           <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -1176,7 +1192,7 @@ export function InflablesPage() {
                           const isOver = reserved > c.cantidadTotal;
                           return (
                             <div key={c.id} className={`text-center p-3 rounded-lg border text-xs ${isOver ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20" : avail === 0 ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20" : reserved > 0 ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"}`}>
-                              <span className="text-lg">{CARRITO_EMOJI[c.imagen]}</span>
+                              <IconoCarrito imagen={c.imagen} className="w-5 h-5 mx-auto text-brand-orange" />
                               <p className="text-gray-700 dark:text-gray-300 truncate mt-1">{c.modelo}</p>
                               <p className={`mt-1 ${isOver ? "text-red-600 dark:text-red-400" : avail === 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                                 {avail}/{c.cantidadTotal}
@@ -1203,7 +1219,7 @@ export function InflablesPage() {
                               const c = carritos.find(c => c.id === r.carritoId);
                               return (
                                 <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                  <td className="py-3 px-3"><div className="flex items-center gap-2"><span className="text-lg">{CARRITO_EMOJI[c?.imagen || ""]}</span><span className="text-gray-900 dark:text-white">{c?.modelo}</span></div></td>
+                                  <td className="py-3 px-3"><div className="flex items-center gap-2"><IconoCarrito imagen={c?.imagen} className="w-4 h-4 shrink-0 text-brand-orange" /><span className="text-gray-900 dark:text-white">{c?.modelo}</span></div></td>
                                   <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{r.clienteNombre}</td>
                                   <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-brand-navy/10 dark:bg-brand-navy/20 text-brand-navy dark:text-blue-400">{r.evento}</span></td>
                                   <td className="py-3 px-3 text-center text-gray-900 dark:text-white">{r.cantidad}</td>
@@ -1427,12 +1443,12 @@ export function InflablesPage() {
         <ModalWrapper error={formError} onClose={() => setShowNewReserva(false)} title="Nueva Reserva de Inflable" footer={<ModalButtons onCancel={() => setShowNewReserva(false)} onConfirm={handleAddReserva} label="Crear Reserva" submitting={reservaSubmitting} />}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Inflable *</label>
+              <label className={etiqueta}>Tipo de Inflable *</label>
               <select value={newReserva.inflableId} onChange={e => setNewReserva({ ...newReserva, inflableId: Number(e.target.value) })} className={inputClass}>
                 <option value={0}>Seleccionar inflable...</option>
                 {inflables.map(inf => {
                   const alertSev = getMaxSeverity("inflable", inf.id);
-                  return <option key={inf.id} value={inf.id}>{alertSev === "critica" ? "⚠️ " : ""}{inf.nombre} — {inf.cantidadUnidades} uds (S/ {inf.precioAlquiler}/día)</option>;
+                  return <option key={inf.id} value={inf.id}>{inf.nombre} — {inf.cantidadUnidades} uds (S/ {inf.precioAlquiler}/día){alertSev === "critica" ? " · mantenimiento crítico" : ""}</option>;
                 })}
               </select>
               {newReserva.inflableId > 0 && getMaxSeverity("inflable", newReserva.inflableId) === "critica" && (
@@ -1440,7 +1456,7 @@ export function InflablesPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha (día completo) *</label>
+              <label className={etiqueta}>Fecha (día completo) *</label>
               <input type="date" value={newReserva.fecha} onChange={e => setNewReserva({ ...newReserva, fecha: e.target.value })} className={inputClass} />
               {newReserva.inflableId > 0 && newReserva.fecha && (() => {
                 const inf = inflables.find(i => i.id === newReserva.inflableId)!;
@@ -1449,13 +1465,13 @@ export function InflablesPage() {
                 return <p className={`text-xs mt-1 ${avail > 0 ? "text-gray-500" : "text-red-500"}`}>{avail > 0 ? `${avail} de ${inf.cantidadUnidades} disponible(s)` : "No hay disponibilidad"}</p>;
               })()}
             </div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
+            <div><label className={etiqueta}>Cantidad *</label>
               <input type="number" min={1} max={10} value={newReserva.cantidad} onChange={e => setNewReserva({ ...newReserva, cantidad: Number(e.target.value) })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cliente *</label>
+            <div><label className={etiqueta}>Cliente *</label>
               <input type="text" placeholder="Nombre del cliente" value={newReserva.clienteNombre} onChange={e => setNewReserva({ ...newReserva, clienteNombre: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Evento</label>
+            <div><label className={etiqueta}>Evento</label>
               <input type="text" placeholder="Ej: Cumpleaños..." value={newReserva.evento} onChange={e => setNewReserva({ ...newReserva, evento: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
+            <div><label className={etiqueta}>Notas</label>
               <textarea placeholder="Observaciones..." value={newReserva.notas} onChange={e => setNewReserva({ ...newReserva, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
             
           </div>
@@ -1467,12 +1483,12 @@ export function InflablesPage() {
         <ModalWrapper error={formError} onClose={() => setShowNewReservaCarrito(false)} title={<><ShoppingCart className="w-5 h-5 text-brand-orange" /> Nueva Reserva de Carrito</>} footer={<ModalButtons onCancel={() => setShowNewReservaCarrito(false)} onConfirm={handleAddReservaCarrito} label="Crear Reserva" submitting={reservaCarritoSubmitting} />}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Modelo de Carrito *</label>
+              <label className={etiqueta}>Modelo de Carrito *</label>
               <select value={newResCarrito.carritoId} onChange={e => setNewResCarrito({ ...newResCarrito, carritoId: Number(e.target.value) })} className={inputClass}>
                 <option value={0}>Seleccionar carrito...</option>
                 {carritos.map(c => {
                   const alertSev = getMaxSeverity("carrito", c.id);
-                  return <option key={c.id} value={c.id}>{alertSev === "critica" ? "⚠️ " : ""}{c.modelo} — {c.cantidadTotal} uds (S/ {c.precioAlquiler}/día)</option>;
+                  return <option key={c.id} value={c.id}>{c.modelo} — {c.cantidadTotal} uds (S/ {c.precioAlquiler}/día){alertSev === "critica" ? " · mantenimiento crítico" : ""}</option>;
                 })}
               </select>
               {newResCarrito.carritoId > 0 && getMaxSeverity("carrito", newResCarrito.carritoId) === "critica" && (
@@ -1480,7 +1496,7 @@ export function InflablesPage() {
               )}
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha (día completo) *</label>
+              <label className={etiqueta}>Fecha (día completo) *</label>
               <input type="date" value={newResCarrito.fecha} onChange={e => setNewResCarrito({ ...newResCarrito, fecha: e.target.value })} className={inputClass} />
               {newResCarrito.carritoId > 0 && newResCarrito.fecha && (() => {
                 const c = carritos.find(c => c.id === newResCarrito.carritoId)!;
@@ -1489,13 +1505,13 @@ export function InflablesPage() {
                 return <p className={`text-xs mt-1 ${avail > 0 ? "text-gray-500" : "text-red-500"}`}>{avail > 0 ? `${avail} de ${c.cantidadTotal} disponible(s)` : "Agotado — se bloqueará la reserva"}</p>;
               })()}
             </div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
+            <div><label className={etiqueta}>Cantidad *</label>
               <input type="number" min={1} max={20} value={newResCarrito.cantidad} onChange={e => setNewResCarrito({ ...newResCarrito, cantidad: Number(e.target.value) })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cliente *</label>
+            <div><label className={etiqueta}>Cliente *</label>
               <input type="text" placeholder="Nombre del cliente" value={newResCarrito.clienteNombre} onChange={e => setNewResCarrito({ ...newResCarrito, clienteNombre: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Evento</label>
+            <div><label className={etiqueta}>Evento</label>
               <input type="text" placeholder="Ej: Feria escolar..." value={newResCarrito.evento} onChange={e => setNewResCarrito({ ...newResCarrito, evento: e.target.value })} className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notas</label>
+            <div><label className={etiqueta}>Notas</label>
               <textarea placeholder="Observaciones..." value={newResCarrito.notas} onChange={e => setNewResCarrito({ ...newResCarrito, notas: e.target.value })} rows={2} className={`${inputClass} resize-none`} /></div>
             
           </div>
@@ -1525,18 +1541,18 @@ export function InflablesPage() {
               submitting={inflableSubmitting || isCleaningImagen}
             />}>
           <div className="space-y-4">
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label><input type="text" value={newInflable.nombre} onChange={e => setNewInflable({ ...newInflable, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label><textarea value={newInflable.descripcion} onChange={e => setNewInflable({ ...newInflable, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} /></div>
+            <div><label className={etiqueta}>Nombre *</label><input type="text" value={newInflable.nombre} onChange={e => setNewInflable({ ...newInflable, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} /></div>
+            <div><label className={etiqueta}>Descripción *</label><textarea value={newInflable.descripcion} onChange={e => setNewInflable({ ...newInflable, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} /></div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio/día (S/) *</label>
+              <label className={etiqueta}>Precio/día (S/) *</label>
               <input type="number" min={0} value={newInflable.precioAlquiler || ""} onChange={e => setNewInflable({ ...newInflable, precioAlquiler: Number(e.target.value) })} placeholder="350" className={inputClass} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label><input type="text" value={newInflable.dimensiones} onChange={e => setNewInflable({ ...newInflable, dimensiones: e.target.value })} placeholder="Ej: 6m x 4m x 3m" className={inputClass} /></div>
-              <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Rango de Edades</label><input type="text" value={newInflable.edadMinima} onChange={e => setNewInflable({ ...newInflable, edadMinima: e.target.value })} placeholder="Ej: 3 - 12 años" className={inputClass} /></div>
+              <div><label className={etiqueta}>Dimensiones</label><input type="text" value={newInflable.dimensiones} onChange={e => setNewInflable({ ...newInflable, dimensiones: e.target.value })} placeholder="Ej: 6m x 4m x 3m" className={inputClass} /></div>
+              <div><label className={etiqueta}>Rango de Edades</label><input type="text" value={newInflable.edadMinima} onChange={e => setNewInflable({ ...newInflable, edadMinima: e.target.value })} placeholder="Ej: 3 - 12 años" className={inputClass} /></div>
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Imagen *</label>
+              <label className={etiqueta}>Imagen *</label>
               <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
                 isUploadingImagen || isCleaningImagen
                   ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
@@ -1569,18 +1585,18 @@ export function InflablesPage() {
         <ModalWrapper error={formError} onClose={() => setShowNewUnidad(false)} title="Nueva Unidad Física" footer={<ModalButtons onCancel={() => setShowNewUnidad(false)} onConfirm={handleAddUnidad} label="Guardar Unidad" submitting={unidadSubmitting} />}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Inflable *</label>
+              <label className={etiqueta}>Tipo de Inflable *</label>
               <select value={newUnidad.tipoId} onChange={e => setNewUnidad({ ...newUnidad, tipoId: Number(e.target.value) })} className={inputClass}>
                 <option value={0}>Seleccionar tipo...</option>
                 {inflables.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+              <label className={etiqueta}>Código *</label>
               <input type="text" value={newUnidad.codigo} onChange={e => setNewUnidad({ ...newUnidad, codigo: e.target.value })} placeholder="Ej: CAST-001" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+              <label className={etiqueta}>Estado</label>
               <select value={newUnidad.estado} onChange={e => setNewUnidad({ ...newUnidad, estado: e.target.value as typeof newUnidad.estado })} className={inputClass}>
                 <option value="disponible">Disponible</option>
                 <option value="en-uso">En Uso</option>
@@ -1588,7 +1604,7 @@ export function InflablesPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de adquisición</label>
+              <label className={etiqueta}>Fecha de adquisición</label>
               <input type="date" value={newUnidad.fechaAdquisicion} onChange={e => setNewUnidad({ ...newUnidad, fechaAdquisicion: e.target.value })} className={inputClass} />
             </div>
             
@@ -1621,29 +1637,29 @@ export function InflablesPage() {
             />}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+              <label className={etiqueta}>Nombre *</label>
               <input type="text" value={editInflableForm.nombre} onChange={e => setEditInflableForm({ ...editInflableForm, nombre: e.target.value })} placeholder="Ej: Tobogán Doble" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
+              <label className={etiqueta}>Descripción *</label>
               <textarea value={editInflableForm.descripcion} onChange={e => setEditInflableForm({ ...editInflableForm, descripcion: e.target.value })} placeholder="Descripción..." rows={2} className={`${inputClass} resize-none`} />
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio/día (S/) *</label>
+              <label className={etiqueta}>Precio/día (S/) *</label>
               <input type="number" min={0} value={editInflableForm.precioAlquiler || ""} onChange={e => setEditInflableForm({ ...editInflableForm, precioAlquiler: Number(e.target.value) })} placeholder="350" className={inputClass} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dimensiones</label>
+                <label className={etiqueta}>Dimensiones</label>
                 <input type="text" value={editInflableForm.dimensiones} onChange={e => setEditInflableForm({ ...editInflableForm, dimensiones: e.target.value })} placeholder="Ej: 6m x 4m x 3m" className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Rango de Edades</label>
+                <label className={etiqueta}>Rango de Edades</label>
                 <input type="text" value={editInflableForm.edadMinima} onChange={e => setEditInflableForm({ ...editInflableForm, edadMinima: e.target.value })} placeholder="Ej: 3 - 12 años" className={inputClass} />
               </div>
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Imagen</label>
+              <label className={etiqueta}>Imagen</label>
               <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
                 isUploadingEditImagen || isCleaningEditImagen
                   ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
@@ -1677,14 +1693,14 @@ export function InflablesPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de Recurso *</label>
+                <label className={etiqueta}>Tipo de Recurso *</label>
                 <select value={newAlerta.recursoTipo} onChange={e => setNewAlerta({ ...newAlerta, recursoTipo: e.target.value as TipoRecurso, recursoId: 0 })} className={inputClass}>
                   <option value="inflable">Inflable</option>
                   <option value="carrito">Carrito</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recurso *</label>
+                <label className={etiqueta}>Recurso *</label>
                 <select value={newAlerta.recursoId} onChange={e => setNewAlerta({ ...newAlerta, recursoId: Number(e.target.value) })} className={inputClass}>
                   <option value={0}>Seleccionar...</option>
                   {newAlerta.recursoTipo === "inflable"
@@ -1694,7 +1710,7 @@ export function InflablesPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Severidad *</label>
+              <label className={etiqueta}>Severidad *</label>
               <div className="flex gap-2">
                 {(["critica", "advertencia", "info"] as SeveridadAlerta[]).map(s => (
                   <button key={s} onClick={() => setNewAlerta({ ...newAlerta, severidad: s })}
@@ -1706,11 +1722,11 @@ export function InflablesPage() {
                 ))}
               </div>
             </div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Título del Problema *</label>
+            <div><label className={etiqueta}>Título del Problema *</label>
               <input type="text" value={newAlerta.titulo} onChange={e => setNewAlerta({ ...newAlerta, titulo: e.target.value })} placeholder="Ej: Tornillos sueltos en rueda" className={inputClass} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción Detallada *</label>
+            <div><label className={etiqueta}>Descripción Detallada *</label>
               <textarea value={newAlerta.descripcion} onChange={e => setNewAlerta({ ...newAlerta, descripcion: e.target.value })} placeholder="Describa el problema, ubicación del daño, urgencia..." rows={3} className={`${inputClass} resize-none`} /></div>
-            <div><label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Reportado por</label>
+            <div><label className={etiqueta}>Reportado por</label>
               <input type="text" value={newAlerta.reportadoPor} onChange={e => setNewAlerta({ ...newAlerta, reportadoPor: e.target.value })} placeholder="Nombre del responsable" className={inputClass} /></div>
             
           </div>

@@ -30,6 +30,8 @@ import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDe
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
 import { buildJuguetonContractHtml, type JuguetonContractItem } from "../lib/juguetonContract";
+import { PageHeader } from "../components/ui/page-header";
+import { campo, etiqueta } from "../lib/ui";
 
 // ── Financial types ──────────────────────────────────────────────
 
@@ -694,7 +696,7 @@ function AbonoModal({
 
         <form id="abono-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Fecha</label>
+            <label className={etiqueta}>Fecha</label>
             <input
               type="date"
               value={fecha}
@@ -704,7 +706,7 @@ function AbonoModal({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Monto</label>
+            <label className={etiqueta}>Monto</label>
             <input
               type="number"
               min="0"
@@ -717,7 +719,7 @@ function AbonoModal({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
+            <label className={etiqueta}>Medio de pago</label>
             <select
               value={medio}
               onChange={(event) => setMedio(event.target.value as Abono["medio"])}
@@ -732,7 +734,7 @@ function AbonoModal({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Número de operación</label>
+            <label className={etiqueta}>Número de operación</label>
             <input
               type="text"
               value={numeroOperacion}
@@ -743,7 +745,7 @@ function AbonoModal({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Comprobante</label>
+            <label className={etiqueta}>Comprobante</label>
             <div
               tabIndex={0}
               onPaste={(e) => void handleComprobantePaste(e)}
@@ -1661,7 +1663,7 @@ export function FichasPage() {
             <section class="top">
               <img class="logo" src="/images/jugueton.png" alt="Jugueton" />
               <div class="title-block">
-                <h1>COTIZACION</h1>
+                <h1>COTIZACIÓN</h1>
                 <div class="docno">${numeroCotizacion}</div>
                 <div class="inline-box">
                   <span>FECHA</span>
@@ -1673,8 +1675,8 @@ export function FichasPage() {
             <section class="info">
               <div><strong>Cliente:</strong> ${escapeHtml(ficha.cliente_nombre)}</div>
               <div><strong>Correo:</strong> ${escapeHtml(ficha.contacto_nombre || "-")}</div>
-              <div><strong>Telefono:</strong> ${escapeHtml(ficha.cliente_celular)}</div>
-              <div><strong>Direccion del evento:</strong> ${escapeHtml(ficha.direccion)} - ${escapeHtml(ficha.distrito)}</div>
+              <div><strong>Teléfono:</strong> ${escapeHtml(ficha.cliente_celular)}</div>
+              <div><strong>Dirección del evento:</strong> ${escapeHtml(ficha.direccion)} - ${escapeHtml(ficha.distrito)}</div>
               <div><strong>Fecha del evento:</strong> ${escapeHtml(fechaEventoTexto)}</div>
             </section>
 
@@ -1698,7 +1700,7 @@ export function FichasPage() {
               <thead>
                 <tr>
                   <th style="width: 20%;">Producto</th>
-                  <th>Descripcion</th>
+                  <th>Descripción</th>
                   <th style="width: 12%;" class="text-center">Cantidad</th>
                   <th style="width: 19%;" class="text-right">P. con DSCT</th>
                 </tr>
@@ -1741,14 +1743,14 @@ export function FichasPage() {
             </section>
 
             <section class="legal">
-              <p>Esta cotizacion tiene una validez de 30 dias. Despues de este tiempo debera solicitar una nueva cotizacion y estara sujeta a variacion de precios.</p>
-              <p>Se emiten factura o boleta segun la solicitud del cliente al momento de la reserva.</p>
-              <p class="highlight">Puedes reservar con el 50% del monto total y la diferencia un dia antes de tu evento, o con el 100% de si asi lo prefieres.</p>
+              <p>Esta cotización tiene una validez de 30 días. Después de este tiempo deberá solicitar una nueva cotización y estará sujeta a variación de precios.</p>
+              <p>Se emiten factura o boleta según la solicitud del cliente al momento de la reserva.</p>
+              <p class="highlight">Puedes reservar con el 50% del monto total y la diferencia un día antes de tu evento, o con el 100% si así lo prefieres.</p>
             </section>
 
             <section class="payments">
               <div>
-                <h3>METODOS DE PAGO</h3>
+                <h3>MÉTODOS DE PAGO</h3>
                 <p class="company">DISTRIBUCIONES DISAM E.I.R.L</p>
                 <p class="ruc">RUC:20613544250</p>
                 <table class="pay-table">
@@ -2026,15 +2028,15 @@ export function FichasPage() {
 
             <section class="meta-top">
               <div class="client">
-                <div class="row"><strong>RAZON SOCIAL</strong><span>${escapeHtml(razonSocialCliente)}</span></div>
+                <div class="row"><strong>RAZÓN SOCIAL</strong><span>${escapeHtml(razonSocialCliente)}</span></div>
                 <div class="row"><strong>RUC / DNI</strong><span>${escapeHtml(cliente?.dni_ruc || "-")}</span></div>
                 <div class="row"><strong>CORREO</strong><span>${escapeHtml(cliente?.email || "-")}</span></div>
-                <div class="row"><strong>TELEFONO</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
-                <div class="row"><strong>Atencion</strong><span>${escapeHtml(ficha.contacto_nombre || ficha.cliente_nombre)}</span></div>
+                <div class="row"><strong>TELÉFONO</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
+                <div class="row"><strong>Atención</strong><span>${escapeHtml(ficha.contacto_nombre || ficha.cliente_nombre)}</span></div>
                 <div class="row"><strong></strong><span>Mediante la presente, enviamos lo solicitado:</span></div>
               </div>
               <div class="quote-box">
-                <div class="row"><span>COTIZACION:</span><span>${numeroFicha}</span></div>
+                <div class="row"><span>COTIZACIÓN:</span><span>${numeroFicha}</span></div>
                 <div class="row"><span>DISTRITO:</span><span>${escapeHtml(ficha.distrito)}</span></div>
                 <div class="row"><span>FECHA:</span><span>${fechaEmision}</span></div>
               </div>
@@ -2044,7 +2046,7 @@ export function FichasPage() {
               <thead>
                 <tr>
                   <th style="width: 16%;">CANTIDAD</th>
-                  <th>DESCRIPCION</th>
+                  <th>DESCRIPCIÓN</th>
                   <th style="width: 13%;">P/U</th>
                   <th style="width: 14%;">TOTAL</th>
                 </tr>
@@ -2871,7 +2873,7 @@ export function FichasPage() {
     resetAbonoInicialComprobante();
   };
 
-  const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent";
+  const inputClass = campo;
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
@@ -2939,10 +2941,7 @@ export function FichasPage() {
         <ErrorBanner className="mb-4" onRetry={() => void loadFichas({ forzar: true })}>{error}</ErrorBanner>
       ) : null}
 
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Fichas de Eventos</h1>
-        <p className="text-gray-600 dark:text-gray-400">Gestiona eventos, pagos parciales y control financiero</p>
-      </div>
+      <PageHeader title="Fichas de Eventos" subtitle="Gestiona eventos, pagos parciales y control financiero" />
 
       {isAdmin && (
         <div className="mb-6 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl border border-brand-navy/10 dark:border-blue-900/20 shadow-sm flex flex-col items-start md:flex-row md:items-center justify-between gap-4">
@@ -3693,7 +3692,7 @@ export function FichasPage() {
             <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
               {/* Título — encabezado principal de la ficha */}
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Título de la Ficha</label>
+                <label className={etiqueta}>Título de la Ficha</label>
                 <input type="text" name="titulo" value={formData.titulo} onChange={handleInputChange} placeholder="Ej: Cumpleaños de Valentina" className={inputClass} />
               </div>
 
@@ -3736,7 +3735,7 @@ export function FichasPage() {
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Evento</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha del Evento *</label>
+                    <label className={etiqueta}>Fecha del Evento *</label>
                     <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                     {formData.fecha_evento && (
                       <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-brand-orange" : "text-gray-500 dark:text-gray-400"}`}>
@@ -3746,7 +3745,7 @@ export function FichasPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha de Contacto del Cliente *</label>
+                    <label className={etiqueta}>Fecha de Contacto del Cliente *</label>
                     <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                     {formData.fecha_reserva && (
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -3825,7 +3824,7 @@ export function FichasPage() {
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400">Carritos</label>
+                      <label className={etiqueta}>Carritos</label>
                       <button type="button" onClick={handleAddCarritoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar carrito</button>
                     </div>
                     {carritos.length === 0 ? (
@@ -3925,7 +3924,7 @@ export function FichasPage() {
                   </div>
                   {brand === "jugueton" && (
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Inflables</label>
+                      <label className={etiqueta}>Inflables</label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {inflables.map(inflable => {
                           const inflableEstado = getDynamicInflableEstado(inflable.id, formData.fecha_evento);
@@ -3950,7 +3949,7 @@ export function FichasPage() {
 
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400">Recursos</label>
+                      <label className={etiqueta}>Recursos</label>
                       <button type="button" onClick={handleAddRecursoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar recurso</button>
                     </div>
                     {recursos.length === 0 ? (
@@ -3985,7 +3984,7 @@ export function FichasPage() {
 
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400">Personal</label>
+                      <label className={etiqueta}>Personal</label>
                       <button type="button" onClick={handleAddPersonalRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
                     </div>
                     {personales.length === 0 ? (
@@ -4030,7 +4029,7 @@ export function FichasPage() {
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Cliente</h4>
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm text-gray-600 dark:text-gray-400">Cliente existente</label>
+                    <label className={etiqueta}>Cliente existente</label>
                     <button
                       type="button"
                       onClick={handleOpenNewClientModal}
@@ -4055,10 +4054,10 @@ export function FichasPage() {
                   </select>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
                 </div>
               </div>
 
@@ -4066,14 +4065,14 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Distrito *</label>
+                  <div><label className={etiqueta}>Distrito *</label>
                     <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
                       <option value="">Seleccionar distrito</option>
                       {distritos.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
-                  <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
-                  <div className="md:col-span-2"><label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div className="md:col-span-2"><label className={etiqueta}>Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
                 </div>
               </div>
 
@@ -4083,16 +4082,16 @@ export function FichasPage() {
                 {brand === "jugueton" ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
+                      <label className={etiqueta}>Hora de Entrega *</label>
                       <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Inicio *</label>
+                      <label className={etiqueta}>Hora de Inicio *</label>
                       <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
-                        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                        <label className={etiqueta}>Hora de Recojo *</label>
                         <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
                       </div>
                     )}
@@ -4100,7 +4099,7 @@ export function FichasPage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Entrega *</label>
+                      <label className={etiqueta}>Hora de Entrega *</label>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
@@ -4114,7 +4113,7 @@ export function FichasPage() {
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
-                        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Hora de Recojo *</label>
+                        <label className={etiqueta}>Hora de Recojo *</label>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
@@ -4141,7 +4140,7 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
                 <div className="mb-4 max-w-xs">
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Costo de Envío (S/)</label>
+                  <label className={etiqueta}>Costo de Envío (S/)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
                     <input
@@ -4299,7 +4298,7 @@ export function FichasPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Cotización Total (S/) * {cotizacionMode === "auto" ? "(autocalculada)" : "(editable)"}</label>
+                    <label className={etiqueta}>Cotización Total (S/) * {cotizacionMode === "auto" ? "(autocalculada)" : "(editable)"}</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
                       <input type="number" name="cotizacion" value={formData.cotizacion || ""} onChange={handleInputChange} required min={0} step={0.01}
@@ -4308,7 +4307,7 @@ export function FichasPage() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm text-gray-600 dark:text-gray-400">Descuento (%) <span className="text-gray-400">(máx. {descuentoMaxPct}%)</span></label>
+                      <label className={etiqueta}>Descuento (%) <span className="text-gray-400">(máx. {descuentoMaxPct}%)</span></label>
                       {isAdmin && !editingDescuentoCap && (
                         <button type="button" onClick={handleStartEditDescuentoCap} className="text-xs text-brand-orange hover:underline">
                           Editar tope
@@ -4331,7 +4330,7 @@ export function FichasPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total a Pagar</label>
+                    <label className={etiqueta}>Total a Pagar</label>
                     <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
                       <span className="text-lg text-brand-navy dark:text-blue-400">
                         {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) * (1 - (Number(formData.descuento) || 0) / 100)))}
@@ -4358,7 +4357,7 @@ export function FichasPage() {
                     {formData.registrarAbonoInicial && (
                       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Monto del abono (S/) *</label>
+                          <label className={etiqueta}>Monto del abono (S/) *</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">S/</span>
                             <input
@@ -4374,11 +4373,11 @@ export function FichasPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Fecha del abono *</label>
+                          <label className={etiqueta}>Fecha del abono *</label>
                           <input type="date" name="abonoInicialFecha" value={formData.abonoInicialFecha} onChange={handleInputChange} className={inputClass} />
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Medio de pago</label>
+                          <label className={etiqueta}>Medio de pago</label>
                           <select name="abonoInicialMedio" value={formData.abonoInicialMedio} onChange={handleInputChange} className={inputClass}>
                             <option value="Transferencia">Transferencia</option>
                             <option value="Yape">Yape</option>
@@ -4387,7 +4386,7 @@ export function FichasPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Nro. de operacion</label>
+                          <label className={etiqueta}>Nro. de operacion</label>
                           <input
                             type="text"
                             name="abonoInicialNumeroOperacion"
@@ -4398,7 +4397,7 @@ export function FichasPage() {
                           />
                         </div>
                         <div className="md:col-span-2">
-                          <label className="mb-2 block text-sm text-gray-600 dark:text-gray-400">Foto del comprobante (opcional)</label>
+                          <label className={etiqueta}>Foto del comprobante (opcional)</label>
                           <div
                             tabIndex={0}
                             onPaste={(e) => void handleAbonoInicialComprobantePaste(e)}
@@ -4454,7 +4453,7 @@ export function FichasPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <label className={etiqueta}>Nombre *</label>
                 <input
                   type="text"
                   value={newClientForm.nombre}
@@ -4465,7 +4464,7 @@ export function FichasPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Razón Social (opcional)</label>
+                  <label className={etiqueta}>Razón Social (opcional)</label>
                   <input
                     type="text"
                     value={newClientForm.razonSocial}
@@ -4475,7 +4474,7 @@ export function FichasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI/RUC (opcional)</label>
+                  <label className={etiqueta}>DNI/RUC (opcional)</label>
                   <input
                     type="text"
                     value={newClientForm.dniRuc}
@@ -4487,7 +4486,7 @@ export function FichasPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                  <label className={etiqueta}>Email</label>
                   <input
                     type="email"
                     value={newClientForm.email}
@@ -4497,7 +4496,7 @@ export function FichasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
+                  <label className={etiqueta}>Teléfono *</label>
                   <input
                     type="tel"
                     value={newClientForm.telefono}
@@ -4509,7 +4508,7 @@ export function FichasPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Dirección</label>
+                  <label className={etiqueta}>Dirección</label>
                   <input
                     type="text"
                     value={newClientForm.direccion}
@@ -4519,7 +4518,7 @@ export function FichasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Distrito / Ciudad</label>
+                  <label className={etiqueta}>Distrito / Ciudad</label>
                   <input
                     type="text"
                     value={newClientForm.ciudad}
@@ -4531,7 +4530,7 @@ export function FichasPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Canal de adquisición</label>
+                  <label className={etiqueta}>Canal de adquisición</label>
                   <select
                     value={newClientForm.canal}
                     onChange={(e) => setNewClientForm({ ...newClientForm, canal: e.target.value })}
@@ -4546,7 +4545,7 @@ export function FichasPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <label className={etiqueta}>Estado</label>
                   <select
                     value={newClientForm.status}
                     onChange={(e) => setNewClientForm({ ...newClientForm, status: e.target.value as "active" | "inactive" })}
@@ -4559,7 +4558,7 @@ export function FichasPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
+                  <label className={etiqueta}>Año del cliente</label>
                   <input
                     type="number"
                     value={newClientForm.anioRegistro}
@@ -4569,7 +4568,7 @@ export function FichasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fichas base</label>
+                  <label className={etiqueta}>Fichas base</label>
                   <input
                     type="number"
                     min={0}
@@ -4580,7 +4579,7 @@ export function FichasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Recomendaciones</label>
+                  <label className={etiqueta}>Recomendaciones</label>
                   <input
                     type="number"
                     min={0}

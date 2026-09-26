@@ -11,6 +11,7 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { mensajeDeError, notify } from "../lib/notify";
 import { useBrand } from "../contexts/BrandContext";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { campo, campoCompacto, etiqueta } from "../lib/ui";
 
 interface PagoRow {
   id: number;
@@ -175,7 +176,7 @@ export function PagosPage() {
     })),
   }), [filteredPagos]);
 
-  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange";
+  const inputClass = campoCompacto;
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
@@ -451,7 +452,7 @@ function EditPagoModal({
     }
   };
 
-  const inputClass = "w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white";
+  const inputClass = campo;
 
   return (
     <Modal
@@ -472,17 +473,17 @@ function EditPagoModal({
     >
         <form id="pago-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Fecha</label>
+            <label className={etiqueta}>Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputClass} />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Monto</label>
+            <label className={etiqueta}>Monto</label>
             <input type="number" min="0" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} className={inputClass} />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
+            <label className={etiqueta}>Medio de pago</label>
             <select value={medio} onChange={(e) => setMedio(e.target.value)} className={inputClass}>
               <option value="Transferencia">Transferencia</option>
               <option value="Yape">Yape</option>
@@ -493,12 +494,12 @@ function EditPagoModal({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Número de operación</label>
+            <label className={etiqueta}>Número de operación</label>
             <input type="text" value={numeroOperacion} onChange={(e) => setNumeroOperacion(e.target.value)} placeholder="Opcional" className={inputClass} />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Comprobante</label>
+            <label className={etiqueta}>Comprobante</label>
             <div
               tabIndex={0}
               onPaste={(e) => void handlePaste(e)}

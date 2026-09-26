@@ -2,7 +2,6 @@ import { useNavigate } from "react-router";
 import { useEffect } from "react";
 import { useBrand, Brand } from "../contexts/BrandContext";
 import { IceCreamCone, PartyPopper, ArrowRight, LogOut } from "lucide-react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { clearAuthSession, getAuthUser, isAdminRole, isAuthenticated, isDriverRole } from "../lib/auth";
 
 const brands = [
@@ -10,24 +9,22 @@ const brands = [
     id: "donofrio" as Brand,
     name: "D'Onofrio",
     logo: "/images/donofrio.jpg",
-    logoClass: "w-14 h-14 object-contain rounded-md bg-white p-1",
+    logoClass: "max-w-full max-h-full object-contain",
     description: "Gestiona entregas de helados, cartera de clientes, fichas de eventos y optimiza rutas de reparto.",
     icon: IceCreamCone,
     color: "#1F3C8B",
     colorLight: "rgba(31, 60, 139, 0.1)",
-    image: "https://images.unsplash.com/photo-1578687595177-401624c6af6f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpY2UlMjBjcmVhbSUyMGRlc3NlcnQlMjBjb2xvcmZ1bHxlbnwxfHx8fDE3NzI1NjU0NDN8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    features: ["Dashboard de KPIs", "Clientes", "Productos", "Fichas de Eventos", "Rutas", "Reportes"],
+    features: ["Clientes", "Productos", "Fichas de Eventos", "Rutas", "Reportes"],
   },
   {
     id: "jugueton" as Brand,
     name: "Juguetón",
     logo: "/images/jugueton.png",
-    logoClass: "w-10 h-10 object-contain rounded-full bg-white p-1",
+    logoClass: "max-w-full max-h-full object-contain",
     description: "Administra el inventario de inflables, reservas por calendario, y consulta productos de helados para paquetes.",
     icon: PartyPopper,
     color: "#EF8022",
     colorLight: "rgba(239, 128, 34, 0.1)",
-    image: "https://images.unsplash.com/photo-1765947389722-2e96d8c0aad9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmZsYXRhYmxlJTIwYm91bmNlJTIwY2FzdGxlJTIwcGFydHl8ZW58MXx8fHwxNzcyNjQxMDM2fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
     features: ["Inflables", "Calendario de Reservas", "Productos (consulta)", "Reportes"],
   },
 ];
@@ -119,28 +116,16 @@ export function BrandSelectPage() {
                   (e.currentTarget as HTMLElement).style.borderColor = "";
                 }}
               >
-                {/* Image */}
-                <div className="h-44 relative overflow-hidden">
-                  <ImageWithFallback
-                    src={brand.image}
-                    alt={brand.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute top-3 right-3 rounded-xl overflow-hidden border-2 border-white/80 shadow-lg bg-white p-1 flex items-center justify-center">
+                {/* Cabecera con el logo de la marca */}
+                <div
+                  className="h-44 relative overflow-hidden flex items-center gap-4 px-5"
+                  style={{ background: `linear-gradient(135deg, ${brand.color} 0%, ${brand.color}cc 100%)` }}
+                >
+                  <Icon className="absolute -right-6 -bottom-6 w-40 h-40 text-white/10 group-hover:scale-110 transition-transform duration-500" aria-hidden="true" />
+                  <div className="relative w-24 h-24 shrink-0 rounded-2xl bg-white p-3 shadow-lg flex items-center justify-center">
                     <img src={brand.logo} alt={`Logo ${brand.name}`} className={brand.logoClass} />
                   </div>
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      background: `linear-gradient(to top, ${brand.color}dd 0%, ${brand.color}44 50%, transparent 100%)`,
-                    }}
-                  />
-                  <div className="absolute bottom-4 left-5 flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-gray-200 bg-white p-1 flex items-center justify-center">
-                      <img src={brand.logo} alt={brand.name} className={brand.logoClass} />
-                    </div>
-                    <h2 className="text-white" style={{ fontSize: "24px" }}>{brand.name}</h2>
-                  </div>
+                  <h2 className="relative text-white min-w-0 truncate" style={{ fontSize: "24px" }}>{brand.name}</h2>
                 </div>
 
                 {/* Content */}

@@ -13,6 +13,9 @@ import { useTheme } from "../contexts/ThemeContext";
 import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
 import { isAdminUser } from "../lib/auth";
 import { CuotaGauge, colorDeAvance } from "../components/CuotaGauge";
+import { PageHeader } from "../components/ui/page-header";
+import { Button } from "../components/ui/button";
+import { campoCompacto } from "../lib/ui";
 
 // ── Utilidades de fecha y formato ─────────────────────────────────
 
@@ -544,26 +547,23 @@ export function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm";
+  const inputClass = campoCompacto;
   const cmp = periodo.comparacion;
 
   return (
     <div className="p-4 sm:p-6 md:p-8 bg-gray-50 dark:bg-gray-900">
       {/* Encabezado y filtro de período (aplica a todas las secciones salvo "Hoy") */}
       <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-1">Reportes</h1>
-            <p className="text-gray-600 dark:text-gray-400">Resumen del día y análisis de ventas, cobranza y operación</p>
-          </div>
-          <button
-            onClick={exportCSV}
-            disabled={operacion.fichasPeriodo.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-hover transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download className="w-4 h-4" /> Exportar CSV
-          </button>
-        </div>
+        <PageHeader
+          className="mb-4"
+          title="Reportes"
+          subtitle="Resumen del día y análisis de ventas, cobranza y operación"
+          actions={
+            <Button variant="brand" onClick={exportCSV} disabled={operacion.fichasPeriodo.length === 0} className="w-full sm:w-auto">
+              <Download className="w-4 h-4" /> Exportar CSV
+            </Button>
+          }
+        />
         {errorCarga && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>{errorCarga}</span>

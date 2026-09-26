@@ -8,6 +8,10 @@ import { mensajeDeError } from "../lib/notify";
 
 const LOGOS = {
   eventosAp: "/images/eventos_ap_logo.jpg",
+  marcas: [
+    { nombre: "D'Onofrio", src: "/images/donofrio.jpg" },
+    { nombre: "Juguetón", src: "/images/jugueton.png" },
+  ],
 };
 
 export function LoginPage() {
@@ -115,20 +119,20 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Image */}
-      <div className="hidden lg:flex lg:w-1/2 relative">
-        <img
-          src="https://images.unsplash.com/photo-1760662052295-f84068499a03?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZWxpdmVyeSUyMHRydWNrJTIwbG9naXN0aWNzfGVufDF8fHx8MTc3MTMzMTI1Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-          alt="Delivery truck"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-navy/95 to-[#3B82F6]/80 flex items-center justify-center">
-          <div className="text-white text-center px-8">
-            <div className="w-[320px] max-w-full rounded-2xl bg-white/20 backdrop-blur-sm p-4 mx-auto mb-6">
-              <img src={LOGOS.eventosAp} alt="Eventos AP" className="w-full h-auto object-contain rounded-lg bg-white p-2" />
-            </div>
-            <h2 className="text-4xl mb-4">Eventos AP</h2>
-            <p className="text-xl">Plataforma de Entregas</p>
+      {/* Lado izquierdo: identidad de la plataforma y de las dos marcas */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-brand-navy to-[#2F5BD3] dark:from-[#14285e] dark:to-[#1d3f99] items-center justify-center">
+        <div className="text-white text-center px-8">
+          <div className="w-[320px] max-w-full rounded-2xl bg-white/15 p-4 mx-auto mb-6">
+            <img src={LOGOS.eventosAp} alt="Eventos AP" className="w-full h-auto object-contain rounded-lg bg-white p-2" />
+          </div>
+          <h2 className="text-4xl mb-4">Eventos AP</h2>
+          <p className="text-xl text-white/90">Plataforma de Entregas</p>
+          <div className="mt-10 flex items-center justify-center gap-4">
+            {LOGOS.marcas.map((m) => (
+              <div key={m.nombre} className="w-24 h-24 rounded-2xl bg-white p-3 shadow-lg flex items-center justify-center">
+                <img src={m.src} alt={m.nombre} className="max-w-full max-h-full object-contain" />
+              </div>
+            ))}
           </div>
         </div>
       </div>

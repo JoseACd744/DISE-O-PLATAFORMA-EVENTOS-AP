@@ -9,6 +9,7 @@ import { ErrorBanner } from "../components/ui/feedback";
 import { mensajeDeError, notify } from "../lib/notify";
 import { isAdminUser } from "../lib/auth";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { campo, etiqueta } from "../lib/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,7 +167,7 @@ export function AssetsPage() {
 
   // ── Render ────────────────────────────────────────────────────────────
 
-  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-navy";
+  const inputClass = campo;
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
@@ -308,7 +309,7 @@ export function AssetsPage() {
 
             <form id="activo-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <label className={etiqueta}>Nombre *</label>
                 <input
                   type="text"
                   value={form.nombre}
@@ -322,7 +323,7 @@ export function AssetsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad</label>
+                  <label className={etiqueta}>Cantidad</label>
                   <input
                     type="number"
                     value={form.cantidad}
@@ -332,7 +333,7 @@ export function AssetsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Costo (S/)</label>
+                  <label className={etiqueta}>Costo (S/)</label>
                   <input
                     type="number"
                     step="0.01"

@@ -12,6 +12,7 @@ import { mensajeDeError, notify } from "../lib/notify";
 import { invalidarAsignaciones, obtenerFichasConDetalle, obtenerFichasLista } from "../lib/queries";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { canManageResources } from "../lib/auth";
+import { campo, etiqueta } from "../lib/ui";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ export function LogisticsPage() {
     .filter(a => a.fecha === asignacionForm.fecha)
     .flatMap(a => a.fichasIds);
 
-  const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm";
+  const inputClass = campo;
 
   // Stats
   const choferesDisponibles = choferes.filter(c => c.estado === "disponible").length;
@@ -729,7 +730,7 @@ export function LogisticsPage() {
                           ${escapeHtml(f.hora_entrega)}<br/>
                           <small>Recojo: ${escapeHtml(f.hora_recojo)}</small>
                         </td>
-                        <td>${escapeHtml(itemsStr || "Sin items")}</td>
+                        <td>${escapeHtml(itemsStr || "Sin productos")}</td>
                         <td style="text-align:right; font-weight:bold; color:${saldo > 0 ? "#e11d48" : "#16a34a"};">
                           ${formatMoney(saldo)}
                         </td>
@@ -785,7 +786,7 @@ export function LogisticsPage() {
                               <th>Cliente</th>
                               <th>Dirección</th>
                               <th style="width: 100px;">Horario</th>
-                              <th>Items</th>
+                              <th>Productos</th>
                               <th style="width: 80px;">Saldo</th>
                             </tr>
                           </thead>
@@ -926,15 +927,15 @@ export function LogisticsPage() {
         >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
+                <div><label className={etiqueta}>Nombre Completo *</label>
                   <input type="text" value={editChoferForm.nombre} onChange={e => setEditChoferForm(p => ({ ...p, nombre: e.target.value }))} className={inputClass} placeholder="Ej: Carlos Mendoza" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">DNI *</label>
+                <div><label className={etiqueta}>DNI *</label>
                   <input type="text" value={editChoferForm.dni} onChange={e => setEditChoferForm(p => ({ ...p, dni: e.target.value.replace(/\D/g, "").slice(0, 8) }))} maxLength={8} className={inputClass} placeholder="Ej: 45678923" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Celular *</label>
+                <div><label className={etiqueta}>Celular *</label>
                   <input type="tel" value={editChoferForm.celular} onChange={e => setEditChoferForm(p => ({ ...p, celular: e.target.value }))} className={inputClass} placeholder="Ej: 987 654 321" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Categoría Licencia *</label>
+                <div><label className={etiqueta}>Categoría Licencia *</label>
                   <select value={editChoferForm.licencia} onChange={e => setEditChoferForm(p => ({ ...p, licencia: e.target.value }))} className={inputClass}>
                     <option value="A-IIb">A-IIb (Camioneta)</option>
                     <option value="A-IIIa">A-IIIa (Camión liviano)</option>
@@ -967,15 +968,15 @@ export function LogisticsPage() {
         >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre Completo *</label>
+                <div><label className={etiqueta}>Nombre Completo *</label>
                   <input type="text" value={choferForm.nombre} onChange={e => setChoferForm(p => ({ ...p, nombre: e.target.value }))} className={inputClass} placeholder="Ej: Carlos Mendoza" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">DNI *</label>
+                <div><label className={etiqueta}>DNI *</label>
                   <input type="text" value={choferForm.dni} onChange={e => setChoferForm(p => ({ ...p, dni: e.target.value.replace(/\D/g, "").slice(0, 8) }))} maxLength={8} className={inputClass} placeholder="Ej: 45678923" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Celular *</label>
+                <div><label className={etiqueta}>Celular *</label>
                   <input type="tel" value={choferForm.celular} onChange={e => setChoferForm(p => ({ ...p, celular: e.target.value }))} className={inputClass} placeholder="Ej: 987 654 321" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Categoría Licencia *</label>
+                <div><label className={etiqueta}>Categoría Licencia *</label>
                   <select value={choferForm.licencia} onChange={e => setChoferForm(p => ({ ...p, licencia: e.target.value }))} className={inputClass}>
                     <option value="A-IIb">A-IIb (Camioneta)</option>
                     <option value="A-IIIa">A-IIIa (Camión liviano)</option>
@@ -1003,30 +1004,30 @@ export function LogisticsPage() {
         >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Placa *</label>
+                <div><label className={etiqueta}>Placa *</label>
                   <input type="text" value={vehiculoForm.placa} onChange={e => setVehiculoForm(p => ({ ...p, placa: e.target.value.toUpperCase() }))} className={`${inputClass} font-mono uppercase`} placeholder="Ej: ABC-123" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Marca del Vehículo *</label>
+                <div><label className={etiqueta}>Marca del Vehículo *</label>
                   <input type="text" value={vehiculoForm.marca} onChange={e => setVehiculoForm(p => ({ ...p, marca: e.target.value }))} className={inputClass} placeholder="Ej: Toyota" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Modelo *</label>
+                <div><label className={etiqueta}>Modelo *</label>
                   <input type="text" value={vehiculoForm.modelo} onChange={e => setVehiculoForm(p => ({ ...p, modelo: e.target.value }))} className={inputClass} placeholder="Ej: Hilux 2023" /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Vencimiento SOAT</label>
+                <div><label className={etiqueta}>Vencimiento SOAT</label>
                   <input type="date" value={vehiculoForm.fechaVencimientoSoat} onChange={e => setVehiculoForm(p => ({ ...p, fechaVencimientoSoat: e.target.value }))} className={inputClass} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Estado</label>
+                <div><label className={etiqueta}>Estado</label>
                    <select value={vehiculoForm.estado} onChange={e => setVehiculoForm(p => ({ ...p, estado: e.target.value as EstadoVehiculo }))} className={inputClass}>
                      <option value="disponible">Disponible</option>
                      <option value="en-ruta">En Ruta</option>
                      <option value="mantenimiento">Mantenimiento</option>
                    </select></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Último Mantenimiento</label>
+                <div><label className={etiqueta}>Último Mantenimiento</label>
                   <input type="date" value={vehiculoForm.ultimoMantenimiento} onChange={e => setVehiculoForm(p => ({ ...p, ultimoMantenimiento: e.target.value }))} className={inputClass} /></div>
               </div>
               {/* Brands assignment */}
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Marcas Asignadas</label>
+                <label className={etiqueta}>Marcas Asignadas</label>
                 <div className="flex gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={vehiculoForm.marcasAsignadas.includes("donofrio")}
@@ -1073,30 +1074,30 @@ export function LogisticsPage() {
         >
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Chofer *</label>
+                <div><label className={etiqueta}>Chofer *</label>
                   <select value={asignacionForm.choferId} onChange={e => setAsignacionForm(p => ({ ...p, choferId: Number(e.target.value) }))} className={inputClass}>
                     <option value={0}>Seleccionar chofer...</option>
                     {choferes.filter(c => c.estado === "disponible").map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Vehículo *</label>
+                <div><label className={etiqueta}>Vehículo *</label>
                   <select value={asignacionForm.vehiculoId} onChange={e => setAsignacionForm(p => ({ ...p, vehiculoId: Number(e.target.value) }))} className={inputClass}>
                     <option value={0}>Seleccionar vehículo...</option>
                     {vehiculos.filter(v => v.estado === "disponible").map(v => <option key={v.id} value={v.id}>{v.placa} - {v.modelo}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Fecha *</label>
+                <div><label className={etiqueta}>Fecha *</label>
                   <input type="date" value={asignacionForm.fecha} onChange={e => setAsignacionForm(p => ({ ...p, fecha: e.target.value, fichasIds: [] }))} className={inputClass} /></div>
-                <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">N.º de Entregas</label>
+                <div><label className={etiqueta}>N.º de Entregas</label>
                   <input type="number" value={asignacionForm.entregas || ""} onChange={e => setAsignacionForm(p => ({ ...p, entregas: Number(e.target.value) }))} className={inputClass} min={0} /></div>
               </div>
-              <div><label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Nombre de Ruta</label>
+              <div><label className={etiqueta}>Nombre de Ruta</label>
                 <input type="text" value={asignacionForm.ruta} onChange={e => setAsignacionForm(p => ({ ...p, ruta: e.target.value }))} className={inputClass} placeholder="Ej: Zona Sur - Surco/Miraflores" /></div>
 
               {/* ── Selector de Fichas ─────────────────────────── */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm text-gray-600 dark:text-gray-400">Fichas de entrega</label>
+                  <label className={etiqueta}>Fichas de entrega</label>
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                     getTotalCarritosByIds(asignacionForm.fichasIds) >= MAX_CARRITOS_POR_VEHICULO
                       ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
@@ -1202,7 +1203,7 @@ export function LogisticsPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Marcas en esta ruta</label>
+                <label className={etiqueta}>Marcas en esta ruta</label>
                 <div className="flex gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={asignacionForm.marcaEntregas.includes("donofrio")}

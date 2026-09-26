@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, ShoppingCart, History, Users, Pencil } from "lucide-react";
+import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, ShoppingCart, History, Users, Pencil, MapPin, User } from "lucide-react";
 import { Pagination } from "../components/Pagination";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
@@ -14,6 +14,7 @@ import { mensajeDeError, notify } from "../lib/notify";
 import { getLocalDateString } from "../lib/date";
 import { useBrand } from "../contexts/BrandContext";
 import { canManageResources } from "../lib/auth";
+import { campo, etiqueta } from "../lib/ui";
 
 const ITEMS_PER_PAGE = 15;
 const PAQUETES_PER_PAGE = 12;
@@ -2071,9 +2072,11 @@ export function ProductsPage() {
                           <div className="flex items-start justify-between gap-4 mb-3">
                             <div className="flex-1">
                               <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{entry.clienteNombre}</h4>
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                {entry.distrito && `📍 ${entry.distrito}`}
-                              </p>
+                              {entry.distrito && (
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 shrink-0" /> {entry.distrito}
+                                </p>
+                              )}
                             </div>
                             <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-orange/10 text-brand-orange text-sm font-medium">
                               {entry.carritoCount} carrito(s)
@@ -2102,7 +2105,7 @@ export function ProductsPage() {
                                 <div className="flex flex-wrap gap-2">
                                   {carritosAsignados.map((c) => (
                                     <span key={c.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20 text-xs font-medium">
-                                      🛒 {c.codigo} — {c.modelo}
+                                      <ShoppingCart className="w-3.5 h-3.5 shrink-0" /> {c.codigo} — {c.modelo}
                                     </span>
                                   ))}
                                 </div>
@@ -2526,9 +2529,11 @@ export function ProductsPage() {
                               <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 {entry.clienteNombre}
                               </h4>
-                              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                {entry.distrito && `📍 ${entry.distrito}`}
-                              </p>
+                              {entry.distrito && (
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 shrink-0" /> {entry.distrito}
+                                </p>
+                              )}
                             </div>
                             <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-orange/10 text-brand-orange text-sm font-medium">
                               {entry.personalCount} personal
@@ -2560,7 +2565,7 @@ export function ProductsPage() {
                                       key={p.id}
                                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 text-xs font-medium"
                                     >
-                                      👤 {p.nombre_completo || p.nombre}
+                                      <User className="w-3.5 h-3.5 shrink-0" /> {p.nombre_completo || p.nombre}
                                     </span>
                                   ))}
                                 </div>
@@ -2615,59 +2620,59 @@ export function ProductsPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre completo *</label>
+                <label className={etiqueta}>Nombre completo *</label>
                 <input
                   type="text"
                   value={personalForm.nombre_completo}
                   onChange={(e) => setPersonalForm({ ...personalForm, nombre_completo: e.target.value })}
                   placeholder="Ej: Juan Pérez García"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">DNI * (8 dígitos)</label>
+                  <label className={etiqueta}>DNI * (8 dígitos)</label>
                   <input
                     type="text"
                     value={personalForm.dni}
                     onChange={(e) => setPersonalForm({ ...personalForm, dni: e.target.value.replace(/\D/g, "").slice(0, 8) })}
                     placeholder="12345678"
                     maxLength={8}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Fecha de nacimiento *</label>
+                  <label className={etiqueta}>Fecha de nacimiento *</label>
                   <input
                     type="date"
                     value={personalForm.fecha_nacimiento}
                     onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
                     max={getLocalDateString()}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Número de teléfono *</label>
+                <label className={etiqueta}>Número de teléfono *</label>
                 <input
                   type="text"
                   value={personalForm.numero_telefono}
                   onChange={(e) => setPersonalForm({ ...personalForm, numero_telefono: e.target.value })}
                   placeholder="Ej: +51987654321 · 987654321 · 987-654-321"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Rol</label>
+                  <label className={etiqueta}>Rol</label>
                   <select
                     value={personalForm.rol}
                     onChange={(e) => setPersonalForm({ ...personalForm, rol: e.target.value as Personal["rol"] })}
                     disabled
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     {editingPersonal?.rol === "chofer" ? (
                       <option value="chofer">Chofer</option>
@@ -2677,11 +2682,11 @@ export function ProductsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                  <label className={etiqueta}>Estado</label>
                   <select
                     value={personalForm.estado}
                     onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   >
                     <option value="disponible">Disponible</option>
                     <option value="ocupado">Ocupado</option>
@@ -2714,12 +2719,12 @@ export function ProductsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
-                <input type="number" min={1} value={recursoStockMovementForm.cantidad} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Cantidad *</label>
+                <input type="number" min={1} value={recursoStockMovementForm.cantidad} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))} className={campo} />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo *</label>
-                <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Motivo *</label>
+                <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className={campo} />
               </div>
               {recursoStockMovementForm.error && <p className="text-sm text-red-500">{recursoStockMovementForm.error}</p>}
               
@@ -2742,16 +2747,16 @@ export function ProductsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Actual *</label>
-                <input type="number" min={0} value={recursoStockAdjustmentForm.stockActual} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Stock Actual *</label>
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockActual} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))} className={campo} />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo *</label>
-                <input type="number" min={0} value={recursoStockAdjustmentForm.stockMinimo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Stock Mínimo *</label>
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockMinimo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))} className={campo} />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
-                <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Motivo</label>
+                <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className={campo} />
               </div>
               {recursoStockAdjustmentForm.error && <p className="text-sm text-red-500">{recursoStockAdjustmentForm.error}</p>}
               
@@ -2822,11 +2827,11 @@ export function ProductsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Categoría existente</label>
+                <label className={etiqueta}>Categoría existente</label>
                 <select
                   value={newProduct.categoria}
                   onChange={(e) => setNewProduct({ ...newProduct, categoria: e.target.value, nuevaCategoria: "" })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 >
                   <option value="">Seleccionar categoría...</option>
                   {categoriesDeLaMarca.map((c) => (
@@ -2835,38 +2840,38 @@ export function ProductsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">O crear nueva categoría</label>
+                <label className={etiqueta}>O crear nueva categoría</label>
                 <input
                   type="text"
                   value={newProduct.nuevaCategoria}
                   onChange={(e) => setNewProduct({ ...newProduct, nuevaCategoria: e.target.value, categoria: "" })}
                   placeholder="Ej: Magnum"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Producto *</label>
+                <label className={etiqueta}>Nombre del Producto *</label>
                 <input
                   type="text"
                   value={newProduct.producto}
                   onChange={(e) => setNewProduct({ ...newProduct, producto: e.target.value })}
                   placeholder="Ej: Magnum Clásico"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">SKU *</label>
+                  <label className={etiqueta}>SKU *</label>
                   <input
                     type="text"
                     value={newProduct.sku}
                     onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
                     placeholder="Ej: MAGNUM-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
+                  <label className={etiqueta}>Precio (S/)</label>
                   <input
                     type="number"
                     value={newProduct.precio || ""}
@@ -2874,7 +2879,7 @@ export function ProductsPage() {
                     placeholder="0"
                     min={0}
                     step="0.01"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
@@ -2904,7 +2909,7 @@ export function ProductsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Paquete *</label>
+                <label className={etiqueta}>Nombre del Paquete *</label>
                 <input
                   type="text"
                   value={newPaquete.nombre}
@@ -2924,7 +2929,7 @@ export function ProductsPage() {
                 )}
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Tipo de paquete *</label>
+                <label className={etiqueta}>Tipo de paquete *</label>
                 <select
                   value={newPaquete.tipo}
                   onChange={(e) => {
@@ -2951,7 +2956,7 @@ export function ProductsPage() {
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Se calcula con la suma de (precio del producto x cantidad).</p>
                 <div className="mt-3">
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio final editable (S/)</label>
+                  <label className={etiqueta}>Precio final editable (S/)</label>
                   <input
                     type="number"
                     value={newPaquete.precioUnitario}
@@ -2980,7 +2985,7 @@ export function ProductsPage() {
               {/* Contenido con selector de catálogo */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">Contenido del Paquete</label>
+                  <label className={etiqueta}>Contenido del Paquete</label>
                   {newPaquete.contenidoItems.filter((i) => i.cantidad > 0).length > 0 && (
                     <span className="text-xs text-brand-orange">
                       Total: {newPaquete.contenidoItems.reduce((s, i) => s + (i.cantidad || 0), 0)} helados
@@ -3041,7 +3046,7 @@ export function ProductsPage() {
               {/* Inflables incluidos sin costo (solo Juguetón) */}
               {newPaquete.brand === "jugueton" && (
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Inflables incluidos (S/0 extra)</label>
+                  <label className={etiqueta}>Inflables incluidos (S/0 extra)</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
                     Marca qué inflables ya están cubiertos por el precio de este paquete. Si eliges más de un tipo en un cupo, el cliente elige uno de esos tipos sin costo adicional.
                   </p>
@@ -3128,30 +3133,30 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre de la unidad *</label>
+                  <label className={etiqueta}>Nombre de la unidad *</label>
                   <input
                     type="text"
                     value={newCarrito.modelo}
                     onChange={(e) => setNewCarrito({ ...newCarrito, modelo: e.target.value })}
                     placeholder="Ej: Carrito Helado #1"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+                  <label className={etiqueta}>Código *</label>
                   <input
                     type="text"
                     value={newCarrito.codigo}
                     onChange={(e) => setNewCarrito({ ...newCarrito, codigo: e.target.value })}
                     placeholder="Ej: CH-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
+                  <label className={etiqueta}>Tipo *</label>
                   <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                     <Plus className="w-3 h-3" /> Nuevo tipo
                   </button>
@@ -3174,7 +3179,7 @@ export function ProductsPage() {
                 <select
                   value={newCarrito.tipoId}
                   onChange={(e) => setNewCarrito({ ...newCarrito, tipoId: Number(e.target.value) })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 >
                   <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
                   {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
@@ -3182,22 +3187,22 @@ export function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
+                <label className={etiqueta}>Descripción</label>
                 <textarea
                   value={newCarrito.descripcion}
                   onChange={(e) => setNewCarrito({ ...newCarrito, descripcion: e.target.value })}
                   placeholder="Ej: Carrito para eventos corporativos"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange resize-none"
+                  className={`${campo} resize-none`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado inicial</label>
+                <label className={etiqueta}>Estado inicial</label>
                 <select
                   value={newCarrito.estado}
                   onChange={(e) => setNewCarrito({ ...newCarrito, estado: e.target.value as Carrito["estado"] })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 >
                   <option value="disponible">Disponible</option>
                   <option value="en-uso">En Uso</option>
@@ -3231,30 +3236,30 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre de la unidad *</label>
+                  <label className={etiqueta}>Nombre de la unidad *</label>
                   <input
                     type="text"
                     value={editCarritoForm.modelo}
                     onChange={(e) => setEditCarritoForm({ ...editCarritoForm, modelo: e.target.value })}
                     placeholder="Ej: Carrito Helado #1"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Código *</label>
+                  <label className={etiqueta}>Código *</label>
                   <input
                     type="text"
                     value={editCarritoForm.codigo}
                     onChange={(e) => setEditCarritoForm({ ...editCarritoForm, codigo: e.target.value })}
                     placeholder="Ej: CH-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                    className={campo}
                   />
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
+                  <label className={etiqueta}>Tipo *</label>
                   <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                     <Plus className="w-3 h-3" /> Nuevo tipo
                   </button>
@@ -3277,7 +3282,7 @@ export function ProductsPage() {
                 <select
                   value={editCarritoForm.tipoId}
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, tipoId: Number(e.target.value) })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 >
                   <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
                   {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
@@ -3285,22 +3290,22 @@ export function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
+                <label className={etiqueta}>Descripción</label>
                 <textarea
                   value={editCarritoForm.descripcion}
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, descripcion: e.target.value })}
                   placeholder="Ej: Carrito para eventos corporativos"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange resize-none"
+                  className={`${campo} resize-none`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+                <label className={etiqueta}>Estado</label>
                 <select
                   value={editCarritoForm.estado}
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, estado: e.target.value as Carrito["estado"] })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  className={campo}
                 >
                   <option value="disponible">Disponible</option>
                   <option value="en-uso">En Uso</option>
@@ -3327,34 +3332,34 @@ export function ProductsPage() {
         >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Recurso *</label>
-                <input type="text" value={recursoForm.recurso} onChange={(e) => setRecursoForm({ ...recursoForm, recurso: e.target.value })} placeholder="Ej: Silla plegable" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <label className={etiqueta}>Nombre del Recurso *</label>
+                <input type="text" value={recursoForm.recurso} onChange={(e) => setRecursoForm({ ...recursoForm, recurso: e.target.value })} placeholder="Ej: Silla plegable" className={campo} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">SKU *</label>
-                  <input type="text" value={recursoForm.sku} onChange={(e) => setRecursoForm({ ...recursoForm, sku: e.target.value })} placeholder="Ej: REC-001" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                  <label className={etiqueta}>SKU *</label>
+                  <input type="text" value={recursoForm.sku} onChange={(e) => setRecursoForm({ ...recursoForm, sku: e.target.value })} placeholder="Ej: REC-001" className={campo} />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
-                  <input type="number" value={recursoForm.precio || ""} onChange={(e) => setRecursoForm({ ...recursoForm, precio: Number(e.target.value) })} placeholder="0.00" min={0} step="0.01" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                  <label className={etiqueta}>Precio (S/)</label>
+                  <input type="number" value={recursoForm.precio || ""} onChange={(e) => setRecursoForm({ ...recursoForm, precio: Number(e.target.value) })} placeholder="0.00" min={0} step="0.01" className={campo} />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca</label>
-                <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange">
+                <label className={etiqueta}>Marca</label>
+                <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className={campo}>
                   <option value="donofrio">D'Onofrio</option>
                   <option value="jugueton">Juguetón</option>
                 </select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Inicial</label>
-                  <input type="number" value={recursoForm.stockActual} onChange={(e) => setRecursoForm({ ...recursoForm, stockActual: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                  <label className={etiqueta}>Stock Inicial</label>
+                  <input type="number" value={recursoForm.stockActual} onChange={(e) => setRecursoForm({ ...recursoForm, stockActual: Number(e.target.value) })} min={0} className={campo} />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo</label>
-                  <input type="number" value={recursoForm.stockMinimo} onChange={(e) => setRecursoForm({ ...recursoForm, stockMinimo: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                  <label className={etiqueta}>Stock Mínimo</label>
+                  <input type="number" value={recursoForm.stockMinimo} onChange={(e) => setRecursoForm({ ...recursoForm, stockMinimo: Number(e.target.value) })} min={0} className={campo} />
                 </div>
               </div>
               {recursoFormError && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{recursoFormError}</p>}
