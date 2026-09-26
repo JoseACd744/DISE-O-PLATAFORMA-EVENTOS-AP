@@ -939,7 +939,7 @@ export function FichasPage() {
   // Tras guardar o borrar una ficha: fichas al día y, como cambian stock de recursos y estado
   // del personal de apoyo, solo esos dos catálogos (antes se recargaban los 7).
   const refreshFichasAndCatalogs = async () => {
-    // Las otras vistas de fichas (Dashboard, Logística, Rutas) quedan viejas: se recargan al abrirlas
+    // Las otras vistas de fichas (Reportes, Logística, Rutas) quedan viejas: se recargan al abrirlas
     void invalidarFichas();
     await Promise.all([loadFichas({ forzar: true }), reloadData("recursos", "personal")]);
   };

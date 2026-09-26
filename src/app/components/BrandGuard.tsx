@@ -22,7 +22,7 @@ export function BrandGuard({ allowedBrands, children }: BrandGuardProps) {
   useEffect(() => {
     if (!isAllowed && brand !== null) {
       const timeout = setTimeout(() => {
-        navigate("/dashboard", { replace: true });
+        navigate("/dashboard/reportes", { replace: true });
       }, 3000);
       return () => clearTimeout(timeout);
     }
@@ -41,13 +41,13 @@ export function BrandGuard({ allowedBrands, children }: BrandGuardProps) {
             La marca <span className="text-brand-orange">{brandLabel}</span> no tiene acceso a esta sección.
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-500">
-            Serás redirigido al Dashboard en unos segundos...
+            Serás redirigido a Reportes en unos segundos...
           </p>
           <button
-            onClick={() => navigate("/dashboard", { replace: true })}
+            onClick={() => navigate("/dashboard/reportes", { replace: true })}
             className="mt-6 px-6 py-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy/90 transition-colors text-sm"
           >
-            Volver al Dashboard
+            Ir a Reportes
           </button>
         </div>
       </div>

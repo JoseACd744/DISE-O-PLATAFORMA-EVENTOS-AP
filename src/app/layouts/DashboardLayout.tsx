@@ -44,6 +44,7 @@ export function DashboardLayout() {
 
   // Menu items based on brand
   const allMenuItems = [
+    { path: "/dashboard/reportes", label: "Reportes", icon: BarChart3, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/clientes", label: "Clientes", icon: Users, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/productos", label: "Productos", icon: Package, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/inflables", label: "Inflables", icon: Wind, brands: ["jugueton"] },
@@ -52,7 +53,6 @@ export function DashboardLayout() {
     { path: "/dashboard/logistica", label: "Logística", icon: Truck, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/rutas", label: "Rutas", icon: Map, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/pagos",    label: "Pagos",    icon: Receipt,  brands: ["donofrio", "jugueton"] },
-    { path: "/dashboard/reportes", label: "Reportes", icon: BarChart3, brands: ["donofrio", "jugueton"] },
   ];
 
   const menuItems = allMenuItems.filter((item) => brand && item.brands.includes(brand));

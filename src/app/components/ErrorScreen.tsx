@@ -28,10 +28,10 @@ export function ErrorScreen() {
             <RotateCcw className="w-4 h-4" /> Recargar la página
           </button>
           <button
-            onClick={() => navigate("/dashboard/fichas")}
+            onClick={() => navigate("/dashboard/reportes")}
             className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            Ir a Fichas
+            Ir a Reportes
           </button>
         </div>
       </div>

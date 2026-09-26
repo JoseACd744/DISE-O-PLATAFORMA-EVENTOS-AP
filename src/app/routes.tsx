@@ -39,9 +39,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorScreen />,
     children: [{ errorElement: <ErrorScreen />, children: [
       {
-        // El antiguo Dashboard se fusionó con Reportes: al entrar se va directo a Fichas
+        // Página inicial: Reportes (el antiguo Dashboard se fusionó con Reportes)
         index: true,
-        element: <Navigate to="/dashboard/fichas" replace />,
+        element: <Navigate to="/dashboard/reportes" replace />,
       },
       {
         path: "clientes",
