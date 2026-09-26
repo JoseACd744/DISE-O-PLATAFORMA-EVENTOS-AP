@@ -268,13 +268,13 @@ export function ClientsPage() {
   const getBrandBadge = (creadoPor: "donofrio" | "jugueton") => {
     if (creadoPor === "donofrio") {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-brand-navy/10 dark:bg-brand-navy/20 text-brand-navy dark:text-blue-400">
           D'Onofrio
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-brand-orange/10 dark:bg-brand-orange/20 text-brand-orange">
         Juguetón
       </span>
     );
@@ -315,7 +315,7 @@ export function ClientsPage() {
         {canManage && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
+            className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
           >
             <Plus className="w-5 h-5" />
             Nuevo Cliente
@@ -333,7 +333,7 @@ export function ClientsPage() {
               placeholder="Buscar por nombre, dirección o ciudad..."
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+              className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </div>
         </div>
@@ -359,7 +359,7 @@ export function ClientsPage() {
               onClick={() => handleBrandFilterChange("donofrio")}
               className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
                 brandFilter === "donofrio"
-                  ? "bg-[#1F3C8B] text-white"
+                  ? "bg-brand-navy text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
             >
@@ -369,7 +369,7 @@ export function ClientsPage() {
               onClick={() => handleBrandFilterChange("jugueton")}
               className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
                 brandFilter === "jugueton"
-                  ? "bg-[#EF8022] text-white"
+                  ? "bg-brand-orange text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               }`}
             >
@@ -380,8 +380,8 @@ export function ClientsPage() {
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 p-2 rounded-lg">
-              <Package className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
+              <Package className="w-5 h-5 text-brand-navy dark:text-blue-400" />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Total Clientes</span>
           </div>
@@ -390,8 +390,8 @@ export function ClientsPage() {
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#EF8022]/10 dark:bg-[#EF8022]/20 p-2 rounded-lg">
-              <Filter className="w-5 h-5 text-[#EF8022]" />
+            <div className="bg-brand-orange/10 dark:bg-brand-orange/20 p-2 rounded-lg">
+              <Filter className="w-5 h-5 text-brand-orange" />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Mostrando</span>
           </div>
@@ -464,7 +464,7 @@ export function ClientsPage() {
                     {getBrandBadge(client.creadoPor)}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-[#EF8022]/10 dark:bg-[#EF8022]/20 text-[#EF8022]">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-brand-orange/10 dark:bg-brand-orange/20 text-brand-orange">
                       {client.canal || "Sin canal"}
                     </span>
                   </td>
@@ -559,7 +559,7 @@ export function ClientsPage() {
                     onClick={() => setNewClient({ ...newClient, creadoPor: "donofrio" })}
                     className={`flex-1 px-4 py-2.5 rounded-lg border text-sm transition-colors ${
                       newClient.creadoPor === "donofrio"
-                        ? "bg-[#1F3C8B] text-white border-[#1F3C8B]"
+                        ? "bg-brand-navy text-white border-brand-navy"
                         : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                     }`}
                   >
@@ -570,7 +570,7 @@ export function ClientsPage() {
                     onClick={() => setNewClient({ ...newClient, creadoPor: "jugueton" })}
                     className={`flex-1 px-4 py-2.5 rounded-lg border text-sm transition-colors ${
                       newClient.creadoPor === "jugueton"
-                        ? "bg-[#EF8022] text-white border-[#EF8022]"
+                        ? "bg-brand-orange text-white border-brand-orange"
                         : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                     }`}
                   >
@@ -585,7 +585,7 @@ export function ClientsPage() {
                   value={newClient.nombre}
                   onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })}
                   placeholder="Ej: Maria Lopez"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -596,7 +596,7 @@ export function ClientsPage() {
                     value={newClient.razonSocial}
                     onChange={(e) => setNewClient({ ...newClient, razonSocial: e.target.value })}
                     placeholder="Ej: Inversiones Lopez SAC"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -606,7 +606,7 @@ export function ClientsPage() {
                     value={newClient.dniRuc}
                     onChange={(e) => setNewClient({ ...newClient, dniRuc: e.target.value })}
                     placeholder="Ej: 12345678 o 20123456789"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -618,7 +618,7 @@ export function ClientsPage() {
                     value={newClient.email}
                     onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
                     placeholder="correo@ejemplo.com"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -628,7 +628,7 @@ export function ClientsPage() {
                     value={newClient.phone}
                     onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
                     placeholder="+51 987 654 321"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -639,7 +639,7 @@ export function ClientsPage() {
                   value={newClient.address}
                   onChange={(e) => setNewClient({ ...newClient, address: e.target.value })}
                   placeholder="Av. Principal 123"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -650,7 +650,7 @@ export function ClientsPage() {
                     value={newClient.city}
                     onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
                     placeholder="Miraflores"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -658,7 +658,7 @@ export function ClientsPage() {
                   <select
                     value={newClient.canal}
                     onChange={(e) => setNewClient({ ...newClient, canal: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="">Sin canal</option>
                     {canalesDisponibles(newClient.canal).map((canal) => (
@@ -671,7 +671,7 @@ export function ClientsPage() {
                   <select
                     value={newClient.status}
                     onChange={(e) => setNewClient({ ...newClient, status: e.target.value as "active" | "inactive" })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="active">Activo</option>
                     <option value="inactive">Inactivo</option>
@@ -686,7 +686,7 @@ export function ClientsPage() {
                     value={newClient.anioRegistro}
                     onChange={(e) => setNewClient({ ...newClient, anioRegistro: e.target.value })}
                     placeholder="Ej: 2022"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -697,7 +697,7 @@ export function ClientsPage() {
                     value={newClient.fichasBase}
                     onChange={(e) => setNewClient({ ...newClient, fichasBase: Number(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                   <p className="text-[11px] text-gray-400 mt-1">Fichas que tuvo antes de registrarse en el sistema</p>
                 </div>
@@ -709,7 +709,7 @@ export function ClientsPage() {
                     value={newClient.recomendaciones}
                     onChange={(e) => setNewClient({ ...newClient, recomendaciones: Number(e.target.value) || 0 })}
                     placeholder="0"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -724,7 +724,7 @@ export function ClientsPage() {
                   onClick={handleAddClient}
                   disabled={isSavingClient || !newClient.nombre || !newClient.phone || !newClient.address || !newClient.city}
                   title={!newClient.nombre || !newClient.phone || !newClient.address || !newClient.city ? "Completa los campos obligatorios (*)" : undefined}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSavingClient ? "Guardando..." : "Guardar Cliente"}
                 </button>
@@ -753,7 +753,7 @@ export function ClientsPage() {
                   type="text"
                   value={editingClient.nombre}
                   onChange={(e) => setEditingClient({ ...editingClient, nombre: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -763,7 +763,7 @@ export function ClientsPage() {
                     type="text"
                     value={editingClient.razonSocial}
                     onChange={(e) => setEditingClient({ ...editingClient, razonSocial: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -772,7 +772,7 @@ export function ClientsPage() {
                     type="text"
                     value={editingClient.dniRuc}
                     onChange={(e) => setEditingClient({ ...editingClient, dniRuc: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -783,7 +783,7 @@ export function ClientsPage() {
                     type="email"
                     value={editingClient.email}
                     onChange={(e) => setEditingClient({ ...editingClient, email: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -792,7 +792,7 @@ export function ClientsPage() {
                     type="tel"
                     value={editingClient.phone}
                     onChange={(e) => setEditingClient({ ...editingClient, phone: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -802,7 +802,7 @@ export function ClientsPage() {
                   type="text"
                   value={editingClient.address}
                   onChange={(e) => setEditingClient({ ...editingClient, address: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -812,7 +812,7 @@ export function ClientsPage() {
                     type="text"
                     value={editingClient.city}
                     onChange={(e) => setEditingClient({ ...editingClient, city: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -820,7 +820,7 @@ export function ClientsPage() {
                   <select
                     value={editingClient.canal}
                     onChange={(e) => setEditingClient({ ...editingClient, canal: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="">Sin canal</option>
                     {canalesDisponibles(editingClient.canal).map((canal) => (
@@ -833,7 +833,7 @@ export function ClientsPage() {
                   <select
                     value={editingClient.status}
                     onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value as "active" | "inactive" })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="active">Activo</option>
                     <option value="inactive">Inactivo</option>
@@ -848,7 +848,7 @@ export function ClientsPage() {
                     value={editingClient.anioRegistro ?? ""}
                     onChange={(e) => setEditingClient({ ...editingClient, anioRegistro: e.target.value ? Number(e.target.value) : null })}
                     placeholder="Ej: 2022"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -858,7 +858,7 @@ export function ClientsPage() {
                     min={0}
                     value={editingClient.fichasBase}
                     onChange={(e) => setEditingClient({ ...editingClient, fichasBase: Number(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                   <p className="text-[11px] text-gray-400 mt-1">Fichas reales en el sistema: {editingClient.fichasReales}</p>
                 </div>
@@ -869,7 +869,7 @@ export function ClientsPage() {
                     min={0}
                     value={editingClient.recomendaciones}
                     onChange={(e) => setEditingClient({ ...editingClient, recomendaciones: Number(e.target.value) || 0 })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -883,7 +883,7 @@ export function ClientsPage() {
                 <button
                   onClick={handleEditClient}
                   disabled={isSavingClient}
-                  className="flex-1 bg-[#1F3C8B] text-white px-4 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="flex-1 bg-brand-navy text-white px-4 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSavingClient ? "Guardando..." : "Actualizar Cliente"}
                 </button>

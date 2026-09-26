@@ -377,7 +377,7 @@ export function DriverHomePage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleGenerarHojaRuta(assignment)}
-                    className="p-1.5 text-gray-400 hover:text-[#1F3C8B] hover:bg-[#1F3C8B]/10 rounded-lg transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-brand-navy/10 rounded-lg transition-colors"
                     title="Descargar Hoja de Ruta"
                   >
                     <Download className="h-4 w-4" />
@@ -406,7 +406,7 @@ export function DriverHomePage() {
                         href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs text-[#1F3C8B] hover:underline"
+                        className="mt-2 inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"
                       >
                         <Navigation className="h-3.5 w-3.5" /> Navegar
                       </a>
@@ -439,7 +439,7 @@ export function DriverHomePage() {
         )}
       </section>
 
-      <div className="flex items-start gap-2 rounded-lg border border-[#1F3C8B]/20 bg-[#1F3C8B]/5 px-3 py-2 text-xs text-[#1F3C8B]">
+      <div className="flex items-start gap-2 rounded-lg border border-brand-navy/20 bg-brand-navy/5 px-3 py-2 text-xs text-brand-navy">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
         Si el backend aun no tiene /logistics/positions, el tracking queda guardado localmente y no bloquea la operacion.
       </div>

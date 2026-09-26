@@ -5,6 +5,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { BrandProvider } from "./contexts/BrandContext";
 import { ProductsProvider } from "./contexts/ProductsContext";
 import { queryClient } from "./lib/queries";
+import { Toaster } from "./components/ui/sonner";
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
             <RouterProvider router={router} />
           </ProductsProvider>
         </BrandProvider>
+        <Toaster />
       </ThemeProvider>
     </QueryClientProvider>
   );

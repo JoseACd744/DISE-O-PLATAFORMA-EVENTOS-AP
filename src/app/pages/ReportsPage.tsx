@@ -552,7 +552,7 @@ export function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm";
+  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm";
   const cmp = periodo.comparacion;
 
   return (
@@ -567,7 +567,7 @@ export function ReportsPage() {
           <button
             onClick={exportCSV}
             disabled={operacion.fichasPeriodo.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-hover transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" /> Exportar CSV
           </button>
@@ -580,7 +580,7 @@ export function ReportsPage() {
       </div>
 
       {/* ══ HOY Y PRÓXIMOS DÍAS ══ */}
-      <Seccion titulo="Hoy y próximos días" criterio="Fecha del evento · no depende del período" icono={<CalendarClock className="w-5 h-5 text-[#EF8022]" />}>
+      <Seccion titulo="Hoy y próximos días" criterio="Fecha del evento · no depende del período" icono={<CalendarClock className="w-5 h-5 text-brand-orange" />}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <Tile label="Eventos hoy" valor={entero(hoyYProximos.hoyLista.length)} />
           <Tile label="Eventos mañana" valor={entero(hoyYProximos.mananaLista.length)} />
@@ -636,7 +636,7 @@ export function ReportsPage() {
         <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
           {(["month", "day", "range"] as const).map((m) => (
             <button key={m} onClick={() => setModo(m)}
-              className={`px-4 py-2 transition-colors ${modo === m ? "bg-[#EF8022] text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"}`}>
+              className={`px-4 py-2 transition-colors ${modo === m ? "bg-brand-orange text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"}`}>
               {m === "month" ? "Mensual" : m === "day" ? "Diario" : "Por rango"}
             </button>
           ))}
@@ -654,12 +654,12 @@ export function ReportsPage() {
             <input type="date" value={hastaSel} min={desdeSel} onChange={(e) => e.target.value && setHastaSel(e.target.value)} className={inputClass} />
           </div>
         )}
-        {cargando && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
+        {cargando && <Loader2 className="w-5 h-5 text-brand-orange animate-spin shrink-0" />}
         <span className="text-xs text-gray-500 dark:text-gray-400">Comparado con el {cmp}</span>
       </div>
 
       {/* ══ VENTAS ══ */}
-      <Seccion titulo="Ventas" criterio="Según la fecha en que se vendió la ficha · total cotizado, no lo cobrado" icono={<Target className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />}>
+      <Seccion titulo="Ventas" criterio="Según la fecha en que se vendió la ficha · total cotizado, no lo cobrado" icono={<Target className="w-5 h-5 text-brand-navy dark:text-blue-400" />}>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
           {/* Cuota mensual */}
           <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -683,8 +683,8 @@ export function ReportsPage() {
                 <input type="number" min={1} step="0.01" autoFocus value={cuotaInput}
                   onChange={(e) => setCuotaInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") guardarCuota(); if (e.key === "Escape") setEditandoCuota(false); }}
-                  className="w-36 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
-                <button onClick={guardarCuota} disabled={guardandoCuota} className="text-sm px-3 py-1.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] disabled:opacity-60">
+                  className="w-36 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange" />
+                <button onClick={guardarCuota} disabled={guardandoCuota} className="text-sm px-3 py-1.5 rounded-lg bg-brand-orange text-white hover:bg-brand-orange-hover disabled:opacity-60">
                   {guardandoCuota ? "Guardando..." : "Guardar"}
                 </button>
                 <button onClick={() => setEditandoCuota(false)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Cancelar</button>
@@ -855,7 +855,7 @@ export function ReportsPage() {
       </Seccion>
 
       {/* ══ CLIENTES ══ */}
-      <Seccion titulo="Clientes" criterio="Altas y compras en el período" icono={<Users className="w-5 h-5 text-[#EF8022]" />}>
+      <Seccion titulo="Clientes" criterio="Altas y compras en el período" icono={<Users className="w-5 h-5 text-brand-orange" />}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
             <Tile label="Clientes nuevos" valor={entero(clientesPeriodo.nuevos)} delta={variacion(clientesPeriodo.nuevos, clientesPeriodo.nuevosPrev)} comparacion={cmp} />

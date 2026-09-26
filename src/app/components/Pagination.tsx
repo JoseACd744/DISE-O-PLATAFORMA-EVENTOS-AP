@@ -102,7 +102,7 @@ export function Pagination({ currentPage, totalPages, onPageChange, totalItems, 
                 disabled={page === "..."}
                 className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20 border border-gray-300 dark:border-gray-600 ${
                   page === currentPage
-                    ? "z-10 bg-[#1F3C8B] text-white border-[#1F3C8B] dark:bg-[#1F3C8B]"
+                    ? "z-10 bg-brand-navy text-white border-brand-navy dark:bg-brand-navy"
                     : page === "..."
                     ? "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 cursor-default"
                     : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"

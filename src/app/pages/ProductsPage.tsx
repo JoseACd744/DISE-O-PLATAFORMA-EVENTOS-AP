@@ -89,7 +89,7 @@ function ProductSelector({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022] text-left"
+        className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange text-left"
       >
         <span className={selectedProduct ? "" : "text-gray-400"}>
           {selectedProduct
@@ -107,7 +107,7 @@ function ProductSelector({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar producto..."
-              className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#EF8022]"
+              className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
               autoFocus
             />
           </div>
@@ -124,10 +124,10 @@ function ProductSelector({
                   setSearch("");
                 }}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center gap-2 ${
-                  p.sku === selectedSku ? "bg-[#EF8022]/10" : ""
+                  p.sku === selectedSku ? "bg-brand-orange/10" : ""
                 }`}
               >
-                {p.sku === selectedSku && <Check className="w-3 h-3 text-[#EF8022] shrink-0" />}
+                {p.sku === selectedSku && <Check className="w-3 h-3 text-brand-orange shrink-0" />}
                 <div className="min-w-0">
                   <span className="text-gray-900 dark:text-white">{p.producto}</span>
                 </div>
@@ -1344,8 +1344,8 @@ export function ProductsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 p-2 rounded-lg">
-              <Package className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
+              <Package className="w-5 h-5 text-brand-navy dark:text-blue-400" />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Total Productos</span>
           </div>
@@ -1353,8 +1353,8 @@ export function ProductsPage() {
         </div>
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#EF8022]/10 dark:bg-[#EF8022]/20 p-2 rounded-lg">
-              <Filter className="w-5 h-5 text-[#EF8022]" />
+            <div className="bg-brand-orange/10 dark:bg-brand-orange/20 p-2 rounded-lg">
+              <Filter className="w-5 h-5 text-brand-orange" />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Categorías</span>
           </div>
@@ -1442,7 +1442,7 @@ export function ProductsPage() {
                     placeholder="Buscar por producto o SKU..."
                     value={searchTerm}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                    className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
               </div>
@@ -1450,7 +1450,7 @@ export function ProductsPage() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => handleCategoryChange(e.target.value)}
-                  className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                  className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 >
                   {categoryNames.map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -1469,7 +1469,7 @@ export function ProductsPage() {
                       });
                       setShowAddProduct(true);
                     }}
-                    className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                    className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap"
                   >
                     <Plus className="w-5 h-5" />
                     Nuevo Producto
@@ -1485,7 +1485,7 @@ export function ProductsPage() {
                   onClick={() => handleCatalogBrandFilterChange(opt)}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     catalogBrandFilter === opt
-                      ? "bg-[#EF8022] text-white"
+                      ? "bg-brand-orange text-white"
                       : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                   }`}
                 >
@@ -1512,7 +1512,7 @@ export function ProductsPage() {
                   {paginatedProducts.map((product) => (
                     <tr key={`${product.categoria}-${product.id}-${product.sku}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs bg-brand-navy/10 dark:bg-brand-navy/20 text-brand-navy dark:text-blue-400">
                           {product.categoria}
                         </span>
                       </td>
@@ -1534,7 +1534,7 @@ export function ProductsPage() {
                             <button
                               type="button"
                               onClick={() => handleEditProduct(product)}
-                              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:text-[#EF8022] hover:bg-[#EF8022]/10"
+                              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:text-brand-orange hover:bg-brand-orange/10"
                               title="Editar producto"
                             >
                               <Pencil className="h-4 w-4" />
@@ -1588,13 +1588,13 @@ export function ProductsPage() {
                   placeholder="Buscar paquete..."
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 />
               </div>
               {canManage && (
                 <button
                   onClick={() => setShowAddPaquete(true)}
-                  className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap"
+                  className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap"
                 >
                   <Plus className="w-5 h-5" />
                   Nuevo Paquete
@@ -1609,7 +1609,7 @@ export function ProductsPage() {
                   onClick={() => handleCatalogBrandFilterChange(opt)}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     catalogBrandFilter === opt
-                      ? "bg-[#EF8022] text-white"
+                      ? "bg-brand-orange text-white"
                       : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                   }`}
                 >
@@ -1623,7 +1623,7 @@ export function ProductsPage() {
                   onClick={() => { setPaqueteTipoFilter("todos"); setCurrentPage(1); }}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     paqueteTipoFilter === "todos"
-                      ? "bg-[#EF8022] text-white"
+                      ? "bg-brand-orange text-white"
                       : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                   }`}
                 >
@@ -1638,7 +1638,7 @@ export function ProductsPage() {
                       onClick={() => { setPaqueteTipoFilter(tipo); setCurrentPage(1); }}
                       className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                         paqueteTipoFilter === tipo
-                          ? "bg-[#EF8022] text-white"
+                          ? "bg-brand-orange text-white"
                           : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600"
                       }`}
                     >
@@ -1685,7 +1685,7 @@ export function ProductsPage() {
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => handleEditPaquete(paq)}
-                                className="p-1.5 text-gray-400 hover:text-[#EF8022] dark:hover:text-[#EF8022] transition-colors"
+                                className="p-1.5 text-gray-400 hover:text-brand-orange dark:hover:text-brand-orange transition-colors"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
@@ -1746,7 +1746,7 @@ export function ProductsPage() {
 
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-500 dark:text-gray-400">Precio</span>
-                          <span className="text-xl text-[#EF8022]">
+                          <span className="text-xl text-brand-orange">
                             {paq.precioUnitario > 0 ? `S/ ${paq.precioUnitario}` : "A cotizar"}
                           </span>
                         </div>
@@ -1782,7 +1782,7 @@ export function ProductsPage() {
               {canManage && (
                 <button
                   onClick={() => { setShowAddCarrito(true); setShowNuevoTipoInput(false); setNuevoTipoNombre(""); if (carritoTipos.length === 0) void loadCarritoTipos(); }}
-                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                  className="bg-brand-orange text-white px-5 py-2.5 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Nuevo Carrito
@@ -1797,7 +1797,7 @@ export function ProductsPage() {
                 placeholder="Buscar por modelo o código..."
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
               />
             </div>
 
@@ -1826,7 +1826,7 @@ export function ProductsPage() {
                             key={c.id}
                             className={`rounded-lg border transition-all ${
                               isSelected
-                                ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10"
+                                ? "border-brand-orange bg-brand-orange/5 dark:bg-brand-orange/10"
                                 : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
                             }`}
                           >
@@ -1861,7 +1861,7 @@ export function ProductsPage() {
                                   value={c.estado}
                                   onChange={(e) => updateCarritoEstado(c.id, e.target.value as Carrito["estado"])}
                                   onClick={(e) => e.stopPropagation()}
-                                  className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-[#EF8022] ${estadoSelectColors[c.estado]}`}
+                                  className={`text-[10px] px-2 py-1 rounded-full border-none focus:outline-none focus:ring-1 focus:ring-brand-orange ${estadoSelectColors[c.estado]}`}
                                 >
                                   <option value="disponible">Disponible</option>
                                   <option value="en-uso">En Uso</option>
@@ -1877,7 +1877,7 @@ export function ProductsPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleOpenEditCarrito(c)}
-                                    className="p-1 rounded text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
+                                    className="p-1 rounded text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
                                     title="Editar carrito"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
@@ -1916,7 +1916,7 @@ export function ProductsPage() {
                     <button
                       type="button"
                       onClick={() => void loadCarritoCalendarData()}
-                      className="px-3 py-1.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-xs whitespace-nowrap"
+                      className="px-3 py-1.5 rounded-lg border border-brand-orange text-brand-orange hover:bg-brand-orange/10 transition-colors text-xs whitespace-nowrap"
                     >
                       Recargar
                     </button>
@@ -1982,21 +1982,21 @@ export function ProductsPage() {
                         }}
                         className={`aspect-square rounded-lg border p-1.5 text-left transition-all flex flex-col gap-1 overflow-hidden ${
                           isSelected
-                            ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
+                            ? "border-brand-orange bg-brand-orange/10 ring-2 ring-brand-orange/20"
                             : isToday
-                              ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
+                              ? "border-brand-navy bg-brand-navy/5"
                               : entries.length > 0
-                                ? "border-[#EF8022]/40 bg-white dark:bg-gray-800 hover:border-[#EF8022] hover:shadow-md"
+                                ? "border-brand-orange/40 bg-white dark:bg-gray-800 hover:border-brand-orange hover:shadow-md"
                                 : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                         }`}
                       >
-                        <span className={`text-xs font-bold ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                        <span className={`text-xs font-bold ${isToday ? "text-brand-navy dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
                           {day}
                         </span>
                         {entries.length > 0 && (
                           <div className="space-y-0.5 flex-1 overflow-y-auto">
                             {entries.slice(0, 2).map((entry, idx) => (
-                              <div key={idx} className="bg-[#EF8022]/90 rounded px-1.5 py-0.5 text-white">
+                              <div key={idx} className="bg-brand-orange/90 rounded px-1.5 py-0.5 text-white">
                                 <p className="text-[10px] font-semibold truncate leading-tight">{entry.clienteNombre}</p>
                                 {entry.horaEntrega && (
                                   <p className="text-[8px] opacity-90">{entry.horaEntrega}</p>
@@ -2004,7 +2004,7 @@ export function ProductsPage() {
                               </div>
                             ))}
                             {entries.length > 2 && (
-                              <div className="text-[9px] text-[#EF8022] font-medium px-1">
+                              <div className="text-[9px] text-brand-orange font-medium px-1">
                                 +{entries.length - 2} más
                               </div>
                             )}
@@ -2081,7 +2081,7 @@ export function ProductsPage() {
                                 {entry.distrito && `📍 ${entry.distrito}`}
                               </p>
                             </div>
-                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] text-sm font-medium">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-orange/10 text-brand-orange text-sm font-medium">
                               {entry.carritoCount} carrito(s)
                             </span>
                           </div>
@@ -2107,7 +2107,7 @@ export function ProductsPage() {
                                 <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Carritos Asignados</p>
                                 <div className="flex flex-wrap gap-2">
                                   {carritosAsignados.map((c) => (
-                                    <span key={c.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20 text-xs font-medium">
+                                    <span key={c.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20 text-xs font-medium">
                                       🛒 {c.codigo} — {c.modelo}
                                     </span>
                                   ))}
@@ -2127,7 +2127,7 @@ export function ProductsPage() {
 
                 <button
                   onClick={() => setShowCarritoCalendarDayModal(false)}
-                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] transition-colors font-medium"
+                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-brand-orange text-white hover:bg-brand-orange-hover transition-colors font-medium"
                 >
                   Cerrar
                 </button>
@@ -2151,7 +2151,7 @@ export function ProductsPage() {
               {canManage && (
                 <button
                   onClick={() => { setRecursoForm(emptyRecursoForm); setRecursoFormError(""); setShowRecursoModal(true); }}
-                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                  className="bg-brand-orange text-white px-5 py-2.5 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" /> Nuevo Recurso
                 </button>
@@ -2230,7 +2230,7 @@ export function ProductsPage() {
               {canManage && (
                 <button
                   onClick={openAddPersonal}
-                  className="bg-[#EF8022] text-white px-5 py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
+                  className="bg-brand-orange text-white px-5 py-2.5 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Nuevo Personal
@@ -2245,7 +2245,7 @@ export function ProductsPage() {
                 placeholder="Buscar por nombre, DNI o rol..."
                 value={personalSearch}
                 onChange={(e) => setPersonalSearch(e.target.value)}
-                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                className="w-full sm:max-w-xs pl-9 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
               />
             </div>
 
@@ -2271,8 +2271,8 @@ export function ProductsPage() {
                             }}
                             className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${
                               isSelected
-                                ? "border-[#EF8022] bg-[#EF8022]/10 dark:bg-[#EF8022]/20"
-                                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 hover:border-[#EF8022]/50 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                ? "border-brand-orange bg-brand-orange/10 dark:bg-brand-orange/20"
+                                : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 hover:border-brand-orange/50 hover:bg-gray-100 dark:hover:bg-gray-700"
                             }`}
                           >
                             <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{p.nombre_completo}</p>
@@ -2307,7 +2307,7 @@ export function ProductsPage() {
                     <button
                       type="button"
                       onClick={() => void loadPersonalCalendarData()}
-                      className="px-3 py-1.5 rounded-lg border border-[#EF8022] text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors text-xs whitespace-nowrap"
+                      className="px-3 py-1.5 rounded-lg border border-brand-orange text-brand-orange hover:bg-brand-orange/10 transition-colors text-xs whitespace-nowrap"
                     >
                       Recargar
                     </button>
@@ -2371,21 +2371,21 @@ export function ProductsPage() {
                         }}
                         className={`aspect-square rounded-lg border p-1.5 text-left transition-all flex flex-col gap-1 overflow-hidden ${
                           isSelected
-                            ? "border-[#EF8022] bg-[#EF8022]/10 ring-2 ring-[#EF8022]/20"
+                            ? "border-brand-orange bg-brand-orange/10 ring-2 ring-brand-orange/20"
                             : isToday
-                              ? "border-[#1F3C8B] bg-[#1F3C8B]/5"
+                              ? "border-brand-navy bg-brand-navy/5"
                               : entries.length > 0
-                                ? "border-[#EF8022]/40 bg-white dark:bg-gray-800 hover:border-[#EF8022] hover:shadow-md"
+                                ? "border-brand-orange/40 bg-white dark:bg-gray-800 hover:border-brand-orange hover:shadow-md"
                                 : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
                         }`}
                       >
-                        <span className={`text-xs font-bold ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                        <span className={`text-xs font-bold ${isToday ? "text-brand-navy dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
                           {day}
                         </span>
                         {entries.length > 0 && (
                           <div className="space-y-0.5 flex-1 overflow-y-auto">
                             {entries.slice(0, 2).map((entry, idx) => (
-                              <div key={idx} className="bg-[#EF8022]/90 rounded px-1.5 py-0.5 text-white">
+                              <div key={idx} className="bg-brand-orange/90 rounded px-1.5 py-0.5 text-white">
                                 <p className="text-[10px] font-semibold truncate leading-tight">{entry.clienteNombre}</p>
                                 {entry.horaEntrega && (
                                   <p className="text-[8px] opacity-90">{entry.horaEntrega}</p>
@@ -2393,7 +2393,7 @@ export function ProductsPage() {
                               </div>
                             ))}
                             {entries.length > 2 && (
-                              <div className="text-[9px] text-[#EF8022] font-medium px-1">
+                              <div className="text-[9px] text-brand-orange font-medium px-1">
                                 +{entries.length - 2} más
                               </div>
                             )}
@@ -2430,7 +2430,7 @@ export function ProductsPage() {
             {/* Tabla de Personal Completa */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Users className="w-5 h-5 text-[#EF8022]" />
+                <Users className="w-5 h-5 text-brand-orange" />
                 Directorio Completo de Personal
               </h3>
               {filteredPersonales.length === 0 ? (
@@ -2474,7 +2474,7 @@ export function ProductsPage() {
                                 type="button"
                                 onClick={() => openEditPersonal(p)}
                                 disabled={p.rol === "chofer"}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-brand-orange hover:bg-brand-orange/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 title={p.rol === "chofer" ? "Editar en Logística" : "Editar"}
                               >
                                 <Pencil className="w-4 h-4" />
@@ -2547,7 +2547,7 @@ export function ProductsPage() {
                                 {entry.distrito && `📍 ${entry.distrito}`}
                               </p>
                             </div>
-                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] text-sm font-medium">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-orange/10 text-brand-orange text-sm font-medium">
                               {entry.personalCount} personal
                             </span>
                           </div>
@@ -2575,7 +2575,7 @@ export function ProductsPage() {
                                   {personalOcupado.map(p => (
                                     <span 
                                       key={p.id}
-                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 text-xs font-medium"
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 text-xs font-medium"
                                     >
                                       👤 {p.nombre_completo || p.nombre}
                                     </span>
@@ -2596,7 +2596,7 @@ export function ProductsPage() {
 
                 <button
                   onClick={() => setShowPersonalCalendarDayModal(false)}
-                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] transition-colors font-medium"
+                  className="w-full mt-6 px-4 py-2.5 rounded-lg bg-brand-orange text-white hover:bg-brand-orange-hover transition-colors font-medium"
                 >
                   Cerrar
                 </button>
@@ -2625,7 +2625,7 @@ export function ProductsPage() {
                   value={personalForm.nombre_completo}
                   onChange={(e) => setPersonalForm({ ...personalForm, nombre_completo: e.target.value })}
                   placeholder="Ej: Juan Pérez García"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -2638,7 +2638,7 @@ export function ProductsPage() {
                     onChange={(e) => setPersonalForm({ ...personalForm, dni: e.target.value.replace(/\D/g, "").slice(0, 8) })}
                     placeholder="12345678"
                     maxLength={8}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -2648,7 +2648,7 @@ export function ProductsPage() {
                     value={personalForm.fecha_nacimiento}
                     onChange={(e) => setPersonalForm({ ...personalForm, fecha_nacimiento: e.target.value })}
                     max={getLocalDateString()}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -2660,7 +2660,7 @@ export function ProductsPage() {
                   value={personalForm.numero_telefono}
                   onChange={(e) => setPersonalForm({ ...personalForm, numero_telefono: e.target.value })}
                   placeholder="Ej: +51987654321 · 987654321 · 987-654-321"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -2671,7 +2671,7 @@ export function ProductsPage() {
                     value={personalForm.rol}
                     onChange={(e) => setPersonalForm({ ...personalForm, rol: e.target.value as Personal["rol"] })}
                     disabled
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     {editingPersonal?.rol === "chofer" ? (
                       <option value="chofer">Chofer</option>
@@ -2685,7 +2685,7 @@ export function ProductsPage() {
                   <select
                     value={personalForm.estado}
                     onChange={(e) => setPersonalForm({ ...personalForm, estado: e.target.value as Personal["estado"] })}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="disponible">Disponible</option>
                     <option value="ocupado">Ocupado</option>
@@ -2709,7 +2709,7 @@ export function ProductsPage() {
                 <button
                   onClick={handleSubmitPersonal}
                   disabled={personalFormSubmitting}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60"
+                  className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60"
                 >
                   {personalFormSubmitting ? "Guardando..." : editingPersonal ? "Actualizar" : "Guardar"}
                 </button>
@@ -2729,16 +2729,16 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Cantidad *</label>
-                <input type="number" min={1} value={recursoStockMovementForm.cantidad} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="number" min={1} value={recursoStockMovementForm.cantidad} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, cantidad: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo *</label>
-                <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="text" value={recursoStockMovementForm.motivo} onChange={(e) => setRecursoStockMovementForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               {recursoStockMovementForm.error && <p className="text-sm text-red-500">{recursoStockMovementForm.error}</p>}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowRecursoStockMovementModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={submitRecursoStockMovement} disabled={recursoStockMovementForm.submitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoStockMovementForm.submitting ? "Guardando..." : "Guardar"}</button>
+                <button onClick={submitRecursoStockMovement} disabled={recursoStockMovementForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockMovementForm.submitting ? "Guardando..." : "Guardar"}</button>
               </div>
             </div>
           </div>
@@ -2755,20 +2755,20 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Actual *</label>
-                <input type="number" min={0} value={recursoStockAdjustmentForm.stockActual} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockActual} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockActual: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo *</label>
-                <input type="number" min={0} value={recursoStockAdjustmentForm.stockMinimo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="number" min={0} value={recursoStockAdjustmentForm.stockMinimo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, stockMinimo: Number(e.target.value), error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
-                <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="text" value={recursoStockAdjustmentForm.motivo} onChange={(e) => setRecursoStockAdjustmentForm((prev) => ({ ...prev, motivo: e.target.value, error: "" }))} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               {recursoStockAdjustmentForm.error && <p className="text-sm text-red-500">{recursoStockAdjustmentForm.error}</p>}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowRecursoStockAdjustmentModal(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={submitRecursoStockAdjustment} disabled={recursoStockAdjustmentForm.submitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoStockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}</button>
+                <button onClick={submitRecursoStockAdjustment} disabled={recursoStockAdjustmentForm.submitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoStockAdjustmentForm.submitting ? "Guardando..." : "Guardar Ajuste"}</button>
               </div>
             </div>
           </div>
@@ -2831,7 +2831,7 @@ export function ProductsPage() {
                 <select
                   value={newProduct.categoria}
                   onChange={(e) => setNewProduct({ ...newProduct, categoria: e.target.value, nuevaCategoria: "" })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="">Seleccionar categoría...</option>
                   {categoriesDeLaMarca.map((c) => (
@@ -2846,7 +2846,7 @@ export function ProductsPage() {
                   value={newProduct.nuevaCategoria}
                   onChange={(e) => setNewProduct({ ...newProduct, nuevaCategoria: e.target.value, categoria: "" })}
                   placeholder="Ej: Magnum"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div>
@@ -2856,7 +2856,7 @@ export function ProductsPage() {
                   value={newProduct.producto}
                   onChange={(e) => setNewProduct({ ...newProduct, producto: e.target.value })}
                   placeholder="Ej: Magnum Clásico"
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2867,7 +2867,7 @@ export function ProductsPage() {
                     value={newProduct.sku}
                     onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
                     placeholder="Ej: MAGNUM-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -2879,7 +2879,7 @@ export function ProductsPage() {
                     placeholder="0"
                     min={0}
                     step="0.01"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -2887,7 +2887,7 @@ export function ProductsPage() {
                 <button onClick={() => setShowAddProduct(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSaveProduct} disabled={productFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                <button onClick={handleSaveProduct} disabled={productFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   {productFormSubmitting ? "Guardando..." : editingProduct ? "Actualizar Producto" : "Guardar Producto"}
                 </button>
               </div>
@@ -2920,7 +2920,7 @@ export function ProductsPage() {
                     if (e.target.value.trim()) setPaqueteFormErrors((prev) => ({ ...prev, nombre: false }));
                   }}
                   placeholder="Ej: Paquete Premium"
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                     paqueteFormErrors.nombre
                       ? "border-red-500 dark:border-red-500"
                       : "border-gray-300 dark:border-gray-600"
@@ -2938,7 +2938,7 @@ export function ProductsPage() {
                     setNewPaquete({ ...newPaquete, tipo: e.target.value });
                     if (e.target.value) setPaqueteFormErrors((prev) => ({ ...prev, tipo: false }));
                   }}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                     paqueteFormErrors.tipo ? "border-red-500 dark:border-red-500" : "border-gray-300 dark:border-gray-600"
                   }`}
                 >
@@ -2954,7 +2954,7 @@ export function ProductsPage() {
               <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-300">Precio total del paquete (auto)</span>
-                  <span className="text-lg text-[#EF8022]">S/ {precioTotalPaquete.toFixed(2)}</span>
+                  <span className="text-lg text-brand-orange">S/ {precioTotalPaquete.toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Se calcula con la suma de (precio del producto x cantidad).</p>
                 <div className="mt-3">
@@ -2972,12 +2972,12 @@ export function ProductsPage() {
                     }}
                     min={0}
                     step="0.01"
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                   <button
                     type="button"
                     onClick={() => setNewPaquete((prev) => ({ ...prev, precioUnitario: Number(precioTotalPaquete.toFixed(2)), precioEditadoManualmente: false }))}
-                    className="mt-2 text-xs text-[#EF8022] hover:underline"
+                    className="mt-2 text-xs text-brand-orange hover:underline"
                   >
                     Usar valor autocalculado
                   </button>
@@ -2989,7 +2989,7 @@ export function ProductsPage() {
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm text-gray-700 dark:text-gray-300">Contenido del Paquete</label>
                   {newPaquete.contenidoItems.filter((i) => i.cantidad > 0).length > 0 && (
-                    <span className="text-xs text-[#EF8022]">
+                    <span className="text-xs text-brand-orange">
                       Total: {newPaquete.contenidoItems.reduce((s, i) => s + (i.cantidad || 0), 0)} helados
                     </span>
                   )}
@@ -3016,7 +3016,7 @@ export function ProductsPage() {
                         }}
                         placeholder="Cant."
                         min={0}
-                        className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                        className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                       />
                       <div className="w-28 px-2 py-2 text-right text-xs text-gray-500 dark:text-gray-400">
                         S/ {((Number(allProducts.find((p) => p.sku === item.productoSku)?.precio || 0)) * (item.cantidad || 0)).toFixed(2)}
@@ -3038,7 +3038,7 @@ export function ProductsPage() {
                   onClick={() =>
                     updatePaqueteItems([...newPaquete.contenidoItems, { productoSku: "", productoNombre: "", cantidad: 0 }])
                   }
-                  className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"
+                  className="mt-2 text-sm text-brand-orange hover:underline flex items-center gap-1"
                 >
                   <Plus className="w-3 h-3" />
                   Agregar producto al paquete
@@ -3063,7 +3063,7 @@ export function ProductsPage() {
                               min={1}
                               value={slot.cantidad}
                               onChange={(e) => updateInflableIncluidoSlot(idx, { cantidad: Math.max(1, Number(e.target.value) || 1) })}
-                              className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                              className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                             />
                             <span className="text-xs text-gray-400">gratis</span>
                             <button onClick={() => removeInflableIncluidoSlot(idx)} className="p-1 text-red-400 hover:text-red-600">
@@ -3084,8 +3084,8 @@ export function ProductsPage() {
                                 onClick={() => toggleInflableIncluidoTipo(idx, tipo.id)}
                                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                                   selected
-                                    ? "bg-[#EF8022] text-white border-[#EF8022]"
-                                    : "bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-[#EF8022]"
+                                    ? "bg-brand-orange text-white border-brand-orange"
+                                    : "bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-brand-orange"
                                 }`}
                               >
                                 {tipo.nombre}
@@ -3101,7 +3101,7 @@ export function ProductsPage() {
                   </div>
                   <button
                     onClick={addInflableIncluidoSlot}
-                    className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"
+                    className="mt-2 text-sm text-brand-orange hover:underline flex items-center gap-1"
                   >
                     <Plus className="w-3 h-3" />
                     Agregar cupo de inflable incluido
@@ -3113,7 +3113,7 @@ export function ProductsPage() {
                 <button onClick={closePaqueteModal} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSavePaquete} disabled={paqueteFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                <button onClick={handleSavePaquete} disabled={paqueteFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   {paqueteFormSubmitting ? "Guardando..." : editingPaquete ? "Actualizar Paquete" : "Guardar Paquete"}
                 </button>
               </div>
@@ -3139,7 +3139,7 @@ export function ProductsPage() {
                     value={newCarrito.modelo}
                     onChange={(e) => setNewCarrito({ ...newCarrito, modelo: e.target.value })}
                     placeholder="Ej: Carrito Helado #1"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -3149,7 +3149,7 @@ export function ProductsPage() {
                     value={newCarrito.codigo}
                     onChange={(e) => setNewCarrito({ ...newCarrito, codigo: e.target.value })}
                     placeholder="Ej: CH-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -3157,7 +3157,7 @@ export function ProductsPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
-                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                     <Plus className="w-3 h-3" /> Nuevo tipo
                   </button>
                 </div>
@@ -3168,10 +3168,10 @@ export function ProductsPage() {
                       value={nuevoTipoNombre}
                       onChange={(e) => setNuevoTipoNombre(e.target.value)}
                       placeholder="Ej: Carrito Algodón"
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAddNuevoTipo("add"); }}}
                     />
-                    <button type="button" onClick={() => void handleAddNuevoTipo("add")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] disabled:opacity-50">
+                    <button type="button" onClick={() => void handleAddNuevoTipo("add")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-brand-orange text-white rounded-lg hover:bg-brand-orange-hover disabled:opacity-50">
                       {nuevoTipoSubmitting ? "..." : "Guardar"}
                     </button>
                   </div>
@@ -3179,7 +3179,7 @@ export function ProductsPage() {
                 <select
                   value={newCarrito.tipoId}
                   onChange={(e) => setNewCarrito({ ...newCarrito, tipoId: Number(e.target.value) })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
                   {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
@@ -3193,7 +3193,7 @@ export function ProductsPage() {
                   onChange={(e) => setNewCarrito({ ...newCarrito, descripcion: e.target.value })}
                   placeholder="Ej: Carrito para eventos corporativos"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange resize-none"
                 />
               </div>
 
@@ -3202,7 +3202,7 @@ export function ProductsPage() {
                 <select
                   value={newCarrito.estado}
                   onChange={(e) => setNewCarrito({ ...newCarrito, estado: e.target.value as Carrito["estado"] })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="disponible">Disponible</option>
                   <option value="en-uso">En Uso</option>
@@ -3214,7 +3214,7 @@ export function ProductsPage() {
                 <button onClick={() => setShowAddCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                <button onClick={handleAddCarrito} disabled={carritoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   {carritoFormSubmitting ? "Guardando..." : "Guardar Carrito"}
                 </button>
               </div>
@@ -3240,7 +3240,7 @@ export function ProductsPage() {
                     value={editCarritoForm.modelo}
                     onChange={(e) => setEditCarritoForm({ ...editCarritoForm, modelo: e.target.value })}
                     placeholder="Ej: Carrito Helado #1"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <div>
@@ -3250,7 +3250,7 @@ export function ProductsPage() {
                     value={editCarritoForm.codigo}
                     onChange={(e) => setEditCarritoForm({ ...editCarritoForm, codigo: e.target.value })}
                     placeholder="Ej: CH-001"
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -3258,7 +3258,7 @@ export function ProductsPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm text-gray-700 dark:text-gray-300">Tipo *</label>
-                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                  <button type="button" onClick={() => setShowNuevoTipoInput((v) => !v)} className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                     <Plus className="w-3 h-3" /> Nuevo tipo
                   </button>
                 </div>
@@ -3269,10 +3269,10 @@ export function ProductsPage() {
                       value={nuevoTipoNombre}
                       onChange={(e) => setNuevoTipoNombre(e.target.value)}
                       placeholder="Ej: Carrito Algodón"
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAddNuevoTipo("edit"); }}}
                     />
-                    <button type="button" onClick={() => void handleAddNuevoTipo("edit")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] disabled:opacity-50">
+                    <button type="button" onClick={() => void handleAddNuevoTipo("edit")} disabled={nuevoTipoSubmitting || !nuevoTipoNombre.trim()} className="px-3 py-2 text-sm bg-brand-orange text-white rounded-lg hover:bg-brand-orange-hover disabled:opacity-50">
                       {nuevoTipoSubmitting ? "..." : "Guardar"}
                     </button>
                   </div>
@@ -3280,7 +3280,7 @@ export function ProductsPage() {
                 <select
                   value={editCarritoForm.tipoId}
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, tipoId: Number(e.target.value) })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value={0}>{carritoTiposLoading ? "Cargando tipos..." : "Seleccionar tipo..."}</option>
                   {carritoTipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
@@ -3294,7 +3294,7 @@ export function ProductsPage() {
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, descripcion: e.target.value })}
                   placeholder="Ej: Carrito para eventos corporativos"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange resize-none"
                 />
               </div>
 
@@ -3303,7 +3303,7 @@ export function ProductsPage() {
                 <select
                   value={editCarritoForm.estado}
                   onChange={(e) => setEditCarritoForm({ ...editCarritoForm, estado: e.target.value as Carrito["estado"] })}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="disponible">Disponible</option>
                   <option value="en-uso">En Uso</option>
@@ -3315,7 +3315,7 @@ export function ProductsPage() {
                 <button onClick={() => setShowEditCarrito(false)} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={handleSaveEditCarrito} disabled={editCarritoSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                <button onClick={handleSaveEditCarrito} disabled={editCarritoSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                   {editCarritoSubmitting ? "Guardando..." : "Guardar Cambios"}
                 </button>
               </div>
@@ -3333,21 +3333,21 @@ export function ProductsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre del Recurso *</label>
-                <input type="text" value={recursoForm.recurso} onChange={(e) => setRecursoForm({ ...recursoForm, recurso: e.target.value })} placeholder="Ej: Silla plegable" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <input type="text" value={recursoForm.recurso} onChange={(e) => setRecursoForm({ ...recursoForm, recurso: e.target.value })} placeholder="Ej: Silla plegable" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">SKU *</label>
-                  <input type="text" value={recursoForm.sku} onChange={(e) => setRecursoForm({ ...recursoForm, sku: e.target.value })} placeholder="Ej: REC-001" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                  <input type="text" value={recursoForm.sku} onChange={(e) => setRecursoForm({ ...recursoForm, sku: e.target.value })} placeholder="Ej: REC-001" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Precio (S/)</label>
-                  <input type="number" value={recursoForm.precio || ""} onChange={(e) => setRecursoForm({ ...recursoForm, precio: Number(e.target.value) })} placeholder="0.00" min={0} step="0.01" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                  <input type="number" value={recursoForm.precio || ""} onChange={(e) => setRecursoForm({ ...recursoForm, precio: Number(e.target.value) })} placeholder="0.00" min={0} step="0.01" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Marca</label>
-                <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]">
+                <select value={recursoForm.brand} onChange={(e) => setRecursoForm({ ...recursoForm, brand: e.target.value as Recurso["brand"] })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange">
                   <option value="donofrio">D'Onofrio</option>
                   <option value="jugueton">Juguetón</option>
                 </select>
@@ -3355,17 +3355,17 @@ export function ProductsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Inicial</label>
-                  <input type="number" value={recursoForm.stockActual} onChange={(e) => setRecursoForm({ ...recursoForm, stockActual: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                  <input type="number" value={recursoForm.stockActual} onChange={(e) => setRecursoForm({ ...recursoForm, stockActual: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Stock Mínimo</label>
-                  <input type="number" value={recursoForm.stockMinimo} onChange={(e) => setRecursoForm({ ...recursoForm, stockMinimo: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                  <input type="number" value={recursoForm.stockMinimo} onChange={(e) => setRecursoForm({ ...recursoForm, stockMinimo: Number(e.target.value) })} min={0} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange" />
                 </div>
               </div>
               {recursoFormError && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{recursoFormError}</p>}
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowRecursoModal(false)} disabled={recursoFormSubmitting} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
-                <button onClick={handleSaveRecurso} disabled={recursoFormSubmitting} className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60">{recursoFormSubmitting ? "Guardando..." : "Guardar Recurso"}</button>
+                <button onClick={handleSaveRecurso} disabled={recursoFormSubmitting} className="flex-1 bg-brand-orange text-white px-4 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors disabled:opacity-60">{recursoFormSubmitting ? "Guardando..." : "Guardar Recurso"}</button>
               </div>
             </div>
           </div>

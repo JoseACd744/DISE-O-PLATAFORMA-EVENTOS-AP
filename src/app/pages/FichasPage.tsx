@@ -20,7 +20,12 @@ import {
   type LineaDescuento,
   type OrigenLineas,
 } from "../lib/cotizacion";
-import { apiRequest, API_BASE_URL, ApiError } from "../lib/api";
+import { apiRequest, apiUpload, API_BASE_URL, ApiError } from "../lib/api";
+import { StatCard } from "../components/ui/stat-card";
+import { Modal } from "../components/ui/modal";
+import { EmptyState, ErrorBanner, LoadingState } from "../components/ui/feedback";
+import { Button } from "../components/ui/button";
+import { mensajeDeError, notify } from "../lib/notify";
 import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDetalle, obtenerTarifasEnvio, reemplazarFichaEnCache } from "../lib/queries";
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
@@ -437,7 +442,7 @@ function SearchableSelect({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022] text-left"
+        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange text-left"
       >
         <span className={value ? "" : "text-gray-400"}>{value || placeholder}</span>
         <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
@@ -453,7 +458,7 @@ function SearchableSelect({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar tipo de evento..."
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#EF8022]"
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
                 autoFocus
               />
             </div>
@@ -471,10 +476,10 @@ function SearchableSelect({
                   setSearch("");
                 }}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center gap-2 ${
-                  opt === value ? "bg-[#EF8022]/10" : ""
+                  opt === value ? "bg-brand-orange/10" : ""
                 }`}
               >
-                {opt === value && <Check className="w-3 h-3 text-[#EF8022] shrink-0" />}
+                {opt === value && <Check className="w-3 h-3 text-brand-orange shrink-0" />}
                 <span className="text-gray-900 dark:text-white">{opt}</span>
               </button>
             ))
@@ -577,55 +582,12 @@ function AbonoModal({
         resetUploadedComprobante();
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "comprobantes");
-
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const isJson = contentType.includes("application/json");
-        const errorData = isJson ? await response.json() : { error: `HTTP ${response.status}` };
-        throw new Error((errorData as any).error || "Error al subir el archivo");
-      }
-
-      const data = await response.json();
-      const rawUrl =
-        data?.url ||
-        data?.fileUrl ||
-        data?.secure_url ||
-        data?.location ||
-        data?.data?.url ||
-        "";
-
-      const rawPath =
-        data?.path ||
-        data?.filePath ||
-        data?.data?.path ||
-        extractStoragePathFromUrl(rawUrl);
-
-      if (!rawUrl) {
-        throw new Error("La API respondió sin URL del archivo subido");
-      }
-
-      if (!rawPath) {
-        throw new Error("La API respondió sin path del archivo subido");
-      }
-
-      const normalizedUrl =
-        typeof rawUrl === "string" && rawUrl.startsWith("/")
-          ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
-          : rawUrl;
-
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "comprobantes");
       setComprobante(normalizedUrl);
       setComprobanteName(file.name);
       setComprobantePath(rawPath);
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al subir el comprobante");
+      setModalError(mensajeDeError(err, "No se pudo subir el comprobante."));
       resetUploadedComprobante();
     } finally {
       setIsUploading(false);
@@ -634,6 +596,8 @@ function AbonoModal({
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    // Se limpia el input para que volver a elegir el mismo archivo tras un error vuelva a subirlo
+    event.target.value = "";
     if (!file) return;
     await uploadComprobanteFile(file);
   };
@@ -655,7 +619,14 @@ function AbonoModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const montoNumerico = Number(monto);
-    if (!montoNumerico || montoNumerico <= 0) return;
+    if (!montoNumerico || montoNumerico <= 0) {
+      setModalError("Ingresa un monto mayor a S/ 0.00.");
+      return;
+    }
+    if (isUploading) {
+      setModalError("Espera a que termine de subirse el comprobante.");
+      return;
+    }
 
     setModalError("");
     setIsSaving(true);
@@ -684,55 +655,44 @@ function AbonoModal({
       setComprobantePath("");
       onClose();
     } catch (err) {
-      let cleanupFailed = false;
-      if (comprobantePath) {
-        setIsCleaningUpload(true);
-        const cleaned = await cleanupUploadedComprobante(comprobantePath);
-        setIsCleaningUpload(false);
-        cleanupFailed = !cleaned;
-        if (cleaned) {
-          resetUploadedComprobante();
-        }
-      }
-
-      const baseError = err instanceof Error ? err.message : "Error al guardar el abono";
-      setModalError(cleanupFailed ? `${baseError}. Además, no se pudo eliminar el archivo subido.` : baseError);
+      // El comprobante subido se conserva para poder reintentar; si se cierra sin guardar, se limpia
+      setModalError(mensajeDeError(err, isEditing ? "No se pudieron guardar los cambios del abono." : "No se pudo guardar el abono."));
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-lg w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h3 className="text-2xl text-gray-900 dark:text-white">{isEditing ? "Editar Abono" : "Registrar Abono"}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{ficha.cliente_nombre}</p>
-          </div>
-          <button onClick={() => void handleModalClose()} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <Modal
+      open
+      onClose={() => void handleModalClose()}
+      title={isEditing ? "Editar Abono" : "Registrar Abono"}
+      description={ficha.cliente_nombre}
+      busy={isSaving || isCleaningUpload}
+      error={modalError || undefined}
+      footer={
+        <>
+          <Button type="button" variant="subtle" size="lg" onClick={() => void handleModalClose()} disabled={isSaving || isCleaningUpload}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="abono-form" variant="brand" size="lg" loading={isSaving} disabled={isUploading || isCleaningUpload}>
+            {isSaving ? "Guardando..." : isUploading ? "Subiendo comprobante..." : isEditing ? "Guardar cambios" : "Guardar abono"}
+          </Button>
+        </>
+      }
+    >
         <div className="mb-5 rounded-lg bg-gray-50 dark:bg-gray-700/50 p-4 grid grid-cols-2 gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a pagar</p>
-            <p className="text-lg text-gray-900 dark:text-white">{formatMoney(getTotal(ficha))}</p>
+            <p className="text-base sm:text-lg text-gray-900 dark:text-white tabular-nums whitespace-nowrap truncate">{formatMoney(getTotal(ficha))}</p>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo pendiente</p>
-            <p className={`text-lg ${saldo > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(saldo)}</p>
+            <p className={`text-base sm:text-lg tabular-nums whitespace-nowrap truncate ${saldo > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(saldo)}</p>
           </div>
         </div>
 
-        {modalError && (
-          <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-            <p className="text-sm text-red-700 dark:text-red-400">{modalError}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="abono-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Fecha</label>
             <input
@@ -787,11 +747,11 @@ function AbonoModal({
             <div
               tabIndex={0}
               onPaste={(e) => void handleComprobantePaste(e)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                 isUploading || isCleaningUpload ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
               }`}
             >
-              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading || isCleaningUpload ? "cursor-not-allowed" : "hover:text-[#EF8022]"}`}>
+              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading || isCleaningUpload ? "cursor-not-allowed" : "hover:text-brand-orange"}`}>
                 <Upload className="w-4 h-4" />
                 <span>{isUploading ? "Subiendo..." : isCleaningUpload ? "Limpiando archivo..." : comprobanteName || "Subir imagen del comprobante"}</span>
                 <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading || isCleaningUpload} className="hidden" />
@@ -815,25 +775,8 @@ function AbonoModal({
             )}
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={isSaving || isCleaningUpload}
-              className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
-            >
-              {isSaving ? "Guardando..." : isEditing ? "Guardar cambios" : "Guardar abono"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleModalClose()}
-              className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
-            >
-              Cancelar
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -914,6 +857,9 @@ export function FichasPage() {
   const [error, setError] = useState("");
   const [deleteFichaId, setDeleteFichaId] = useState<number | null>(null);
   const [deleteFichaSubmitting, setDeleteFichaSubmitting] = useState(false);
+  const [deleteFichaError, setDeleteFichaError] = useState("");
+  // Error del formulario de ficha: se muestra dentro del modal, junto al botón Guardar
+  const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -932,6 +878,7 @@ export function FichasPage() {
   const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
   const [deleteAbonoTarget, setDeleteAbonoTarget] = useState<{ fichaId: number; abonoId: number } | null>(null);
   const [deleteAbonoSubmitting, setDeleteAbonoSubmitting] = useState(false);
+  const [deleteAbonoError, setDeleteAbonoError] = useState("");
   const [abonoInicialComprobante, setAbonoInicialComprobante] = useState<string>("");
   const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
   const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
@@ -993,6 +940,17 @@ export function FichasPage() {
     // Las otras vistas de fichas (Dashboard, Logística, Rutas) quedan viejas: se recargan al abrirlas
     void invalidarFichas();
     await Promise.all([loadFichas({ forzar: true }), reloadData("recursos", "personal")]);
+  };
+
+  // Refresca la ficha tras un cambio ya guardado; si falla, avisa sin tratarlo como error del guardado
+  // (así no se reintenta y duplica lo que ya se guardó)
+  const refrescarTrasGuardar = async (fichaId: number) => {
+    try {
+      await refrescarFicha(fichaId);
+      if (selectedFicha && selectedFicha.id === fichaId) await loadFichaImagenes(fichaId);
+    } catch {
+      notify.aviso("Se guardó, pero no se pudo actualizar la vista. Recarga la página para ver los cambios.");
+    }
   };
 
   // Tras un cambio en los abonos de una ficha: se vuelve a pedir solo esa ficha
@@ -1206,7 +1164,7 @@ export function FichasPage() {
 
       setFichas(mapped);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las fichas");
+      setError(mensajeDeError(err, "No se pudieron cargar las fichas."));
     } finally {
       setLoading(false);
     }
@@ -1216,8 +1174,9 @@ export function FichasPage() {
     try {
       const data = await obtenerClientes<ExistingClient>(undefined, { forzar });
       setClients(data || []);
-    } catch {
+    } catch (err) {
       setClients([]);
+      notify.error(err, "No se pudo cargar la lista de clientes; no podrás buscarlos al crear una ficha.", { id: "clientes-fichas" });
     }
   };
 
@@ -1418,7 +1377,10 @@ export function FichasPage() {
         };
 
     const popup = window.open("", `proforma-${ficha.id}`, "width=1000,height=760");
-    if (!popup) return;
+    if (!popup) {
+      notify.aviso("El navegador bloqueó la ventana de la proforma. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.");
+      return;
+    }
 
     if (ficha.brand === "jugueton") {
       const numeroCotizacion = String(ficha.id).padStart(4, "0");
@@ -2227,7 +2189,7 @@ export function FichasPage() {
 
     const popup = window.open("", "contrato-jugueton-" + ficha.id, "width=1000,height=800");
     if (!popup) {
-      setError("El navegador bloqueó la ventana del contrato. Habilita las ventanas emergentes e intenta nuevamente.");
+      notify.aviso("El navegador bloqueó la ventana del contrato. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.");
       return;
     }
 
@@ -2351,9 +2313,10 @@ export function FichasPage() {
       setDescuentoMaxPct(value);
       setEditingDescuentoCap(false);
       setFormData((prev) => ({ ...prev, descuento: Math.min(prev.descuento, value) }));
+      notify.ok(`Tope de descuento actualizado a ${value}%`);
     } catch (err) {
       console.error("Error saving discount cap:", err);
-      setError("No se pudo guardar el tope de descuento global");
+      notify.error(err, "No se pudo guardar el tope de descuento.");
     }
   };
 
@@ -2381,7 +2344,7 @@ export function FichasPage() {
 
   const handleCreateClientInline = async () => {
     if (!newClientForm.nombre || !newClientForm.telefono) {
-      setNewClientError("Nombre y teléfono son obligatorios");
+      setNewClientError("El nombre y el teléfono son obligatorios.");
       return;
     }
     if (isSavingNewClient) return;
@@ -2419,8 +2382,9 @@ export function FichasPage() {
         }));
       }
       setShowNewClientModal(false);
+      notify.ok(`Cliente ${newClientForm.nombre} creado y asignado a la ficha`);
     } catch (err) {
-      setNewClientError(err instanceof Error ? err.message : "No se pudo crear el cliente");
+      setNewClientError(mensajeDeError(err, "No se pudo crear el cliente."));
     } finally {
       setIsSavingNewClient(false);
     }
@@ -2503,25 +2467,19 @@ export function FichasPage() {
   };
 
   const handleAddAbono = async (fichaId: number, abono: Abono) => {
-    try {
-      await apiRequest(`/fichas/${fichaId}/abonos`, {
-        method: "POST",
-        body: JSON.stringify({
-          fecha: abono.fecha,
-          monto: abono.monto,
-          numero_operacion: abono.numeroOperacion || null,
-          comprobante_url: abono.comprobante || null,
-          medio: abono.medio,
-        }),
-      });
-
-      await refrescarFicha(fichaId);
-      if (selectedFicha && selectedFicha.id === fichaId) {
-        await loadFichaImagenes(fichaId);
-      }
-    } catch (err) {
-      throw err instanceof Error ? err : new Error("Error al guardar el abono");
-    }
+    // Si el POST falla, el error sube al modal del abono (que lo muestra y permite reintentar)
+    await apiRequest(`/fichas/${fichaId}/abonos`, {
+      method: "POST",
+      body: JSON.stringify({
+        fecha: abono.fecha,
+        monto: abono.monto,
+        numero_operacion: abono.numeroOperacion || null,
+        comprobante_url: abono.comprobante || null,
+        medio: abono.medio,
+      }),
+    });
+    notify.ok(`Abono de ${formatMoney(abono.monto)} registrado`);
+    await refrescarTrasGuardar(fichaId);
   };
 
   const loadFichaImagenes = async (fichaId: number) => {
@@ -2543,22 +2501,18 @@ export function FichasPage() {
   };
 
   const handleUpdateAbono = async (fichaId: number, abonoId: number, abono: Abono) => {
-    try {
-      await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          fecha: abono.fecha,
-          monto: abono.monto,
-          numero_operacion: abono.numeroOperacion || null,
-          comprobante_url: abono.comprobante || null,
-          medio: abono.medio,
-        }),
-      });
-
-      await refrescarFicha(fichaId);
-    } catch (err) {
-      throw err instanceof Error ? err : new Error("Error al actualizar el abono");
-    }
+    await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        fecha: abono.fecha,
+        monto: abono.monto,
+        numero_operacion: abono.numeroOperacion || null,
+        comprobante_url: abono.comprobante || null,
+        medio: abono.medio,
+      }),
+    });
+    notify.ok("Abono actualizado");
+    await refrescarTrasGuardar(fichaId);
   };
 
   const handleDeleteAbono = (fichaId: number, abonoId: number) => {
@@ -2575,26 +2529,25 @@ export function FichasPage() {
         ? selectedFicha.abonos.find((a) => a.id === abonoId)
         : undefined;
 
+      setDeleteAbonoError("");
       await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, { method: "DELETE" });
 
       if (abonoAEliminar?.comprobante) {
         const path = extractStoragePathFromUrl(abonoAEliminar.comprobante);
         if (path) {
           try {
-            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }) });
+            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }), silencioso: true });
           } catch {
             // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
           }
         }
       }
 
-      await refrescarFicha(fichaId);
-      if (selectedFicha && selectedFicha.id === fichaId) {
-        await loadFichaImagenes(fichaId);
-      }
       setDeleteAbonoTarget(null);
+      notify.ok("Abono eliminado");
+      await refrescarTrasGuardar(fichaId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el abono");
+      setDeleteAbonoError(mensajeDeError(err, "No se pudo eliminar el abono."));
     } finally {
       setDeleteAbonoSubmitting(false);
     }
@@ -2663,7 +2616,7 @@ export function FichasPage() {
     setCotizacionMode("manual");
     setEditingFichaId(ficha.id);
     resetAbonoInicialComprobante();
-    setError("");
+    setFormError("");
     closeFichaDetail();
     setShowAddModal(true);
   };
@@ -2676,8 +2629,10 @@ export function FichasPage() {
     if (!deleteFichaId) return;
 
     setDeleteFichaSubmitting(true);
+    setDeleteFichaError("");
     try {
       await apiRequest(`/fichas/${deleteFichaId}`, { method: "DELETE" });
+      const eliminada = deleteFichaId;
       if (selectedFicha?.id === deleteFichaId) {
         closeFichaDetail();
       }
@@ -2686,9 +2641,14 @@ export function FichasPage() {
         setAbonoTargetFicha(null);
       }
       setDeleteFichaId(null);
-      await refreshFichasAndCatalogs();
+      notify.ok(`Ficha #${eliminada} eliminada`);
+      try {
+        await refreshFichasAndCatalogs();
+      } catch {
+        notify.aviso("La ficha se eliminó, pero no se pudo actualizar la lista. Recarga la página.");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar la ficha");
+      setDeleteFichaError(mensajeDeError(err, "No se pudo eliminar la ficha."));
     } finally {
       setDeleteFichaSubmitting(false);
     }
@@ -2714,61 +2674,18 @@ export function FichasPage() {
 
   const uploadAbonoInicialComprobanteFile = async (file: File) => {
     setIsUploadingAbonoInicialComprobante(true);
-    setError("");
+    setFormError("");
 
     try {
       await cleanupAbonoInicialComprobante();
       resetAbonoInicialComprobante();
 
-      const uploadFormData = new FormData();
-      uploadFormData.append("file", file);
-      uploadFormData.append("folder", "comprobantes");
-
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        body: uploadFormData,
-      });
-
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        const isJson = contentType.includes("application/json");
-        const errorData = isJson ? await response.json() : { error: `HTTP ${response.status}` };
-        throw new Error((errorData as any).error || "Error al subir el archivo");
-      }
-
-      const data = await response.json();
-      const rawUrl =
-        data?.url ||
-        data?.fileUrl ||
-        data?.secure_url ||
-        data?.location ||
-        data?.data?.url ||
-        "";
-
-      const rawPath =
-        data?.path ||
-        data?.filePath ||
-        data?.data?.path ||
-        extractStoragePathFromUrl(rawUrl);
-
-      if (!rawUrl) {
-        throw new Error("La API respondió sin URL del archivo subido");
-      }
-
-      if (!rawPath) {
-        throw new Error("La API respondió sin path del archivo subido");
-      }
-
-      const normalizedUrl =
-        typeof rawUrl === "string" && rawUrl.startsWith("/")
-          ? `${new URL(API_BASE_URL, window.location.origin).origin}${rawUrl}`
-          : rawUrl;
-
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "comprobantes");
       setAbonoInicialComprobante(normalizedUrl);
       setAbonoInicialComprobanteName(file.name);
       setAbonoInicialComprobantePath(rawPath);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al subir el comprobante");
+      setFormError(mensajeDeError(err, "No se pudo subir el comprobante del abono inicial."));
       resetAbonoInicialComprobante();
     } finally {
       setIsUploadingAbonoInicialComprobante(false);
@@ -2777,9 +2694,9 @@ export function FichasPage() {
 
   const handleAbonoInicialComprobanteChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
     await uploadAbonoInicialComprobanteFile(file);
-    event.target.value = "";
   };
 
   const handleAbonoInicialComprobantePaste = async (event: React.ClipboardEvent) => {
@@ -2799,20 +2716,26 @@ export function FichasPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!brand) {
-      setError("No se pudo determinar la marca de tu cuenta. Cierra sesión y vuelve a iniciar sesión; si el problema continúa, contacta al administrador.");
+      setFormError("No se pudo determinar la marca de tu cuenta. Cierra sesión y vuelve a iniciar sesión; si el problema continúa, contacta al administrador.");
       return;
     }
     if (createFichaLockRef.current || isSaving) return;
     if (!formData.tipoEvento) {
       setTipoEventoMissing(true);
+      setFormError("Elige el tipo de evento antes de guardar.");
       return;
     }
     setTipoEventoMissing(false);
+    if (isUploadingAbonoInicialComprobante) {
+      setFormError("Espera a que termine de subirse el comprobante del abono inicial.");
+      return;
+    }
+    setFormError("");
 
     const montoAbonoInicial = toMoneyNumber(formData.abonoInicialMonto);
     const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100));
     if (formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
-      setError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
+      setFormError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
       return;
     }
 
@@ -2865,39 +2788,60 @@ export function FichasPage() {
       recursos: formData.transporte === "delivery" ? [] : formData.recursos.filter((recurso) => recurso.recursoId > 0),
     };
 
+    // Cierra el formulario y refresca la lista (si el refresco falla, lo guardado igual quedó)
+    const cerrarTrasGuardar = async () => {
+      setShowAddModal(false);
+      setEditingFichaId(null);
+      setFormData(getInitialFormData());
+      resetAbonoInicialComprobante();
+      try {
+        await refreshFichasAndCatalogs();
+      } catch {
+        notify.aviso("Se guardó, pero no se pudo actualizar la lista. Recarga la página.");
+      }
+    };
+
     try {
       if (editingFichaId !== null) {
         await apiRequest(`/fichas/${editingFichaId}`, { method: "PUT", body: JSON.stringify(payload) });
+        notify.ok(`Ficha #${editingFichaId} actualizada`);
       } else {
         const createdFicha = await apiRequest<{ id?: number; ficha?: { id?: number } }>("/fichas", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        const fichaId = createdFicha?.id ?? createdFicha?.ficha?.id;
 
         if (formData.registrarAbonoInicial) {
-          const fichaId = createdFicha?.id ?? createdFicha?.ficha?.id;
-          if (!fichaId) {
-            throw new Error("La ficha se creo, pero no se pudo registrar el abono inicial porque la API no devolvio su identificador.");
+          try {
+            if (!fichaId) throw new Error("");
+            await apiRequest(`/fichas/${fichaId}/abonos`, {
+              method: "POST",
+              body: JSON.stringify({
+                fecha: formData.abonoInicialFecha,
+                monto: montoAbonoInicial,
+                numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
+                comprobante_url: abonoInicialComprobante || null,
+                medio: formData.abonoInicialMedio,
+              }),
+            });
+          } catch (errAbono) {
+            // La ficha ya se creó: se cierra el formulario para que un nuevo intento no la duplique
+            void cleanupAbonoInicialComprobante();
+            await cerrarTrasGuardar();
+            // Mensaje compuesto: qué se guardó, por qué falló el abono y qué hacer
+            notify.error(
+              `La ficha${fichaId ? ` #${fichaId}` : ""} se guardó, pero el abono inicial no se pudo registrar (${mensajeDeError(errAbono, "error desconocido").replace(/\.$/, "")}). Regístralo desde el detalle de la ficha.`
+            );
+            return;
           }
-
-          await apiRequest(`/fichas/${fichaId}/abonos`, {
-            method: "POST",
-            body: JSON.stringify({
-              fecha: formData.abonoInicialFecha,
-              monto: montoAbonoInicial,
-              numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
-              comprobante_url: abonoInicialComprobante || null,
-              medio: formData.abonoInicialMedio,
-            }),
-          });
+          notify.ok(`Ficha${fichaId ? ` #${fichaId}` : ""} creada con un abono de ${formatMoney(montoAbonoInicial)}`);
+        } else {
+          notify.ok(`Ficha${fichaId ? ` #${fichaId}` : ""} creada`);
         }
       }
 
-      setShowAddModal(false);
-      setEditingFichaId(null);
-      setFormData(getInitialFormData());
-      resetAbonoInicialComprobante();
-      await refreshFichasAndCatalogs();
+      await cerrarTrasGuardar();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         const body = err.body as { error?: string; conflicts?: Record<string, unknown>[] };
@@ -2909,7 +2853,7 @@ export function FichasPage() {
         }
         return;
       }
-      setError(err instanceof Error ? err.message : editingFichaId !== null ? "No se pudo actualizar la ficha" : "No se pudo crear la ficha");
+      setFormError(mensajeDeError(err, editingFichaId !== null ? "No se pudo actualizar la ficha." : "No se pudo crear la ficha."));
     } finally {
       createFichaLockRef.current = false;
       setIsSaving(false);
@@ -2923,17 +2867,18 @@ export function FichasPage() {
     setCotizacionMode("auto");
     setEditingFichaId(null);
     setTipoEventoMissing(false);
+    setFormError("");
     resetAbonoInicialComprobante();
   };
 
-  const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent";
+  const inputClass = "w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent";
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
       <DeleteConfirmDialog
         open={deleteFichaId !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteFichaId(null);
+          if (!open) { setDeleteFichaId(null); setDeleteFichaError(""); }
         }}
         title={deleteFichaId ? `Eliminar ficha #${deleteFichaId}` : "Eliminar ficha"}
         description="¿Seguro que quieres eliminar esta ficha? Esta acción no se puede deshacer."
@@ -2941,12 +2886,13 @@ export function FichasPage() {
         loadingLabel="Eliminando..."
         loading={deleteFichaSubmitting}
         onConfirm={confirmDeleteFicha}
+        error={deleteFichaError}
       />
 
       <DeleteConfirmDialog
         open={deleteAbonoTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteAbonoTarget(null);
+          if (!open) { setDeleteAbonoTarget(null); setDeleteAbonoError(""); }
         }}
         title="Eliminar abono"
         description="¿Seguro que quieres eliminar este abono? El comprobante asociado también se eliminará. Esta acción no se puede deshacer."
@@ -2954,106 +2900,43 @@ export function FichasPage() {
         loadingLabel="Eliminando..."
         loading={deleteAbonoSubmitting}
         onConfirm={confirmDeleteAbono}
+        error={deleteAbonoError}
       />
 
-      {/* Modal de conflictos 409 */}
-      {carritoConflicts !== null && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
-                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+      {/* Conflictos 409: carritos o inflables ya usados en otra ficha ese día */}
+      {[
+        { abierto: carritoConflicts !== null, titulo: "Conflicto de carritos", item: "carritos", cerrar: () => setCarritoConflicts(null),
+          filas: (carritoConflicts ?? []).map((c) => ({ codigo: c.carrito_codigo, nombre: c.carrito_modelo, ficha: c.ficha_id, cliente: c.cliente_nombre, fecha: c.fecha_evento })) },
+        { abierto: inflableConflicts !== null, titulo: "Conflicto de inflables", item: "inflables", cerrar: () => setInflableConflicts(null),
+          filas: (inflableConflicts ?? []).map((c) => ({ codigo: c.inflable_codigo, nombre: c.inflable_tipo, ficha: c.ficha_id, cliente: c.cliente_nombre, fecha: c.fecha_evento })) },
+      ].map((conf) => (
+        <Modal
+          key={conf.titulo}
+          open={conf.abierto}
+          onClose={conf.cerrar}
+          elevated
+          title={<span className="flex items-center gap-2"><AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />{conf.titulo}</span>}
+          description={`Estos ${conf.item} ya están asignados en otra ficha para esa fecha. Quítalos o cambia la fecha para continuar.`}
+          footer={<Button variant="brand" size="lg" onClick={conf.cerrar}>Entendido, voy a corregirlo</Button>}
+        >
+          <div className="space-y-3">
+            {conf.filas.map((c, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                <div className="min-w-0 text-sm">
+                  <p className="text-gray-900 dark:text-white"><span className="text-red-600 dark:text-red-400">{c.codigo}</span> — {c.nombre}</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                    Asignado en ficha <span className="font-medium">#{c.ficha}</span> · {c.cliente} · {formatDate(c.fecha)}
+                  </p>
                 </div>
-                <h3 className="text-base text-gray-900 dark:text-white">Conflicto de carritos</h3>
               </div>
-              <button onClick={() => setCarritoConflicts(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Los siguientes carritos ya están asignados en otra ficha para esa fecha de evento. Quita esos carritos o cambia la fecha para continuar.
-              </p>
-              <div className="space-y-3">
-                {carritoConflicts.map((c, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                    <div className="min-w-0 text-sm">
-                      <p className="text-gray-900 dark:text-white">
-                        <span className="text-red-600 dark:text-red-400">{c.carrito_codigo}</span> — {c.carrito_modelo}
-                      </p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                        Asignado en ficha <span className="font-medium">#{c.ficha_id}</span> · {c.cliente_nombre} · {formatDate(c.fecha_evento)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-3 px-6 pb-6">
-              <button
-                onClick={() => setCarritoConflicts(null)}
-                className="flex-1 bg-[#EF8022] text-white py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors text-sm"
-              >
-                Entendido, voy a corregirlo
-              </button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Modal de conflictos 409 — Inflables */}
-      {inflableConflicts !== null && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
-                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                </div>
-                <h3 className="text-base text-gray-900 dark:text-white">Conflicto de inflables</h3>
-              </div>
-              <button onClick={() => setInflableConflicts(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Los siguientes inflables ya están asignados en otra ficha para esa fecha de evento. Quita esos inflables o cambia la fecha para continuar.
-              </p>
-              <div className="space-y-3">
-                {inflableConflicts.map((c, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                    <div className="min-w-0 text-sm">
-                      <p className="text-gray-900 dark:text-white">
-                        <span className="text-red-600 dark:text-red-400">{c.inflable_codigo}</span> — {c.inflable_tipo}
-                      </p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                        Asignado en ficha <span className="font-medium">#{c.ficha_id}</span> · {c.cliente_nombre} · {formatDate(c.fecha_evento)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-3 px-6 pb-6">
-              <button
-                onClick={() => setInflableConflicts(null)}
-                className="flex-1 bg-[#EF8022] text-white py-2.5 rounded-lg hover:bg-[#d9711c] transition-colors text-sm"
-              >
-                Entendido, voy a corregirlo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </Modal>
+      ))}
 
       {error ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+        <ErrorBanner className="mb-4" onRetry={() => void loadFichas({ forzar: true })}>{error}</ErrorBanner>
       ) : null}
 
       <div className="mb-6 md:mb-8">
@@ -3062,10 +2945,10 @@ export function FichasPage() {
       </div>
 
       {isAdmin && (
-        <div className="mb-6 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl border border-[#1F3C8B]/10 dark:border-blue-900/20 shadow-sm flex flex-col md:row items-start md:flex-row md:items-center justify-between gap-4">
+        <div className="mb-6 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl border border-brand-navy/10 dark:border-blue-900/20 shadow-sm flex flex-col items-start md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-              <Percent className="w-6 h-6 text-[#1F3C8B] dark:text-blue-400" />
+              <Percent className="w-6 h-6 text-brand-navy dark:text-blue-400" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">Tope de Descuento Global</h3>
@@ -3084,14 +2967,14 @@ export function FichasPage() {
                     min={0}
                     max={100}
                     step={0.5}
-                    className="w-full md:w-24 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-transparent text-gray-900 dark:text-white focus:ring-2 focus:ring-[#1F3C8B] outline-none transition-all"
+                    className="w-full md:w-24 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-transparent text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-navy outline-none transition-all"
                     autoFocus
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
                 </div>
                 <button
                   onClick={handleSaveDescuentoCap}
-                  className="px-5 py-2 bg-[#1F3C8B] text-white rounded-xl hover:bg-[#19316f] transition-all shadow-sm font-medium"
+                  className="px-5 py-2 bg-brand-navy text-white rounded-xl hover:bg-brand-navy-hover transition-all shadow-sm font-medium"
                 >
                   Guardar
                 </button>
@@ -3104,10 +2987,10 @@ export function FichasPage() {
               </div>
             ) : (
               <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-800">
-                <span className="text-2xl font-bold text-[#1F3C8B] dark:text-blue-400">{descuentoMaxPct}%</span>
+                <span className="text-2xl font-bold text-brand-navy dark:text-blue-400">{descuentoMaxPct}%</span>
                 <button
                   onClick={handleStartEditDescuentoCap}
-                  className="flex items-center gap-2 text-[#EF8022] hover:text-[#d9711c] font-medium text-sm transition-colors"
+                  className="flex items-center gap-2 text-brand-orange hover:text-brand-orange-hover font-medium text-sm transition-colors"
                 >
                   <Settings className="w-4 h-4" />
                   Cambiar tope
@@ -3118,40 +3001,18 @@ export function FichasPage() {
         </div>
       )}
 
-      {/* Financial + Operational Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 md:gap-4 mb-6 md:mb-8">
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><Calendar className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-500 dark:text-gray-400">Eventos</span></div>
-          <p className="text-2xl text-gray-900 dark:text-white">{loading ? "..." : fichas.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-500 dark:text-gray-400">Venta Total</span></div>
-          <p className="text-2xl text-gray-900 dark:text-white">{formatMoney(stats.ventaTotal)}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-4 h-4 text-purple-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Total Final</span></div>
-          <p className="text-2xl text-purple-600 dark:text-purple-400">{formatMoney(stats.ventaTotal - stats.descuentos)}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><Receipt className="w-4 h-4 text-green-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Cobrado</span></div>
-          <p className="text-2xl text-green-600 dark:text-green-400">{formatMoney(stats.totalAbonado)}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Por Cobrar</span></div>
-          <p className="text-2xl text-red-500">{formatMoney(stats.saldoPendiente)}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><CheckCircle2 className="w-4 h-4 text-green-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Pagadas</span></div>
-          <p className="text-2xl text-green-600 dark:text-green-400">{stats.pagadas}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><CircleDashed className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-500 dark:text-gray-400">Parciales</span></div>
-          <p className="text-2xl text-[#EF8022]">{stats.parciales}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2"><AlertCircle className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-500 dark:text-gray-400">Pendientes</span></div>
-          <p className="text-2xl text-red-500">{stats.pendientes}</p>
-        </div>
+      {/* Indicadores: montos arriba (2 columnas hasta 1280 px para que siempre entren) y conteos debajo */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-3 md:mb-4">
+        <StatCard label="Venta Total" value={formatMoney(stats.ventaTotal)} icon={<DollarSign className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
+        <StatCard label="Total Final" value={formatMoney(stats.ventaTotal - stats.descuentos)} tone="purple" icon={<DollarSign className="text-purple-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Cobrado" value={formatMoney(stats.totalAbonado)} tone="green" icon={<Receipt className="text-green-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Por Cobrar" value={formatMoney(stats.saldoPendiente)} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <StatCard label="Eventos" value={fichas.length} icon={<Calendar className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
+        <StatCard label="Pagadas" value={stats.pagadas} tone="green" icon={<CheckCircle2 className="text-green-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Parciales" value={stats.parciales} tone="orange" icon={<CircleDashed className="text-brand-orange" />} loading={loading && !fichas.length} />
+        <StatCard label="Pendientes" value={stats.pendientes} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
       </div>
 
       {/* Filters */}
@@ -3172,30 +3033,30 @@ export function FichasPage() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input type="text" placeholder="Buscar por cliente, dirección o distrito..." value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent" />
+                className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent" />
             </div>
           </div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
             <select value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)}
-              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm">
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
               {distritos.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
             <select value={estadoFilter} onChange={e => setEstadoFilter(e.target.value as typeof estadoFilter)}
-              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm">
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
               <option value="Todos">Estado: Todos</option>
               <option value="pagado">Pagado</option>
               <option value="parcial">Parcial</option>
               <option value="pendiente">Pendiente</option>
             </select>
             <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm">
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
               <option value="created_desc">Creación: más reciente</option>
               <option value="created_asc">Creación: más antigua</option>
               <option value="evento_asc">Evento: fecha ascendente</option>
               <option value="evento_desc">Evento: fecha descendente</option>
             </select>
-            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setError(""); }}
-              className="bg-[#EF8022] text-white px-6 py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
+              className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
           </div>
@@ -3231,14 +3092,15 @@ export function FichasPage() {
                     <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
                   <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{getFichaTitulo(ficha)}</h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <Phone className="w-4 h-4" /> {ficha.cliente_nombre} · {ficha.cliente_celular}
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                    <Phone className="w-4 h-4 shrink-0" />
+                    <span className="truncate" title={`${ficha.cliente_nombre} · ${ficha.cliente_celular}`}>{ficha.cliente_nombre} · {ficha.cliente_celular}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => handleGenerarProforma(ficha)}
-                    className="p-2 text-gray-400 hover:text-[#1F3C8B] hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                    className="p-2 text-gray-400 hover:text-brand-navy hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                     title="Generar proforma"
                   >
                     <FileText className="w-5 h-5" />
@@ -3246,7 +3108,7 @@ export function FichasPage() {
                   {ficha.brand === "jugueton" && (
                     <button
                       onClick={() => handleGenerarContrato(ficha)}
-                      className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
                       title="Generar contrato"
                     >
                       <FileSignature className="w-5 h-5" />
@@ -3260,7 +3122,7 @@ export function FichasPage() {
                     </button>
                   )}
                   <button onClick={() => openFichaDetail(ficha)}
-                    className="p-2 text-gray-400 hover:text-[#EF8022] hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    className="p-2 text-gray-400 hover:text-brand-orange hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
                   </button>
                   {canEditFicha(ficha) && (
@@ -3283,7 +3145,7 @@ export function FichasPage() {
                   </span>
                 ))}
                 {ficha.productosSueltos.length > 0 && (
-                  <span className="px-2.5 py-1 rounded-full text-xs bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">
+                  <span className="px-2.5 py-1 rounded-full text-xs bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">
                     +{ficha.productosSueltos.reduce((s, p) => s + p.cantidad, 0)} adicionales
                   </span>
                 )}
@@ -3304,7 +3166,7 @@ export function FichasPage() {
               </div>
 
               {/* Financial summary card */}
-              <div className="bg-gradient-to-r from-[#1F3C8B]/5 to-[#EF8022]/5 dark:from-[#1F3C8B]/10 dark:to-[#EF8022]/10 rounded-lg p-4 mb-4">
+              <div className="bg-gradient-to-r from-brand-navy/5 to-brand-orange/5 dark:from-brand-navy/10 dark:to-brand-orange/10 rounded-lg p-4 mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400">Cotización</span>
                   <span className="text-sm text-gray-900 dark:text-white">{formatMoney(ficha.cotizacion)}</span>
@@ -3321,7 +3183,7 @@ export function FichasPage() {
                 </div>
                 {/* Progress bar */}
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mb-1">
-                  <div className={`h-2 rounded-full transition-all ${estado === "pagado" ? "bg-green-500" : estado === "parcial" ? "bg-[#EF8022]" : "bg-red-400"}`}
+                  <div className={`h-2 rounded-full transition-all ${estado === "pagado" ? "bg-green-500" : estado === "parcial" ? "bg-brand-orange" : "bg-red-400"}`}
                     style={{ width: `${pctPagado}%` }} />
                 </div>
                 <div className="flex items-center justify-between">
@@ -3335,7 +3197,7 @@ export function FichasPage() {
               {/* Footer */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">
                     {ficha.brand === "jugueton"
                       ? `${formatHoraFija(ficha.hora_entrega)}${ficha.hora_entrega_fin ? ` · Inicio ${formatHoraFija(ficha.hora_entrega_fin)}` : ""}${ficha.hora_recojo ? ` · ${formatHoraFija(ficha.hora_recojo)}` : ""}`
                       : `${formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}${ficha.hora_recojo ? ` · ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}`}
@@ -3416,9 +3278,16 @@ export function FichasPage() {
       )}
 
       {filteredFichas.length === 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 text-center py-12">
-          <Calendar className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-500 dark:text-gray-400">No se encontraron fichas</p>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+          {loading ? (
+            <LoadingState label="Cargando fichas…" />
+          ) : error ? null : (
+            <EmptyState
+              icon={<Calendar />}
+              title={fichas.length ? "Ninguna ficha coincide con los filtros" : "Aún no hay fichas"}
+              description={fichas.length ? "Prueba con otras fechas, distrito o estado." : "Crea la primera con el botón «Nueva Ficha»."}
+            />
+          )}
         </div>
       )}
 
@@ -3427,9 +3296,9 @@ export function FichasPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-6">
-              <div>
-                <h3 className="text-2xl text-gray-900 dark:text-white mb-2">{getFichaTitulo(selectedFicha)}</h3>
-                <div className="flex items-center gap-3">
+              <div className="min-w-0">
+                <h3 className="text-xl sm:text-2xl text-gray-900 dark:text-white mb-2 break-words">{getFichaTitulo(selectedFicha)}</h3>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
@@ -3443,8 +3312,8 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Información del Cliente</h4>
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-2">
-                  <div className="flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_nombre}</span></div>
-                  <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_celular}</span></div>
+                  <div className="flex items-center gap-2"><User className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_nombre}</span></div>
+                  <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_celular}</span></div>
                   {selectedFicha.contacto_nombre && (
                     <>
                       <div className="border-t border-gray-200 dark:border-gray-600 my-2 pt-2"><p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Contacto Alternativo</p></div>
@@ -3472,34 +3341,34 @@ export function FichasPage() {
                   {canEditFicha(selectedFicha) && (
                     <button
                       onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
-                      className="text-xs text-[#EF8022] hover:underline flex items-center gap-1">
+                      className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Registrar Abono
                     </button>
                   )}
                 </div>
-                <div className="bg-gradient-to-r from-[#1F3C8B]/5 to-[#EF8022]/5 dark:from-[#1F3C8B]/10 dark:to-[#EF8022]/10 rounded-lg p-5">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div>
+                <div className="bg-gradient-to-r from-brand-navy/5 to-brand-orange/5 dark:from-brand-navy/10 dark:to-brand-orange/10 rounded-lg p-5">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cotización</p>
-                      <p className="text-lg text-gray-900 dark:text-white">{formatMoney(selectedFicha.cotizacion)}</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-gray-900 dark:text-white">{formatMoney(selectedFicha.cotizacion)}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento {selectedFicha.descuento > 0 ? `(${selectedFicha.descuento}%)` : ""}</p>
-                      <p className="text-lg text-red-500">{selectedFicha.descuento > 0 ? `-${formatMoney(getDescuentoMonto(selectedFicha))}` : "—"}</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-red-500">{selectedFicha.descuento > 0 ? `-${formatMoney(getDescuentoMonto(selectedFicha))}` : "—"}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a Pagar</p>
-                      <p className="text-lg text-[#1F3C8B] dark:text-blue-400">{formatMoney(getTotal(selectedFicha))}</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-brand-navy dark:text-blue-400">{formatMoney(getTotal(selectedFicha))}</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo</p>
-                      <p className={`text-lg ${getSaldo(selectedFicha) > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(Math.max(0, getSaldo(selectedFicha)))}</p>
+                      <p className={`text-base sm:text-lg tabular-nums whitespace-nowrap truncate ${getSaldo(selectedFicha) > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(Math.max(0, getSaldo(selectedFicha)))}</p>
                     </div>
                   </div>
 
                   {/* Progress */}
                   <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2">
-                    <div className={`h-2.5 rounded-full transition-all ${getEstadoPago(selectedFicha) === "pagado" ? "bg-green-500" : getEstadoPago(selectedFicha) === "parcial" ? "bg-[#EF8022]" : "bg-red-400"}`}
+                    <div className={`h-2.5 rounded-full transition-all ${getEstadoPago(selectedFicha) === "pagado" ? "bg-green-500" : getEstadoPago(selectedFicha) === "parcial" ? "bg-brand-orange" : "bg-red-400"}`}
                       style={{ width: `${getTotal(selectedFicha) > 0 ? Math.min(100, (getTotalAbonado(selectedFicha) / getTotal(selectedFicha)) * 100) : 0}%` }} />
                   </div>
                   <p className="text-xs text-gray-400 text-right">{getTotalAbonado(selectedFicha) > 0 ? `${((getTotalAbonado(selectedFicha) / getTotal(selectedFicha)) * 100).toFixed(0)}% pagado` : "Sin abonos"}</p>
@@ -3526,7 +3395,7 @@ export function FichasPage() {
                                 <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">#{abono.numeroOperacion}</span>
                               )}
                               {abono.comprobante && (
-                                <span className="text-xs text-[#EF8022] flex items-center gap-0.5"><Receipt className="w-3 h-3" /> Comp.</span>
+                                <span className="text-xs text-brand-orange flex items-center gap-0.5"><Receipt className="w-3 h-3" /> Comp.</span>
                               )}
                             </div>
                           </div>
@@ -3534,7 +3403,7 @@ export function FichasPage() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(abono); setShowAbonoModal(true); }}
-                                className="p-1.5 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                                className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
                                 title="Editar abono">
                                 <Edit className="w-4 h-4" />
                               </button>
@@ -3609,7 +3478,7 @@ export function FichasPage() {
                             <a
                               href={img.url}
                               download={img.path || `comprobante-${img.abono_id}`}
-                              className="inline-flex items-center gap-1 text-[11px] text-[#EF8022] hover:underline"
+                              className="inline-flex items-center gap-1 text-[11px] text-brand-orange hover:underline"
                             >
                               <Download className="w-3 h-3" /> Descargar
                             </a>
@@ -3645,11 +3514,11 @@ export function FichasPage() {
                 {selectedFicha.productosSueltos.length > 0 && (
                   <div className="mt-4">
                     <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Productos Adicionales</h4>
-                    <div className="bg-[#EF8022]/5 dark:bg-[#EF8022]/10 rounded-lg p-4">
+                    <div className="bg-brand-orange/5 dark:bg-brand-orange/10 rounded-lg p-4">
                       <div className="space-y-2">
                         {selectedFicha.productosSueltos.map((prod, idx) => (
                           <div key={idx} className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-[#EF8022]" /><span className="text-gray-900 dark:text-white">{prod.productoNombre}</span></div>
+                            <div className="flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-brand-orange" /><span className="text-gray-900 dark:text-white">{prod.productoNombre}</span></div>
                             <span className="text-gray-600 dark:text-gray-400 font-mono">x{prod.cantidad}</span>
                           </div>
                         ))}
@@ -3666,12 +3535,12 @@ export function FichasPage() {
                   <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-red-500 mt-0.5" /><div><p className="text-gray-900 dark:text-white">{selectedFicha.direccion}</p><p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{selectedFicha.distrito}</p>{selectedFicha.referencia && <p className="text-sm text-gray-500 mt-2 italic">Ref: {selectedFicha.referencia}</p>}</div></div>
                 </div>
               </div>
-              <div className={selectedFicha.brand === "jugueton" ? "grid grid-cols-3 gap-4" : "grid grid-cols-2 gap-4"}>
-                <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_entrega) : formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
+              <div className={selectedFicha.brand === "jugueton" ? "grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"}>
+                <div className="bg-brand-navy/5 dark:bg-brand-navy/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_entrega) : formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
                 {selectedFicha.brand === "jugueton" && (
-                  <div className="bg-[#EF8022]/5 dark:bg-[#EF8022]/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Inicio</span></div><p className="text-xl text-gray-900 dark:text-white">{formatHoraFija(selectedFicha.hora_entrega_fin)}</p></div>
+                  <div className="bg-brand-orange/5 dark:bg-brand-orange/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Inicio</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{formatHoraFija(selectedFicha.hora_entrega_fin)}</p></div>
                 )}
-                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-xl text-gray-900 dark:text-white">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_recojo) : formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_recojo) : formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
@@ -3698,11 +3567,11 @@ export function FichasPage() {
                 </div>
                 {(selectedFicha.carritoIds?.length ?? 0) > 0 && (
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
-                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Carritos Asignados</span></div>
+                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Carritos Asignados</span></div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedFicha.carritoIds!.map(id => {
                         const c = carritos.find(c => c.id === id);
-                        return c ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">{c.codigo} — {c.modelo}</span> : null;
+                        return c ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">{c.codigo} — {c.modelo}</span> : null;
                       })}
                     </div>
                   </div>
@@ -3710,11 +3579,11 @@ export function FichasPage() {
                 {selectedFicha.brand === "jugueton" && (selectedFicha.inflableIds?.length ?? 0) > 0 && (
                   <>
                     <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
-                      <div className="flex items-center gap-2 mb-2"><Wind className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Inflables Asignados</span></div>
+                      <div className="flex items-center gap-2 mb-2"><Wind className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Inflables Asignados</span></div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedFicha.inflableIds!.map(id => {
                           const inf = inflables.find(i => i.id === id);
-                          return inf ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400">{inf.tipoNombre} {inf.codigo}</span> : null;
+                          return inf ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-blue-400">{inf.tipoNombre} {inf.codigo}</span> : null;
                         })}
                       </div>
                     </div>
@@ -3722,17 +3591,17 @@ export function FichasPage() {
                 )}
                 {(selectedFicha.recursos?.length ?? 0) > 0 && (
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
-                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Recursos Asignados</span></div>
+                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Recursos Asignados</span></div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedFicha.recursos!.map(r => (
-                        <span key={r.id} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">
+                        <span key={r.id} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">
                           {r.cantidad}× {r.recurso_nombre}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2"><div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-[#EF8022]" /><span className="text-xs text-gray-600 dark:text-gray-400">Personal Asignado</span></div><div className="flex flex-wrap gap-1.5">{getNombresPersonal(selectedFicha).length > 0 ? getNombresPersonal(selectedFicha).map(nombre => <span key={nombre} className="text-xs px-2 py-1 rounded-full bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20">{nombre}</span>) : <span className="text-xs text-gray-400">Sin personal asignado</span>}</div></div>
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2"><div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Personal Asignado</span></div><div className="flex flex-wrap gap-1.5">{getNombresPersonal(selectedFicha).length > 0 ? getNombresPersonal(selectedFicha).map(nombre => <span key={nombre} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">{nombre}</span>) : <span className="text-xs text-gray-400">Sin personal asignado</span>}</div></div>
               </div>
               {selectedFicha.comentarios && (
                 <div><h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Comentarios</h4><div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"><p className="text-gray-900 dark:text-white">{selectedFicha.comentarios}</p></div></div>
@@ -3742,14 +3611,14 @@ export function FichasPage() {
             <div className="flex flex-wrap gap-3 mt-6">
               <button
                 onClick={() => handleGenerarProforma(selectedFicha)}
-                className="flex-1 bg-[#1F3C8B] text-white py-3 rounded-lg hover:bg-[#19316f] transition-colors flex items-center justify-center gap-2 text-sm"
+                className="flex-1 bg-brand-navy text-white py-3 rounded-lg hover:bg-brand-navy-hover transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <FileText className="w-4 h-4" /> Generar Proforma
               </button>
               {selectedFicha.brand === "jugueton" && (
                 <button
                   onClick={() => handleGenerarContrato(selectedFicha)}
-                  className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm"
+                  className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <FileSignature className="w-4 h-4" /> Generar Contrato
                 </button>
@@ -3757,12 +3626,12 @@ export function FichasPage() {
               {canEditFicha(selectedFicha) && (
                 <>
                   <button onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
-                    className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors flex items-center justify-center gap-2 text-sm">
+                    className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center justify-center gap-2 text-sm">
                     <CreditCard className="w-4 h-4" /> Registrar Abono
                   </button>
                   <button
                     onClick={() => handleOpenEditModal(selectedFicha)}
-                    className="flex-1 border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center justify-center gap-2 text-sm"
+                    className="flex-1 border border-brand-navy text-brand-navy dark:text-blue-400 dark:border-blue-400 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center justify-center gap-2 text-sm"
                   >
                     <Edit className="w-4 h-4" /> Editar
                   </button>
@@ -3805,20 +3674,23 @@ export function FichasPage() {
 
       {/* ── Add Modal ─────────────────────────────────────────── */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl w-full p-6 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between mb-6">
-              <h3 className="text-2xl text-gray-900 dark:text-white">{editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento"}</h3>
-              <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"><X className="w-5 h-5" /></button>
-            </div>
-
-            {error && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-6">
+        <Modal
+          open
+          onClose={handleCloseModal}
+          size="xl"
+          busy={isSaving}
+          title={editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento"}
+          error={formError || undefined}
+          footer={
+            <>
+              <Button type="button" variant="subtle" size="lg" onClick={handleCloseModal} disabled={isSaving}>Cancelar</Button>
+              <Button type="submit" form="ficha-form" variant="brand" size="lg" loading={isSaving} disabled={isUploadingAbonoInicialComprobante}>
+                {isSaving ? "Guardando..." : isUploadingAbonoInicialComprobante ? "Subiendo comprobante..." : editingFichaId !== null ? "Guardar Cambios" : "Guardar Ficha"}
+              </Button>
+            </>
+          }
+        >
+            <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
               {/* Título — encabezado principal de la ficha */}
               <div>
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Título de la Ficha</label>
@@ -3827,7 +3699,7 @@ export function FichasPage() {
 
               {/* Tipo de Evento — va primero para condicionar el resto del form */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Tipo de Evento *</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Tipo de Evento *</h4>
                 <SearchableSelect
                   options={TIPOS_EVENTO}
                   value={formData.tipoEvento}
@@ -3841,12 +3713,12 @@ export function FichasPage() {
 
               {/* Modalidad — determina tarifa de envío y si se ocultan recursos/personal */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Modalidad *</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Modalidad *</h4>
                 <div className="flex gap-3">
                   {(["cumpleanos", "delivery"] as const).map((tipo) => (
                     <label key={tipo} className={`flex-1 flex items-center justify-center px-4 py-3 rounded-lg border cursor-pointer transition-colors text-sm ${
                       formData.transporte === tipo
-                        ? "border-[#EF8022] bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20"
+                        ? "border-brand-orange bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20"
                         : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     }`}>
                       <input type="radio" name="transporte" value={tipo} checked={formData.transporte === tipo} onChange={handleInputChange} className="sr-only" />
@@ -3861,13 +3733,13 @@ export function FichasPage() {
 
               {/* Fecha */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Evento</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Evento</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Fecha del Evento *</label>
                     <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                     {formData.fecha_evento && (
-                      <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-[#EF8022]" : "text-gray-500 dark:text-gray-400"}`}>
+                      <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-brand-orange" : "text-gray-500 dark:text-gray-400"}`}>
                         {formatDiaSemana(formData.fecha_evento)} {formatDate(formData.fecha_evento)}
                         {esFinDeSemana(formData.fecha_evento) && " · fin de semana"}
                       </p>
@@ -3887,7 +3759,7 @@ export function FichasPage() {
 
               {/* Paquetes */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-[#EF8022]" /> Paquetes del Evento</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-brand-orange" /> Paquetes del Evento</h4>
                 <div className="space-y-3">
                   {formData.paquetes.map((paq, idx) => (
                     <div key={idx} className="flex gap-3 items-start bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
@@ -3909,13 +3781,13 @@ export function FichasPage() {
                       <button type="button" onClick={() => handleRemoveFormPaquete(idx)} className="mt-5 p-2 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   ))}
-                  <button type="button" onClick={handleAddFormPaquete} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar otro paquete</button>
+                  <button type="button" onClick={handleAddFormPaquete} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar otro paquete</button>
                 </div>
               </div>
 
               {/* Productos sueltos */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-[#EF8022]" /> Productos Adicionales</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-brand-orange" /> Productos Adicionales</h4>
                 {formData.productosSueltos.length === 0 ? (
                   <p className="text-sm text-gray-400 dark:text-gray-500 mb-2">Sin productos adicionales.</p>
                 ) : (
@@ -3944,17 +3816,17 @@ export function FichasPage() {
                     ))}
                   </div>
                 )}
-                <button type="button" onClick={handleAddProductoSuelto} className="mt-2 text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar producto suelto</button>
+                <button type="button" onClick={handleAddProductoSuelto} className="mt-2 text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar producto suelto</button>
               </div>
 
               {/* Recursos, inflables, carritos y personal — oculto para delivery */}
               {formData.transporte !== "delivery" && <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-[#EF8022]" /> Recursos</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Recursos</h4>
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <label className="block text-sm text-gray-600 dark:text-gray-400">Carritos</label>
-                      <button type="button" onClick={handleAddCarritoRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar carrito</button>
+                      <button type="button" onClick={handleAddCarritoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar carrito</button>
                     </div>
                     {carritos.length === 0 ? (
                       <p className="text-sm text-gray-400 dark:text-gray-500">No hay carritos registrados.</p>
@@ -3996,7 +3868,7 @@ export function FichasPage() {
                                     type="button"
                                     title="Ver fechas ocupadas"
                                     onClick={() => setCarritoCalendarId(carritoCalendarId === carritoId ? null : carritoId)}
-                                    className={`p-2 rounded transition-colors ${carritoCalendarId === carritoId ? "text-[#EF8022] bg-[#EF8022]/10" : "text-gray-400 hover:text-[#EF8022]"}`}
+                                    className={`p-2 rounded transition-colors ${carritoCalendarId === carritoId ? "text-brand-orange bg-brand-orange/10" : "text-gray-400 hover:text-brand-orange"}`}
                                   >
                                     <Calendar className="w-4 h-4" />
                                   </button>
@@ -4060,8 +3932,8 @@ export function FichasPage() {
                           const isOcupado = inflableEstado === "Ocupado";
                           const isSelected = formData.inflableIds.includes(inflable.id);
                           return (
-                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-[#1F3C8B] bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-                              <input type="checkbox" checked={isSelected} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-[#1F3C8B]" />
+                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                              <input type="checkbox" checked={isSelected} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-brand-navy" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.tipoNombre}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.codigo} · S/{inflable.precioAlquiler}/día</p>
@@ -4079,7 +3951,7 @@ export function FichasPage() {
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <label className="block text-sm text-gray-600 dark:text-gray-400">Recursos</label>
-                      <button type="button" onClick={handleAddRecursoRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar recurso</button>
+                      <button type="button" onClick={handleAddRecursoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar recurso</button>
                     </div>
                     {recursos.length === 0 ? (
                       <p className="text-sm text-gray-400 dark:text-gray-500">No hay recursos registrados.</p>
@@ -4114,7 +3986,7 @@ export function FichasPage() {
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <label className="block text-sm text-gray-600 dark:text-gray-400">Personal</label>
-                      <button type="button" onClick={handleAddPersonalRow} className="text-sm text-[#EF8022] hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
+                      <button type="button" onClick={handleAddPersonalRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
                     </div>
                     {personales.length === 0 ? (
                       <p className="text-sm text-gray-400 dark:text-gray-500">
@@ -4155,14 +4027,14 @@ export function FichasPage() {
 
               {/* Cliente */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Información del Cliente</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Cliente</h4>
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm text-gray-600 dark:text-gray-400">Cliente existente</label>
                     <button
                       type="button"
                       onClick={handleOpenNewClientModal}
-                      className="text-xs text-[#EF8022] hover:underline flex items-center gap-1"
+                      className="text-xs text-brand-orange hover:underline flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> Nuevo cliente
                     </button>
@@ -4207,7 +4079,7 @@ export function FichasPage() {
 
               {/* Horarios */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /> Horarios</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Horarios</h4>
                 {brand === "jugueton" ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -4331,7 +4203,7 @@ export function FichasPage() {
                                   value={linea.descuentoValor || ""}
                                   onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoValor: Math.max(0, Number(e.target.value) || 0) })}
                                   placeholder="0"
-                                  className="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-right text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                                  className="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-right text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                 />
                                 {linea.ref.tipo === "movilidad" ? (
                                   <span className="text-xs text-gray-400 w-12">%</span>
@@ -4339,7 +4211,7 @@ export function FichasPage() {
                                   <select
                                     value={linea.descuentoTipo}
                                     onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoTipo: e.target.value as DescuentoTipo })}
-                                    className="w-12 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-1 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+                                    className="w-12 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-1 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                   >
                                     <option value="porcentaje">%</option>
                                     <option value="monto">S/</option>
@@ -4395,7 +4267,7 @@ export function FichasPage() {
                       )}
                       <tr>
                         <td colSpan={4} className="py-2 px-3 text-right text-gray-700 dark:text-gray-300">Total a pagar</td>
-                        <td className="py-2 px-3 text-right text-[#1F3C8B] dark:text-blue-400">{formatMoney(resumenFormulario.total)}</td>
+                        <td className="py-2 px-3 text-right text-brand-navy dark:text-blue-400">{formatMoney(resumenFormulario.total)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -4406,7 +4278,7 @@ export function FichasPage() {
                     type="checkbox"
                     checked={formData.aplicaIgv}
                     onChange={(e) => setFormData((prev) => ({ ...prev, aplicaIgv: e.target.checked }))}
-                    className="w-4 h-4 accent-[#EF8022]"
+                    className="w-4 h-4 accent-brand-orange"
                   />
                   Desglosar IGV (18%) en la proforma y el contrato
                 </label>
@@ -4414,13 +4286,13 @@ export function FichasPage() {
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
                     Modo: {cotizacionMode === "auto" ? "Autocalculado" : "Editable manual"}
                   </span>
-                  <span className="rounded-full bg-[#EF8022]/10 px-2.5 py-1 text-[#EF8022] dark:bg-[#EF8022]/20">
+                  <span className="rounded-full bg-brand-orange/10 px-2.5 py-1 text-brand-orange dark:bg-brand-orange/20">
                     Sugerido: {formatMoney(cotizacionSugerida)}
                   </span>
                   <button
                     type="button"
                     onClick={useSuggestedCotizacion}
-                    className="rounded-full border border-[#EF8022] px-2.5 py-1 text-[#EF8022] hover:bg-[#EF8022]/10 transition-colors"
+                    className="rounded-full border border-brand-orange px-2.5 py-1 text-brand-orange hover:bg-brand-orange/10 transition-colors"
                   >
                     Usar sugerido
                   </button>
@@ -4438,7 +4310,7 @@ export function FichasPage() {
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm text-gray-600 dark:text-gray-400">Descuento (%) <span className="text-gray-400">(máx. {descuentoMaxPct}%)</span></label>
                       {isAdmin && !editingDescuentoCap && (
-                        <button type="button" onClick={handleStartEditDescuentoCap} className="text-xs text-[#EF8022] hover:underline">
+                        <button type="button" onClick={handleStartEditDescuentoCap} className="text-xs text-brand-orange hover:underline">
                           Editar tope
                         </button>
                       )}
@@ -4447,7 +4319,7 @@ export function FichasPage() {
                       <div className="flex items-center gap-2">
                         <input type="number" value={descuentoCapDraft} onChange={(e) => setDescuentoCapDraft(e.target.value)} min={0} max={100} step={0.5}
                           className={inputClass} placeholder="10" autoFocus />
-                        <button type="button" onClick={handleSaveDescuentoCap} className="px-3 py-2 rounded-lg bg-[#1F3C8B] text-white text-sm hover:bg-[#19316f]">Guardar</button>
+                        <button type="button" onClick={handleSaveDescuentoCap} className="px-3 py-2 rounded-lg bg-brand-navy text-white text-sm hover:bg-brand-navy-hover">Guardar</button>
                         <button type="button" onClick={() => setEditingDescuentoCap(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
                       </div>
                     ) : (
@@ -4461,7 +4333,7 @@ export function FichasPage() {
                   <div>
                     <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Total a Pagar</label>
                     <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
-                      <span className="text-lg text-[#1F3C8B] dark:text-blue-400">
+                      <span className="text-lg text-brand-navy dark:text-blue-400">
                         {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) * (1 - (Number(formData.descuento) || 0) / 100)))}
                       </span>
                     </div>
@@ -4478,7 +4350,7 @@ export function FichasPage() {
                         type="checkbox"
                         checked={formData.registrarAbonoInicial}
                         onChange={(event) => setFormData((prev) => ({ ...prev, registrarAbonoInicial: event.target.checked }))}
-                        className="h-4 w-4 rounded border-gray-300 text-[#EF8022] focus:ring-[#EF8022]"
+                        className="h-4 w-4 rounded border-gray-300 text-brand-orange focus:ring-brand-orange"
                       />
                       <span className="font-medium">Registrar abono inicial</span>
                     </label>
@@ -4530,11 +4402,11 @@ export function FichasPage() {
                           <div
                             tabIndex={0}
                             onPaste={(e) => void handleAbonoInicialComprobantePaste(e)}
-                            className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+                            className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                               isUploadingAbonoInicialComprobante ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
                             }`}
                           >
-                            <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploadingAbonoInicialComprobante ? "cursor-not-allowed" : "hover:text-[#EF8022]"}`}>
+                            <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploadingAbonoInicialComprobante ? "cursor-not-allowed" : "hover:text-brand-orange"}`}>
                               <Upload className="w-4 h-4" />
                               <span>{isUploadingAbonoInicialComprobante ? "Subiendo..." : abonoInicialComprobanteName || "Subir imagen del comprobante"}</span>
                               <input type="file" accept="image/*" onChange={handleAbonoInicialComprobanteChange} disabled={isUploadingAbonoInicialComprobante} className="hidden" />
@@ -4554,37 +4426,32 @@ export function FichasPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Puedes registrar abonos adicionales desde el detalle del evento.</p>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button type="submit" disabled={isSaving} className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed">{isSaving ? "Guardando..." : editingFichaId !== null ? "Guardar Cambios" : "Guardar Ficha"}</button>
-                <button type="button" onClick={handleCloseModal} className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">Cancelar</button>
-              </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Nuevo Cliente (sub-modal dentro de la Ficha) ───────── */}
       {showNewClientModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-lg w-full relative">
-            <button
-              onClick={() => setShowNewClientModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-xl text-gray-900 dark:text-white mb-2">Nuevo Cliente</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Se asignará automáticamente a{" "}
-              <span className={brand === "donofrio" ? "text-[#1F3C8B]" : "text-[#EF8022]"}>
-                {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
-              </span>
-            </p>
-            {newClientError ? (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {newClientError}
-              </div>
-            ) : null}
+        <Modal
+          open
+          elevated
+          onClose={() => setShowNewClientModal(false)}
+          busy={isSavingNewClient}
+          title="Nuevo Cliente"
+          description={<>Se asignará automáticamente a{" "}
+            <span className={brand === "donofrio" ? "text-brand-navy dark:text-blue-400" : "text-brand-orange"}>
+              {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
+            </span></>}
+          error={newClientError || undefined}
+          footer={
+            <>
+              <Button type="button" variant="subtle" size="lg" onClick={() => setShowNewClientModal(false)} disabled={isSavingNewClient}>Cancelar</Button>
+              <Button type="button" variant="brand" size="lg" onClick={handleCreateClientInline} loading={isSavingNewClient}>
+                {isSavingNewClient ? "Guardando..." : "Guardar Cliente"}
+              </Button>
+            </>
+          }
+        >
             <div className="space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
@@ -4690,7 +4557,7 @@ export function FichasPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Año del cliente</label>
                   <input
@@ -4724,26 +4591,8 @@ export function FichasPage() {
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNewClientModal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateClientInline}
-                  disabled={isSavingNewClient}
-                  className="flex-1 bg-[#EF8022] text-white px-4 py-3 rounded-lg hover:bg-[#d9711c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isSavingNewClient ? "Guardando..." : "Guardar Cliente"}
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Abono Modal ───────────────────────────────────────── */}

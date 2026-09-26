@@ -164,7 +164,7 @@ export function PagosPage() {
     })),
   }), [filteredPagos]);
 
-  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]";
+  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange";
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
@@ -184,7 +184,7 @@ export function PagosPage() {
               placeholder="Buscar cliente, ficha, N° operación..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] text-sm"
+              className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange text-sm"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -196,7 +196,7 @@ export function PagosPage() {
           <select value={filterMedio} onChange={(e) => setFilterMedio(e.target.value)} className={inputClass}>
             {MEDIOS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          {loading && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
+          {loading && <Loader2 className="w-5 h-5 text-brand-orange animate-spin shrink-0" />}
         </div>
 
         {cargaError && (
@@ -208,7 +208,7 @@ export function PagosPage() {
 
       {/* Cards de resumen */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="md:col-span-1 bg-[#1F3C8B] text-white rounded-xl p-4">
+        <div className="md:col-span-1 bg-brand-navy text-white rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 opacity-80" />
             <span className="text-xs opacity-80 uppercase tracking-wide">Total cobrado</span>
@@ -232,7 +232,7 @@ export function PagosPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-500 dark:text-gray-400 text-sm flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#EF8022] animate-spin" />
+            <Loader2 className="w-8 h-8 text-brand-orange animate-spin" />
             Cargando pagos...
           </div>
         ) : filteredPagos.length === 0 ? (
@@ -273,7 +273,7 @@ export function PagosPage() {
                       {p.comprobanteUrl ? (
                         <button
                           onClick={() => setPreviewUrl(p.comprobanteUrl)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400 hover:bg-[#1F3C8B]/20 transition-colors text-xs"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-blue-400 hover:bg-brand-navy/20 transition-colors text-xs"
                         >
                           <Eye className="w-3.5 h-3.5" /> Ver
                         </button>
@@ -285,7 +285,7 @@ export function PagosPage() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => setEditingPago(p)}
-                          className="p-1.5 text-gray-400 hover:text-[#EF8022] hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                          className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
                           title="Editar pago"
                         >
                           <Edit className="w-4 h-4" />
@@ -541,11 +541,11 @@ function EditPagoModal({
             <div
               tabIndex={0}
               onPaste={(e) => void handlePaste(e)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#EF8022] ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                 isUploading ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
               }`}
             >
-              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading ? "cursor-not-allowed" : "hover:text-[#EF8022]"}`}>
+              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading ? "cursor-not-allowed" : "hover:text-brand-orange"}`}>
                 <Upload className="w-4 h-4" />
                 <span>{isUploading ? "Subiendo..." : "Subir imagen del comprobante"}</span>
                 <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading} className="hidden" />
@@ -573,7 +573,7 @@ function EditPagoModal({
             <button
               type="submit"
               disabled={isSaving || isUploading}
-              className="flex-1 bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#d9711c] disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
+              className="flex-1 bg-brand-orange text-white py-3 rounded-lg hover:bg-brand-orange-hover disabled:opacity-60 disabled:cursor-not-allowed transition-colors text-sm"
             >
               {isSaving ? "Guardando..." : "Guardar cambios"}
             </button>

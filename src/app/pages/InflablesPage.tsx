@@ -223,7 +223,7 @@ export function InflablesPage() {
   const [newResCarrito, setNewResCarrito] = useState({ carritoId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
   const [alertaFilter, setAlertaFilter] = useState<"all" | "pendiente" | "en-proceso" | "resuelta">("all");
 
-  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022]";
+  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange";
 
   // ── Derived ────────────────────────────────────────────────────────────
 
@@ -882,12 +882,12 @@ export function InflablesPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4 mb-5 md:mb-6">
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><Wind className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Inflables</span></div>
+          <div className="flex items-center gap-2 mb-1"><Wind className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Inflables</span></div>
           <p className="text-2xl text-gray-900 dark:text-white">{totalInflables - reservadosInflablesHoy}<span className="text-sm text-gray-400">/{totalInflables}</span></p>
           <p className="text-[10px] text-gray-400">disponibles hoy</p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1"><ShoppingCart className="w-4 h-4 text-[#EF8022]" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Carritos</span></div>
+          <div className="flex items-center gap-2 mb-1"><ShoppingCart className="w-4 h-4 text-brand-orange" /><span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">Carritos</span></div>
           <p className="text-2xl text-gray-900 dark:text-white">{totalCarritos - reservadosCarritosHoy}<span className="text-sm text-gray-400">/{totalCarritos}</span></p>
           <p className="text-[10px] text-gray-400">disponibles hoy</p>
         </div>
@@ -922,7 +922,7 @@ export function InflablesPage() {
             const Icon = tab.icon;
             return (
               <button key={tab.key} onClick={() => { setMainTab(tab.key); setSearchTerm(""); setSelectedType(null); setSelectedCarrito(null); setSelectedDate(null); setSelectedFichaCal(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors relative ${mainTab === tab.key ? "bg-[#EF8022]/10 text-[#EF8022] border-b-2 border-[#EF8022]" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm transition-colors relative ${mainTab === tab.key ? "bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 {tab.badge && <span className="absolute top-2 right-[calc(50%-40px)] w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />}
               </button>
@@ -942,16 +942,16 @@ export function InflablesPage() {
               <div className="flex-1 w-full lg:max-w-md relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" placeholder="Buscar inflable..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent" />
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent" />
               </div>
               <div className="flex gap-3 w-full lg:w-auto items-center">
-                <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-[#EF8022]">Fichas de Eventos</span></p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-brand-orange">Fichas de Eventos</span></p>
                 {canManage && (
                   <>
-                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); setShowNewUnidad(true); }} className="border border-[#1F3C8B] text-[#1F3C8B] dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); setShowNewUnidad(true); }} className="border border-brand-navy text-brand-navy dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nueva Unidad
                     </button>
-                    <button onClick={() => setShowNewInflable(true)} className="bg-[#1F3C8B] text-white px-5 py-3 rounded-lg hover:bg-[#1F3C8B]/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                    <button onClick={() => setShowNewInflable(true)} className="bg-brand-navy text-white px-5 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nuevo Tipo
                     </button>
                   </>
@@ -979,7 +979,7 @@ export function InflablesPage() {
 
                 return (
                   <div key={inflable.id} onClick={() => setSelectedType(isSelected ? null : inflable)}
-                    className={`border rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-md relative flex h-40 ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : isUsedOnSelectedDate ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    className={`border rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-md relative flex h-40 ${isSelected ? "border-brand-orange bg-brand-orange/5 dark:bg-brand-orange/10" : isUsedOnSelectedDate ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
                     
                     {/* Image Section - Half of the card */}
                     <div className="w-1/2 bg-gray-100 dark:bg-gray-700 relative overflow-hidden group">
@@ -1007,7 +1007,7 @@ export function InflablesPage() {
                         {canManage && (
                           <button
                             onClick={e => { e.stopPropagation(); handleOpenEditInflable(inflable); }}
-                            className="p-1 rounded hover:bg-[#1F3C8B]/10 text-gray-400 hover:text-[#1F3C8B] dark:hover:text-blue-400 transition-colors shrink-0"
+                            className="p-1 rounded hover:bg-brand-navy/10 text-gray-400 hover:text-brand-navy dark:hover:text-blue-400 transition-colors shrink-0"
                             title="Editar inflable"
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -1018,7 +1018,7 @@ export function InflablesPage() {
                       <div className="space-y-3">
                         <div className="flex flex-col gap-1">
                           <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[9px]">Precio Alquiler</span>
-                          <span className="text-sm font-bold text-[#EF8022]">S/ {inflable.precioAlquiler}</span>
+                          <span className="text-sm font-bold text-brand-orange">S/ {inflable.precioAlquiler}</span>
                         </div>
                         
                         <div className="flex flex-col gap-1">
@@ -1054,9 +1054,9 @@ export function InflablesPage() {
               <div className="flex-1 w-full lg:max-w-md relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" placeholder="Buscar carrito..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent" />
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent" />
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Reservas desde <span className="text-[#EF8022]">Fichas de Eventos</span></p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Reservas desde <span className="text-brand-orange">Fichas de Eventos</span></p>
             </div>
           </div>
 
@@ -1104,7 +1104,7 @@ export function InflablesPage() {
 
                 return (
                   <div key={carrito.id} onClick={() => setSelectedCarrito(isSelected ? null : carrito)}
-                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md relative ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md relative ${isSelected ? "border-brand-orange bg-brand-orange/5 dark:bg-brand-orange/10" : maxSev === "critica" ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
                     {/* Maintenance Alert Icon */}
                     {maxSev && (
                       <div className={`absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] ${maxSev === "critica" ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" : maxSev === "advertencia" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"}`}>
@@ -1137,7 +1137,7 @@ export function InflablesPage() {
                         </div>
 
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#EF8022]">S/ {carrito.precioAlquiler}/día</span>
+                          <span className="text-xs text-brand-orange">S/ {carrito.precioAlquiler}/día</span>
                           {availToday <= 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Agotado</span>}
                           {availToday === 1 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Último!</span>}
                         </div>
@@ -1155,7 +1155,7 @@ export function InflablesPage() {
               {/* Day Detail for carritos */}
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                 <h3 className="text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+                  <Eye className="w-5 h-5 text-brand-navy dark:text-blue-400" />
                   {selectedDate
                     ? `Reservas del ${new Date(selectedDate + "T12:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
                     : "Reservas de Hoy"}
@@ -1205,7 +1205,7 @@ export function InflablesPage() {
                                 <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                   <td className="py-3 px-3"><div className="flex items-center gap-2"><span className="text-lg">{CARRITO_EMOJI[c?.imagen || ""]}</span><span className="text-gray-900 dark:text-white">{c?.modelo}</span></div></td>
                                   <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{r.clienteNombre}</td>
-                                  <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">{r.evento}</span></td>
+                                  <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-brand-navy/10 dark:bg-brand-navy/20 text-brand-navy dark:text-blue-400">{r.evento}</span></td>
                                   <td className="py-3 px-3 text-center text-gray-900 dark:text-white">{r.cantidad}</td>
                                   {canManage && (
                                     <td className="py-3 px-3 text-center"><button onClick={e => { e.stopPropagation(); handleDeleteReservaCarrito(r.id); }} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button></td>
@@ -1278,7 +1278,7 @@ export function InflablesPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <SeveridadBadge severidad={alerta.severidad} />
                           <EstadoAlertaBadge estado={alerta.estado} />
-                          <span className={`text-[10px] px-2 py-0.5 rounded ${alerta.recursoTipo === "inflable" ? "bg-[#1F3C8B]/10 text-[#1F3C8B] dark:bg-[#1F3C8B]/20 dark:text-blue-400" : "bg-[#EF8022]/10 text-[#EF8022] dark:bg-[#EF8022]/20"}`}>
+                          <span className={`text-[10px] px-2 py-0.5 rounded ${alerta.recursoTipo === "inflable" ? "bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-blue-400" : "bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20"}`}>
                             {alerta.recursoTipo === "inflable" ? "Inflable" : "Carrito"}: {alerta.recursoNombre}
                           </span>
                         </div>
@@ -1328,7 +1328,7 @@ export function InflablesPage() {
               <div className="flex-1 w-full lg:max-w-md relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" placeholder="Buscar ficha por título, cliente o distrito..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent" />
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent" />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">{fichasCalendario.length} ficha{fichasCalendario.length !== 1 ? "s" : ""} de Juguetón</p>
             </div>
@@ -1341,7 +1341,7 @@ export function InflablesPage() {
 
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                 <h3 className="text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+                  <Eye className="w-5 h-5 text-brand-navy dark:text-blue-400" />
                   {selectedDate
                     ? `Fichas del ${new Date(selectedDate + "T12:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
                     : "Fichas de Hoy"}
@@ -1371,7 +1371,7 @@ export function InflablesPage() {
                               <td className="py-3 px-3 text-gray-700 dark:text-gray-300">{f.clienteNombre}</td>
                               <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.distrito || "—"}</td>
                               <td className="py-3 px-3 text-gray-600 dark:text-gray-400">{f.horaEntrega ? f.horaEntrega.slice(0, 5) : "—"}</td>
-                              <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 text-[#1F3C8B] dark:text-blue-400">{f.tipoEvento || "—"}</span></td>
+                              <td className="py-3 px-3"><span className="text-xs px-2 py-1 rounded-full bg-brand-navy/10 dark:bg-brand-navy/20 text-brand-navy dark:text-blue-400">{f.tipoEvento || "—"}</span></td>
                             </tr>
                           ))}
                         </tbody>
@@ -1400,7 +1400,7 @@ export function InflablesPage() {
                 const isSelected = selectedFichaCal?.id === f.id;
                 return (
                   <div key={f.id} onClick={() => setSelectedFichaCal(isSelected ? null : f)}
-                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? "border-brand-orange bg-brand-orange/5 dark:bg-brand-orange/10" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="text-sm text-gray-900 dark:text-white truncate">{f.titulo || `Ficha #${String(f.id).padStart(7, "0")}`}</h3>
                       <span className="text-[10px] text-gray-400 shrink-0">#{f.id}</span>
@@ -1466,7 +1466,7 @@ export function InflablesPage() {
       {/* New Reserva Carrito Modal */}
       {showNewReservaCarrito && (
         <ModalWrapper onClose={() => setShowNewReservaCarrito(false)}>
-          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-[#EF8022]" /> Nueva Reserva de Carrito</h3>
+          <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-brand-orange" /> Nueva Reserva de Carrito</h3>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Modelo de Carrito *</label>
@@ -1531,7 +1531,7 @@ export function InflablesPage() {
               <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
                 isUploadingImagen || isCleaningImagen
                   ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
-                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#1F3C8B] hover:text-[#1F3C8B]"
+                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-brand-navy hover:text-brand-navy"
               }`}>
                 <Upload className="w-4 h-4" />
                 <span>{isUploadingImagen ? "Subiendo..." : isCleaningImagen ? "Limpiando imagen..." : inflableImagen.name || "Subir imagen del inflable"}</span>
@@ -1611,7 +1611,7 @@ export function InflablesPage() {
           setUploadEditImagenError("");
         }}>
           <h3 className="text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-            <Pencil className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+            <Pencil className="w-5 h-5 text-brand-navy dark:text-blue-400" />
             Editar Inflable
           </h3>
           <div className="space-y-4">
@@ -1642,7 +1642,7 @@ export function InflablesPage() {
               <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors ${
                 isUploadingEditImagen || isCleaningEditImagen
                   ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-400 cursor-not-allowed"
-                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-[#1F3C8B] hover:text-[#1F3C8B]"
+                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-brand-navy hover:text-brand-navy"
               }`}>
                 <Upload className="w-4 h-4" />
                 <span>{isUploadingEditImagen ? "Subiendo..." : isCleaningEditImagen ? "Limpiando imagen..." : editInflableImagen.name || "Subir nueva imagen"}</span>
@@ -1745,7 +1745,7 @@ function ModalButtons({ onCancel, onConfirm, label, confirmColor, submitting }: 
   return (
     <div className="flex gap-3 pt-2">
       <button onClick={onCancel} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm">Cancelar</button>
-      <button onClick={onConfirm} disabled={submitting} className={`flex-1 text-white px-4 py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed ${confirmColor || "bg-[#EF8022] hover:bg-[#d9711c]"}`}>{submitting ? "Guardando..." : label}</button>
+      <button onClick={onConfirm} disabled={submitting} className={`flex-1 text-white px-4 py-3 rounded-lg transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed ${confirmColor || "bg-brand-orange hover:bg-brand-orange-hover"}`}>{submitting ? "Guardando..." : label}</button>
     </div>
   );
 }
@@ -1769,9 +1769,9 @@ function renderCalendar(
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+          <Calendar className="w-5 h-5 text-brand-navy dark:text-blue-400" />
           Calendario de Disponibilidad
-          {subtitle && <span className="text-sm text-[#EF8022] ml-2">— {subtitle}</span>}
+          {subtitle && <span className="text-sm text-brand-orange ml-2">— {subtitle}</span>}
         </h2>
         <div className="flex items-center gap-3">
           <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"><ChevronLeft className="w-5 h-5" /></button>
@@ -1800,8 +1800,8 @@ function renderCalendar(
 
           return (
             <button key={day} onClick={() => setSelectedDate(isSel ? null : dateStr)}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative ${bgClass} ${isSel ? "ring-2 ring-[#EF8022]" : ""} ${isToday ? "ring-2 ring-[#1F3C8B] dark:ring-blue-400" : ""}`}>
-              <span className={`text-sm ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}>{day}</span>
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative ${bgClass} ${isSel ? "ring-2 ring-brand-orange" : ""} ${isToday ? "ring-2 ring-brand-navy dark:ring-blue-400" : ""}`}>
+              <span className={`text-sm ${isToday ? "text-brand-navy dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}>{day}</span>
               {count > 0 && <span className={`text-[10px] mt-0.5 ${pct >= 1 ? "text-red-600 dark:text-red-400" : pct >= 0.5 ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}`}>{count} rsv</span>}
             </button>
           );
@@ -1813,7 +1813,7 @@ function renderCalendar(
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Parcial</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800"></div> {"> 50%"}</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800"></div> Agotado</div>
-        <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-[#1F3C8B]"></div> Hoy</div>
+        <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-brand-navy"></div> Hoy</div>
       </div>
     </div>
   );
@@ -1836,7 +1836,7 @@ function renderFichasCalendar(
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+          <Calendar className="w-5 h-5 text-brand-navy dark:text-blue-400" />
           Calendario de Fichas
         </h2>
         <div className="flex items-center gap-3">
@@ -1864,8 +1864,8 @@ function renderFichasCalendar(
 
           return (
             <button key={day} onClick={() => setSelectedDate(isSel ? null : dateStr)}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative ${bgClass} ${isSel ? "ring-2 ring-[#EF8022]" : ""} ${isToday ? "ring-2 ring-[#1F3C8B] dark:ring-blue-400" : ""}`}>
-              <span className={`text-sm ${isToday ? "text-[#1F3C8B] dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}>{day}</span>
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition-all relative ${bgClass} ${isSel ? "ring-2 ring-brand-orange" : ""} ${isToday ? "ring-2 ring-brand-navy dark:ring-blue-400" : ""}`}>
+              <span className={`text-sm ${isToday ? "text-brand-navy dark:text-blue-400" : "text-gray-700 dark:text-gray-300"}`}>{day}</span>
               {count > 0 && <span className="text-[10px] mt-0.5 text-blue-600 dark:text-blue-400">{count} ficha{count !== 1 ? "s" : ""}</span>}
             </button>
           );
@@ -1875,7 +1875,7 @@ function renderFichasCalendar(
       <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600"></div> Sin fichas</div>
         <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"></div> Con fichas</div>
-        <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-[#1F3C8B]"></div> Hoy</div>
+        <div className="flex items-center gap-1.5 ml-auto"><div className="w-3 h-3 rounded ring-2 ring-brand-navy"></div> Hoy</div>
       </div>
     </div>
   );

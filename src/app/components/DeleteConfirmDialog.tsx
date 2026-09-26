@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { ModalError } from "./ui/modal";
 
 interface DeleteConfirmDialogProps {
   open: boolean;
@@ -11,6 +12,8 @@ interface DeleteConfirmDialogProps {
   loadingLabel?: string;
   loading?: boolean;
   onConfirm: () => void;
+  /** Error al eliminar: se muestra dentro del diálogo (antes quedaba escondido detrás, en la página) */
+  error?: string;
 }
 
 export function DeleteConfirmDialog({
@@ -22,6 +25,7 @@ export function DeleteConfirmDialog({
   loadingLabel = "Eliminando...",
   loading = false,
   onConfirm,
+  error,
 }: DeleteConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -33,11 +37,12 @@ export function DeleteConfirmDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {error ? <ModalError>{error}</ModalError> : null}
         <AlertDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={loading}>
+          <Button variant="destructive" onClick={onConfirm} loading={loading}>
             {loading ? loadingLabel : confirmLabel}
           </Button>
         </AlertDialogFooter>

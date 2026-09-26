@@ -178,7 +178,7 @@ function FichaRow({
       onDragEnd={onDragEnd}
       className={`flex items-center gap-1.5 rounded px-1.5 py-1 transition-colors select-none ${
         isDragOver
-          ? "bg-[#EF8022]/15 dark:bg-[#EF8022]/20"
+          ? "bg-brand-orange/15 dark:bg-brand-orange/20"
           : "hover:bg-gray-50 dark:hover:bg-gray-600/40"
       }`}
     >
@@ -439,7 +439,7 @@ export function RoutesMapPage() {
                     key={v.id}
                     className={`border rounded-lg transition-all ${
                       isSelected
-                        ? "border-[#EF8022] bg-[#EF8022]/5 dark:bg-[#EF8022]/10"
+                        ? "border-brand-orange bg-brand-orange/5 dark:bg-brand-orange/10"
                         : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
                     }`}
                   >
@@ -450,8 +450,8 @@ export function RoutesMapPage() {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? "bg-[#EF8022]/20" : "bg-gray-100 dark:bg-gray-600"}`}>
-                            <Truck className={`w-4 h-4 ${isSelected ? "text-[#EF8022]" : "text-gray-500 dark:text-gray-400"}`} />
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? "bg-brand-orange/20" : "bg-gray-100 dark:bg-gray-600"}`}>
+                            <Truck className={`w-4 h-4 ${isSelected ? "text-brand-orange" : "text-gray-500 dark:text-gray-400"}`} />
                           </div>
                           <div>
                             <p className="text-xs text-gray-900 dark:text-white font-mono">{v.placa}</p>
@@ -467,13 +467,13 @@ export function RoutesMapPage() {
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-[10px]">
-                          <MapPin className="w-3 h-3 text-[#EF8022]" />
+                          <MapPin className="w-3 h-3 text-brand-orange" />
                           <span className={v.fichas.length > 0 ? "text-gray-700 dark:text-gray-300" : "text-gray-400"}>
                             {v.fichas.length} {v.fichas.length === 1 ? "entrega" : "entregas"}
                           </span>
                         </div>
                         {isSelected && isGeocodingPins && (
-                          <div className="flex items-center gap-1 text-[10px] text-[#EF8022]">
+                          <div className="flex items-center gap-1 text-[10px] text-brand-orange">
                             <Loader2 className="w-3 h-3 animate-spin" /> Localizando...
                           </div>
                         )}
@@ -485,7 +485,7 @@ export function RoutesMapPage() {
 
                     {/* Route builder — shown when geocoded */}
                     {isSelected && fichasOrder.length > 0 && (
-                      <div className="border-t border-[#EF8022]/20 mx-2 mb-2">
+                      <div className="border-t border-brand-orange/20 mx-2 mb-2">
                         {/* Column labels */}
                         <div className="flex items-center gap-1.5 px-1.5 pt-2 pb-1">
                           <span className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">
@@ -526,8 +526,8 @@ export function RoutesMapPage() {
 
                     {/* Geocoding placeholder inside card */}
                     {isSelected && isGeocodingPins && (
-                      <div className="border-t border-[#EF8022]/20 mx-2 mb-2 pt-3 pb-2 flex flex-col items-center gap-1.5">
-                        <Loader2 className="w-4 h-4 text-[#EF8022] animate-spin" />
+                      <div className="border-t border-brand-orange/20 mx-2 mb-2 pt-3 pb-2 flex flex-col items-center gap-1.5">
+                        <Loader2 className="w-4 h-4 text-brand-orange animate-spin" />
                         <p className="text-[10px] text-gray-400 dark:text-gray-500">
                           Localizando {sortFichasByTime(v.fichas).findIndex(f =>
                             !fichasOrder.some(fp => fp.id === f.id)
@@ -596,7 +596,7 @@ export function RoutesMapPage() {
         {/* Status overlay */}
         {(isGeocodingPins || isFetchingRoute) && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 rounded-full shadow-lg px-4 py-2 border border-gray-200 dark:border-gray-700 flex items-center gap-2 z-[1000]">
-            <Loader2 className="w-4 h-4 text-[#EF8022] animate-spin" />
+            <Loader2 className="w-4 h-4 text-brand-orange animate-spin" />
             <span className="text-xs text-gray-700 dark:text-gray-300">
               {isGeocodingPins ? "Localizando puntos de entrega…" : "Calculando ruta por carretera…"}
             </span>
@@ -608,11 +608,11 @@ export function RoutesMapPage() {
           <h4 className="text-xs text-gray-900 dark:text-white mb-2">Leyenda</h4>
           <div className="space-y-1.5 text-[10px]">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#1F3C8B]" />
+              <div className="w-3 h-3 rounded-full bg-brand-navy" />
               <span className="text-gray-600 dark:text-gray-300">D'Onofrio</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#EF8022]" />
+              <div className="w-3 h-3 rounded-full bg-brand-orange" />
               <span className="text-gray-600 dark:text-gray-300">Juguetón</span>
             </div>
             {fichasOrder.length > 0 && (

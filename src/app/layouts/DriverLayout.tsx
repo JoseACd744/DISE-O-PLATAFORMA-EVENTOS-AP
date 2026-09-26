@@ -38,7 +38,7 @@ export function DriverLayout() {
       <header className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-[#EF8022]/10 p-2 text-[#EF8022]">
+            <div className="rounded-lg bg-brand-orange/10 p-2 text-brand-orange">
               <Truck className="h-5 w-5" />
             </div>
             <div>

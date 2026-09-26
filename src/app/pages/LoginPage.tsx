@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 import { isDriverRole, setAuthSession } from "../lib/auth";
+import { SESION_EXPIRADA_KEY } from "../lib/api";
+import { mensajeDeError } from "../lib/notify";
 
 const LOGOS = {
   eventosAp: "/images/eventos_ap_logo.jpg",
@@ -15,6 +17,16 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Si se llegó aquí porque la sesión venció, se explica en vez de mostrar el login sin más
+  const [sesionExpirada] = useState(() => {
+    try {
+      const vencio = sessionStorage.getItem(SESION_EXPIRADA_KEY) === "1";
+      sessionStorage.removeItem(SESION_EXPIRADA_KEY);
+      return vencio;
+    } catch {
+      return false;
+    }
+  });
   const [googleBrand, setGoogleBrand] = useState<"donofrio" | "jugueton">("donofrio");
   const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
@@ -39,9 +51,9 @@ export function LoginPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        setError(data?.error || "No se pudo iniciar sesión");
+        setError(mensajeDeError({ status: response.status, message: data?.error }, "No se pudo iniciar sesión."));
         return;
       }
 
@@ -55,7 +67,7 @@ export function LoginPage() {
         navigate("/seleccionar-marca");
       }
     } catch {
-      setError("No se pudo conectar con el servidor");
+      setError("No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.");
     } finally {
       submitLockRef.current = false;
       setIsSubmitting(false);
@@ -78,9 +90,9 @@ export function LoginPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        setError(data?.error || "No se pudo iniciar sesión con Google");
+        setError(mensajeDeError({ status: response.status, message: data?.error }, "No se pudo iniciar sesión con Google."));
         return;
       }
 
@@ -94,7 +106,7 @@ export function LoginPage() {
         navigate("/seleccionar-marca");
       }
     } catch {
-      setError("No se pudo conectar con el servidor");
+      setError("No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.");
     } finally {
       submitLockRef.current = false;
       setIsSubmitting(false);
@@ -110,7 +122,7 @@ export function LoginPage() {
           alt="Delivery truck"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1F3C8B]/95 to-[#3B82F6]/80 flex items-center justify-center">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-navy/95 to-[#3B82F6]/80 flex items-center justify-center">
           <div className="text-white text-center px-8">
             <div className="w-[320px] max-w-full rounded-2xl bg-white/20 backdrop-blur-sm p-4 mx-auto mb-6">
               <img src={LOGOS.eventosAp} alt="Eventos AP" className="w-full h-auto object-contain rounded-lg bg-white p-2" />
@@ -142,7 +154,7 @@ export function LoginPage() {
               id="googleBrand"
               value={googleBrand}
               onChange={(e) => setGoogleBrand(e.target.value as "donofrio" | "jugueton")}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             >
               <option value="donofrio">D'Onofrio</option>
               <option value="jugueton">Juguetón</option>
@@ -179,8 +191,12 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
+              </div>
+            ) : sesionExpirada ? (
+              <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Tu sesión expiró. Vuelve a iniciar sesión para continuar.
               </div>
             ) : null}
 
@@ -194,7 +210,7 @@ export function LoginPage() {
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="correo@ejemplo.com"
               />
             </div>
@@ -210,7 +226,7 @@ export function LoginPage() {
                   required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#EF8022] focus:border-transparent pr-12"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent pr-12"
                   placeholder="••••••••"
                 />
                 <button
@@ -227,11 +243,11 @@ export function LoginPage() {
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 text-[#EF8022] border-gray-300 rounded focus:ring-[#EF8022]"
+                  className="w-4 h-4 text-brand-orange border-gray-300 rounded focus:ring-brand-orange"
                 />
                 <span className="ml-2 text-sm text-gray-600">Recordarme</span>
               </label>
-              <a href="#" className="text-sm text-[#1F3C8B] hover:text-[#E64441]">
+              <a href="#" className="text-sm text-brand-navy hover:text-[#E64441]">
                 ¿Olvidaste tu contraseña?
               </a>
             </div>
@@ -239,7 +255,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-[#EF8022] text-white py-3 rounded-lg hover:bg-[#E64441] transition-colors font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full bg-brand-orange text-white py-3 rounded-lg hover:bg-[#E64441] transition-colors font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Ingresando..." : "Iniciar Sesión"}
             </button>

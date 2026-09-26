@@ -38,14 +38,14 @@ export function BrandGuard({ allowedBrands, children }: BrandGuardProps) {
           </div>
           <h2 className="text-2xl text-gray-900 dark:text-white mb-3">Acceso Restringido</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-2">
-            La marca <span className="text-[#EF8022]">{brandLabel}</span> no tiene acceso a esta sección.
+            La marca <span className="text-brand-orange">{brandLabel}</span> no tiene acceso a esta sección.
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-500">
             Serás redirigido al Dashboard en unos segundos...
           </p>
           <button
             onClick={() => navigate("/dashboard", { replace: true })}
-            className="mt-6 px-6 py-2.5 bg-[#1F3C8B] text-white rounded-lg hover:bg-[#1F3C8B]/90 transition-colors text-sm"
+            className="mt-6 px-6 py-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy/90 transition-colors text-sm"
           >
             Volver al Dashboard
           </button>

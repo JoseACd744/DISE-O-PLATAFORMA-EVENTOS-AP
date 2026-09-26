@@ -151,7 +151,7 @@ export function AssetsPage() {
 
   // ── Render ────────────────────────────────────────────────────────────
 
-  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1F3C8B]";
+  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-navy";
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
@@ -164,7 +164,7 @@ export function AssetsPage() {
         {isAdmin && (
           <button
             onClick={openCreate}
-            className="flex items-center justify-center gap-2 bg-[#1F3C8B] text-white px-4 py-2 rounded-lg hover:bg-[#162a63] transition-colors shadow-sm shrink-0"
+            className="flex items-center justify-center gap-2 bg-brand-navy text-white px-4 py-2 rounded-lg hover:bg-[#162a63] transition-colors shadow-sm shrink-0"
           >
             <Plus className="w-4 h-4" /> Nuevo Activo
           </button>
@@ -175,8 +175,8 @@ export function AssetsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 p-2 rounded-lg">
-              <Box className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />
+            <div className="bg-brand-navy/10 dark:bg-brand-navy/20 p-2 rounded-lg">
+              <Box className="w-5 h-5 text-brand-navy dark:text-blue-400" />
             </div>
             <span className="text-sm text-gray-600 dark:text-gray-400">Total de Activos</span>
           </div>
@@ -191,7 +191,7 @@ export function AssetsPage() {
           </div>
           <p className="text-3xl text-gray-900 dark:text-white">{stats.totalUnidades}</p>
         </div>
-        <div className="bg-[#1F3C8B] text-white rounded-xl p-6">
+        <div className="bg-brand-navy text-white rounded-xl p-6">
           <div className="flex items-center gap-3 mb-2">
             <div className="bg-white/10 p-2 rounded-lg">
               <DollarSign className="w-5 h-5" />
@@ -211,7 +211,7 @@ export function AssetsPage() {
             placeholder="Buscar por nombre..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1F3C8B] text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-navy text-sm"
           />
         </div>
       </div>
@@ -220,7 +220,7 @@ export function AssetsPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-500 dark:text-gray-400 text-sm flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-[#1F3C8B] animate-spin" />
+            <Loader2 className="w-8 h-8 text-brand-navy animate-spin" />
             Cargando activos...
           </div>
         ) : error ? (
@@ -250,8 +250,8 @@ export function AssetsPage() {
                   <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#1F3C8B]/10 dark:bg-[#1F3C8B]/20 flex items-center justify-center shrink-0">
-                          <Box className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" />
+                        <div className="w-8 h-8 rounded-lg bg-brand-navy/10 dark:bg-brand-navy/20 flex items-center justify-center shrink-0">
+                          <Box className="w-4 h-4 text-brand-navy dark:text-blue-400" />
                         </div>
                         <span className="text-gray-900 dark:text-white">{asset.nombre}</span>
                       </div>
@@ -368,7 +368,7 @@ export function AssetsPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 px-4 py-3 bg-[#1F3C8B] text-white rounded-lg hover:bg-[#162a63] disabled:opacity-50 transition-colors"
+                  className="flex-1 px-4 py-3 bg-brand-navy text-white rounded-lg hover:bg-[#162a63] disabled:opacity-50 transition-colors"
                 >
                   {submitting ? "Guardando..." : "Guardar"}
                 </button>

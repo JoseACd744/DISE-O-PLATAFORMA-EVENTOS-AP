@@ -4,6 +4,7 @@ import { BrandSelectPage } from "./pages/BrandSelectPage";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import { DriverLayout } from "./layouts/DriverLayout";
 import { DriverHomePage } from "./pages/DriverHomePage";
+import { ErrorScreen } from "./components/ErrorScreen";
 import { ClientsPage } from "./pages/ClientsPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -20,19 +21,23 @@ export const router = createBrowserRouter([
   {
     index: true,
     Component: LoginPage,
+    errorElement: <ErrorScreen />,
   },
   {
     path: "/login",
     Component: LoginPage,
+    errorElement: <ErrorScreen />,
   },
   {
     path: "/seleccionar-marca",
     Component: BrandSelectPage,
+    errorElement: <ErrorScreen />,
   },
   {
     path: "/dashboard",
     Component: DashboardLayout,
-    children: [
+    errorElement: <ErrorScreen />,
+    children: [{ errorElement: <ErrorScreen />, children: [
       {
         // El antiguo Dashboard se fusionó con Reportes: al entrar se va directo a Fichas
         index: true,
@@ -74,16 +79,23 @@ export const router = createBrowserRouter([
         path: "pagos",
         Component: PagosPage,
       },
-    ],
+    ] }],
   },
   {
     path: "/chofer",
     Component: DriverLayout,
-    children: [
+    errorElement: <ErrorScreen />,
+    children: [{ errorElement: <ErrorScreen />, children: [
       {
         index: true,
         Component: DriverHomePage,
       },
-    ],
+    ] }],
+  },
+  {
+    // Cualquier otra dirección: pantalla "Esta página no existe" en vez del error de React Router
+    path: "*",
+    loader: () => { throw new Response("", { status: 404 }); },
+    errorElement: <ErrorScreen />,
   },
 ]);
