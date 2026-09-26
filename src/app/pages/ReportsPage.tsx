@@ -1,166 +1,480 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ComposedChart,
-  Area,
-} from "recharts";
-import { TrendingUp, Target, Pencil, Percent, AlertCircle, Receipt, CreditCard, Banknote, ArrowDownRight, ArrowUpRight, Loader2, Download } from "lucide-react";
+  AlertCircle, ArrowDownRight, ArrowUpRight, CalendarClock, Download, Loader2, Minus, Pencil, Table2, BarChart3, Target, Truck, Users, Wallet,
+} from "lucide-react";
 import { apiRequest } from "../lib/api";
-import { obtenerClientes, obtenerFichasConDetalle } from "../lib/queries";
 import { getLocalDateString, parseLocalDate } from "../lib/date";
+import { obtenerAsignaciones, obtenerClientes, obtenerFichasConDetalle } from "../lib/queries";
 import { useProducts } from "../contexts/ProductsContext";
-import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
 import { useBrand } from "../contexts/BrandContext";
+import { useTheme } from "../contexts/ThemeContext";
+import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
 import { isAdminUser } from "../lib/auth";
 import { CuotaGauge, colorDeAvance } from "../components/CuotaGauge";
 
-const COLORS = {
-  primary: "#1F3C8B",
-  secondary: "#EF8022",
-  success: "#10B981",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-  info: "#3B82F6",
-  gray: "#6B7280",
-};
+// ── Utilidades de fecha y formato ─────────────────────────────────
 
-const tooltipContentStyle = {
-  backgroundColor: "#111827",
-  border: "1px solid #374151",
-  borderRadius: "8px",
-};
-
-const tooltipLabelStyle = { color: "#f9fafb", fontWeight: 600 };
-const tooltipItemStyle = { color: "#f3f4f6" };
-
+type Modo = "month" | "day" | "range";
 type CuotaMensual = { monto: number | null; heredada: boolean; mes_origen: string | null };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
 const nombreMes = (mes: string) => {
   const [year, month] = mes.split("-");
   const idx = Number(month) - 1;
   return idx >= 0 && idx <= 11 ? `${MESES[idx]} ${year}` : mes;
 };
 
-const monthKey = (value?: string) => {
-  if (!value) return "";
-  return value.slice(0, 7);
+// La API devuelve fechas como medianoche UTC ("2026-10-10T00:00:00.000Z"); se usa solo "YYYY-MM-DD"
+const dia = (valor: unknown) => String(valor || "").slice(0, 10);
+const fechaVentaDe = (f: any) => dia(f?.fecha_reserva || f?.fecha);
+const fechaEventoDe = (f: any) => dia(f?.fecha_evento || f?.fecha);
+
+function sumarDias(fecha: string, dias: number) {
+  const d = parseLocalDate(fecha);
+  d.setDate(d.getDate() + dias);
+  return getLocalDateString(d);
+}
+
+function diasEntre(desde: string, hasta: string) {
+  return Math.round((parseLocalDate(hasta).getTime() - parseLocalDate(desde).getTime()) / 86_400_000) + 1;
+}
+
+// Período elegido y el inmediatamente anterior de la misma duración (para comparar)
+function calcularPeriodo(modo: Modo, mes: string, diaSel: string, desdeSel: string, hastaSel: string) {
+  if (modo === "month" && mes) {
+    const [y, m] = mes.split("-").map(Number);
+    const desde = `${mes}-01`;
+    const hasta = getLocalDateString(new Date(y, m, 0));
+    const prevDesde = getLocalDateString(new Date(y, m - 2, 1));
+    const prevHasta = getLocalDateString(new Date(y, m - 1, 0));
+    return { desde, hasta, prevDesde, prevHasta, comparacion: "mes anterior" };
+  }
+  if (modo === "day") {
+    return { desde: diaSel, hasta: diaSel, prevDesde: sumarDias(diaSel, -1), prevHasta: sumarDias(diaSel, -1), comparacion: "día anterior" };
+  }
+  const desde = desdeSel <= hastaSel ? desdeSel : hastaSel;
+  const hasta = desdeSel <= hastaSel ? hastaSel : desdeSel;
+  const largo = diasEntre(desde, hasta);
+  return { desde, hasta, prevDesde: sumarDias(desde, -largo), prevHasta: sumarDias(desde, -1), comparacion: "período anterior" };
+}
+
+const enRango = (fecha: string, desde: string, hasta: string) => !!fecha && fecha >= desde && fecha <= hasta;
+
+const soles = (n: number) => `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const solesEje = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toLocaleString("es-PE", { maximumFractionDigits: 1 })}k` : String(Math.round(n)));
+const entero = (n: number) => n.toLocaleString("es-PE", { maximumFractionDigits: 0 });
+const plural = (n: number, uno: string, varios: string) => `${entero(n)} ${n === 1 ? uno : varios}`;
+
+const etiquetaMedio = (medio: string) => {
+  const limpio = (medio || "Sin medio").replace(/_/g, " ").trim();
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
 };
 
-// Fecha en que se vendió la ficha (fecha de contacto/reserva): es la que cuenta para la cuota
-const fechaVentaDe = (f: any): string => (f?.fecha_reserva || f?.fecha || "").slice(0, 10);
+const horaCorta = (hora?: string) => {
+  if (!hora) return "—";
+  const [h, m] = hora.split(":").map(Number);
+  if (Number.isNaN(h)) return hora;
+  const sufijo = h >= 12 ? "pm" : "am";
+  return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")}${sufijo}`;
+};
 
-// Fecha del evento "YYYY-MM-DD". La API devuelve la fecha como medianoche UTC
-// ("2026-10-10T00:00:00.000Z"); hacer `new Date()` directo la corre al día anterior en Perú.
-const fechaEventoDe = (f: any): string => (f?.fecha_evento || f?.fecha || "").slice(0, 10);
-
-function diasDelPeriodo(modo: "month" | "day" | "range", mes: string, desde: string, hasta: string): number {
-  if (modo === "day") return 1;
-  if (modo === "range") {
-    if (!desde || !hasta) return 1;
-    const ms = parseLocalDate(hasta).getTime() - parseLocalDate(desde).getTime();
-    return Math.max(1, Math.round(ms / 86_400_000) + 1);
-  }
-  const [year, month] = mes.split("-").map(Number);
-  if (!year || !month) return 30;
-  return new Date(year, month, 0).getDate();
+// Top N y el resto agrupado como "Otros", para no pasar de ~8 barras
+function topConOtros<T extends { etiqueta: string; valor: number }>(filas: T[], n = 8) {
+  const orden = [...filas].sort((a, b) => b.valor - a.valor);
+  if (orden.length <= n) return orden;
+  const resto = orden.slice(n - 1).reduce((s, f) => s + f.valor, 0);
+  return [...orden.slice(0, n - 1), { etiqueta: "Otros", valor: resto } as T];
 }
+
+function agrupar<T>(items: T[], clave: (i: T) => string, valor: (i: T) => number) {
+  const map = new Map<string, number>();
+  items.forEach((i) => map.set(clave(i), (map.get(clave(i)) || 0) + valor(i)));
+  return Array.from(map.entries()).map(([etiqueta, v]) => ({ etiqueta, valor: v }));
+}
+
+// ── Colores de gráficos (un solo tono por serie; claro y oscuro) ──
+
+function useColoresGrafico() {
+  const { theme } = useTheme();
+  const oscuro = theme === "dark";
+  return {
+    serie: oscuro ? "#3987e5" : "#2a78d6",
+    grilla: oscuro ? "#2c2c2a" : "#e1e0d9",
+    eje: "#898781",
+    cursor: oscuro ? "rgba(255,255,255,0.06)" : "rgba(11,11,11,0.05)",
+  };
+}
+
+const tooltipStyle = {
+  contentStyle: { backgroundColor: "#111827", border: "1px solid #374151", borderRadius: 8 },
+  labelStyle: { color: "#f9fafb", fontWeight: 600 },
+  itemStyle: { color: "#f3f4f6" },
+};
+
+// ── Piezas de la página ───────────────────────────────────────────
+
+function Seccion({ titulo, criterio, icono, children }: { titulo: string; criterio: string; icono: ReactNode; children: ReactNode }) {
+  return (
+    <section className="mb-10">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-4">
+        <h2 className="text-xl text-gray-900 dark:text-white flex items-center gap-2">{icono}{titulo}</h2>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{criterio}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+type Variacion = { texto: string; sube: boolean | null } | null;
+
+function variacion(actual: number, previo: number): Variacion {
+  if (previo === 0) return actual > 0 ? { texto: "nuevo", sube: true } : null;
+  const pct = ((actual - previo) / previo) * 100;
+  if (Math.abs(pct) < 0.05) return { texto: "0%", sube: null };
+  return { texto: `${pct > 0 ? "+" : ""}${pct.toLocaleString("es-PE", { maximumFractionDigits: 1 })}%`, sube: pct > 0 };
+}
+
+function Tile({ label, valor, detalle, delta, comparacion, subirEsBueno = true }: {
+  label: string; valor: string; detalle?: string; delta?: Variacion; comparacion?: string; subirEsBueno?: boolean;
+}) {
+  const bueno = delta?.sube === null || delta?.sube === undefined ? null : delta.sube === subirEsBueno;
+  const Icono = delta?.sube === null ? Minus : delta?.sube ? ArrowUpRight : ArrowDownRight;
+  return (
+    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{label}</p>
+      <p className="text-2xl text-gray-900 dark:text-white">{valor}</p>
+      {delta && (
+        <p className={`mt-1 text-xs flex items-center gap-1 ${bueno === null ? "text-gray-500 dark:text-gray-400" : bueno ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          <Icono className="w-3.5 h-3.5" />
+          {delta.texto} <span className="text-gray-500 dark:text-gray-400">vs {comparacion}</span>
+        </p>
+      )}
+      {detalle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{detalle}</p>}
+    </div>
+  );
+}
+
+type Columna = { titulo: string; valor: (fila: any) => string; derecha?: boolean };
+
+// Tarjeta de gráfico con su versión en tabla (la información nunca depende solo del gráfico)
+function ChartCard({ titulo, descripcion, filas, columnas, vacio, children, className = "" }: {
+  titulo: string; descripcion?: string; filas: any[]; columnas: Columna[]; vacio: string; children: ReactNode; className?: string;
+}) {
+  const [verTabla, setVerTabla] = useState(false);
+  return (
+    <div className={`bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 ${className}`}>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-gray-900 dark:text-white">{titulo}</h3>
+          {descripcion && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{descripcion}</p>}
+        </div>
+        {filas.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setVerTabla((v) => !v)}
+            className="shrink-0 flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            aria-pressed={verTabla}
+          >
+            {verTabla ? <BarChart3 className="w-3.5 h-3.5" /> : <Table2 className="w-3.5 h-3.5" />}
+            {verTabla ? "Gráfico" : "Tabla"}
+          </button>
+        )}
+      </div>
+      {filas.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 py-10 text-center">{vacio}</p>
+      ) : verTabla ? (
+        <div className="overflow-x-auto max-h-72">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                {columnas.map((c) => <th key={c.titulo} className={`py-2 px-2 font-normal ${c.derecha ? "text-right" : ""}`}>{c.titulo}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((f, i) => (
+                <tr key={i} className="border-b border-gray-100 dark:border-gray-700/60">
+                  {columnas.map((c) => (
+                    <td key={c.titulo} className={`py-1.5 px-2 text-gray-800 dark:text-gray-200 ${c.derecha ? "text-right tabular-nums" : ""}`}>{c.valor(f)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+// Barras verticales de una sola serie (por día, día de la semana, hora)
+function BarrasVerticales({ data, formato, nombre }: { data: { etiqueta: string; valor: number }[]; formato: (n: number) => string; nombre: string }) {
+  const c = useColoresGrafico();
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid vertical={false} stroke={c.grilla} />
+        <XAxis dataKey="etiqueta" tick={{ fill: c.eje, fontSize: 11 }} axisLine={{ stroke: c.grilla }} tickLine={false} interval="preserveStartEnd" minTickGap={4} />
+        <YAxis tick={{ fill: c.eje, fontSize: 11 }} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => (formato === soles ? solesEje(v) : entero(v))} allowDecimals={false} />
+        <Tooltip {...tooltipStyle} cursor={{ fill: c.cursor }} formatter={(v: number) => [formato(v), nombre]} />
+        <Bar dataKey="valor" fill={c.serie} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// Barras horizontales para comparar categorías (medios de pago, distritos, servicios)
+function BarrasHorizontales({ data, formato, nombre }: { data: { etiqueta: string; valor: number }[]; formato: (n: number) => string; nombre: string }) {
+  const c = useColoresGrafico();
+  const alto = Math.max(120, data.length * 34 + 24);
+  return (
+    <ResponsiveContainer width="100%" height={alto}>
+      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }} barCategoryGap={8}>
+        <CartesianGrid horizontal={false} stroke={c.grilla} />
+        <XAxis type="number" tick={{ fill: c.eje, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => (formato === soles ? solesEje(v) : entero(v))} allowDecimals={false} />
+        <YAxis type="category" dataKey="etiqueta" width={130} tick={{ fill: c.eje, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <Tooltip {...tooltipStyle} cursor={{ fill: c.cursor }} formatter={(v: number) => [formato(v), nombre]} />
+        <Bar dataKey="valor" fill={c.serie} radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── Página ────────────────────────────────────────────────────────
 
 export function ReportsPage() {
   const { brand } = useBrand();
-  const { paquetes: catalogoPaquetes, allProducts: catalogoProductos, carritos: catalogoCarritos, inflables: catalogoInflables, recursos: catalogoRecursos } = useProducts();
-  const [filterMode, setFilterMode] = useState<"month" | "day" | "range">("month");
-  const [selectedMonth, setSelectedMonth] = useState("");
-  const [filterDay, setFilterDay] = useState(getLocalDateString());
-  const [filterFrom, setFilterFrom] = useState(getLocalDateString());
-  const [filterTo, setFilterTo] = useState(getLocalDateString());
-  const [selectedFichaHelados, setSelectedFichaHelados] = useState<string | null>(null);
+  const {
+    paquetes: catalogoPaquetes, allProducts: catalogoProductos, carritos: catalogoCarritos,
+    inflables: catalogoInflables, recursos: catalogoRecursos,
+  } = useProducts();
 
-  // Todas las fichas de la marca con su detalle (paquetes, abonos…) en una sola petición.
-  // Cambiar de mes o de rango ya no pide nada: se filtra lo cargado.
-  const [allFichas, setAllFichas] = useState<any[]>([]);
-  const [allClients, setAllClients] = useState<any[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [detallesError, setDetallesError] = useState("");
+  const hoy = getLocalDateString();
+  const [modo, setModo] = useState<Modo>("month");
+  const [mesSel, setMesSel] = useState(hoy.slice(0, 7));
+  const [diaSel, setDiaSel] = useState(hoy);
+  const [desdeSel, setDesdeSel] = useState(hoy);
+  const [hastaSel, setHastaSel] = useState(hoy);
+
+  // Datos: todas las fichas con detalle, clientes y asignaciones (desde la caché compartida)
+  const [fichas, setFichas] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [asignaciones, setAsignaciones] = useState<any[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState("");
 
   useEffect(() => {
     if (!brand) return;
     let cancelled = false;
-    setLoadingDetails(true);
-    setDetallesError("");
-    Promise.all([obtenerFichasConDetalle(brand), obtenerClientes(brand)])
-      .then(([fichas, clients]) => {
+    setCargando(true);
+    setErrorCarga("");
+    Promise.all([
+      obtenerFichasConDetalle(brand),
+      obtenerClientes(brand),
+      // Sin asignaciones el informe igual se muestra; solo falta saber quién lleva cada ficha
+      obtenerAsignaciones().catch(() => []),
+    ])
+      .then(([f, c, a]) => {
         if (cancelled) return;
-        setAllFichas(fichas);
-        setAllClients(clients);
+        setFichas(f);
+        setClientes(c);
+        setAsignaciones(a);
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("No se pudo cargar reportes:", err);
-        setDetallesError("No se pudieron cargar los datos del informe. Revisa tu conexión e inténtalo de nuevo.");
+        setErrorCarga("No se pudieron cargar los datos del informe. Revisa tu conexión e inténtalo de nuevo.");
       })
-      .finally(() => { if (!cancelled) setLoadingDetails(false); });
+      .finally(() => { if (!cancelled) setCargando(false); });
     return () => { cancelled = true; };
   }, [brand]);
 
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    allFichas.forEach((f) => {
-      const key = monthKey(fechaEventoDe(f));
-      if (key) months.add(key);
-    });
-    return Array.from(months).sort((a, b) => b.localeCompare(a));
-  }, [allFichas]);
+  const periodo = useMemo(
+    () => calcularPeriodo(modo, mesSel, diaSel, desdeSel, hastaSel),
+    [modo, mesSel, diaSel, desdeSel, hastaSel]
+  );
 
-  // Seleccionar el mes más reciente por defecto
-  useEffect(() => {
-    if (!availableMonths.length) return;
-    if (!selectedMonth || !availableMonths.includes(selectedMonth)) {
-      setSelectedMonth(availableMonths[0]);
+  // Meses con actividad (venta, evento o pago) más el mes actual
+  const mesesDisponibles = useMemo(() => {
+    const set = new Set<string>([hoy.slice(0, 7)]);
+    fichas.forEach((f) => {
+      [fechaVentaDe(f), fechaEventoDe(f), ...(f.abonos || []).map((a: any) => dia(a.fecha))].forEach((d) => { if (d) set.add(d.slice(0, 7)); });
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [fichas, hoy]);
+
+  const catalogos = useMemo(() => ({
+    paquetes: catalogoPaquetes, productos: catalogoProductos, carritos: catalogoCarritos, inflables: catalogoInflables, recursos: catalogoRecursos,
+  }), [catalogoPaquetes, catalogoProductos, catalogoCarritos, catalogoInflables, catalogoRecursos]);
+
+  // ── Hoy y próximos días (no depende del período) ──
+  const hoyYProximos = useMemo(() => {
+    const manana = sumarDias(hoy, 1);
+    const finSemana = sumarDias(hoy, 6);
+    const asignadas = new Set<number>(asignaciones.flatMap((a) => (Array.isArray(a.fichas_ids) ? a.fichas_ids : [])));
+    const conEstado = (f: any) => ({ ...f, asignada: asignadas.has(f.id), saldoNum: Math.max(0, toMoneyNumber(f.saldo)) });
+    const porHora = (a: any, b: any) => String(a.hora_entrega || "99").localeCompare(String(b.hora_entrega || "99"));
+    const proximos = fichas.filter((f) => enRango(fechaEventoDe(f), hoy, finSemana)).map(conEstado);
+    return {
+      hoyLista: proximos.filter((f) => fechaEventoDe(f) === hoy).sort(porHora),
+      mananaLista: proximos.filter((f) => fechaEventoDe(f) === manana).sort(porHora),
+      sinAsignar: proximos.filter((f) => !f.asignada).length,
+      saldoProximos: proximos.reduce((s, f) => s + f.saldoNum, 0),
+      conSaldo: proximos.filter((f) => f.saldoNum > 0.005).length,
+      totalProximos: proximos.length,
+    };
+  }, [fichas, asignaciones, hoy]);
+
+  // ── Ventas (por fecha de venta) ──
+  const ventas = useMemo(() => {
+    const { desde, hasta, prevDesde, prevHasta } = periodo;
+    const actual = fichas.filter((f) => enRango(fechaVentaDe(f), desde, hasta));
+    const previo = fichas.filter((f) => enRango(fechaVentaDe(f), prevDesde, prevHasta));
+    const total = (lista: any[]) => lista.reduce((s, f) => s + toMoneyNumber(f.total), 0);
+    const vendido = total(actual);
+    const vendidoPrev = total(previo);
+
+    // Descuentos otorgados: los de cada ítem más el global, con la misma fórmula de la cotización
+    let descuentos = 0;
+    let fichasConDescuento = 0;
+    actual.forEach((f) => {
+      const lineas = construirLineasCotizacion(origenDesdeDetalleApi(f), catalogos);
+      const monto = lineas.reduce((s, l) => s + l.descuentoMonto, 0) + toMoneyNumber(f.cotizacion) * (toMoneyNumber(f.descuento) / 100);
+      if (monto > 0.005) { descuentos += monto; fichasConDescuento += 1; }
+    });
+
+    // Serie diaria; en rangos largos se agrupa por mes para que las barras sigan siendo legibles
+    const porMes = diasEntre(desde, hasta) > 62;
+    const serie: { etiqueta: string; valor: number; clave: string }[] = [];
+    if (porMes) {
+      agrupar(actual, (f) => fechaVentaDe(f).slice(0, 7), (f) => toMoneyNumber(f.total))
+        .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta))
+        .forEach((m) => serie.push({ clave: m.etiqueta, etiqueta: nombreMes(m.etiqueta).slice(0, 3) + " " + m.etiqueta.slice(2, 4), valor: m.valor }));
+    } else {
+      const porDia = new Map(agrupar(actual, fechaVentaDe, (f) => toMoneyNumber(f.total)).map((d) => [d.etiqueta, d.valor]));
+      for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+        serie.push({ clave: d, etiqueta: modo === "month" ? d.slice(8, 10) : `${d.slice(8, 10)}/${d.slice(5, 7)}`, valor: porDia.get(d) || 0 });
+      }
     }
-  }, [availableMonths, selectedMonth]);
 
-  // Fichas filtradas según el modo activo
-  const monthFichas = useMemo(() => {
-    if (filterMode === "month") return allFichas.filter((f) => monthKey(fechaEventoDe(f)) === selectedMonth);
-    if (filterMode === "day")   return allFichas.filter((f) => fechaEventoDe(f) === filterDay);
-    return allFichas.filter((f) => {
-      const d = fechaEventoDe(f);
-      return d >= filterFrom && d <= filterTo;
+    return {
+      vendido, vendidoPrev,
+      cantidad: actual.length, cantidadPrev: previo.length,
+      ticket: actual.length ? vendido / actual.length : 0,
+      ticketPrev: previo.length ? vendidoPrev / previo.length : 0,
+      descuentos, fichasConDescuento,
+      proporcionDescuentos: vendido + descuentos > 0 ? (descuentos / (vendido + descuentos)) * 100 : 0,
+      serie, porMes,
+      porTipoEvento: topConOtros(agrupar(actual, (f) => (f.tipo_evento || "Sin tipo").toString(), (f) => toMoneyNumber(f.total))),
+    };
+  }, [fichas, periodo, catalogos, modo]);
+
+  // ── Cobranza (por fecha de pago) ──
+  const cobranza = useMemo(() => {
+    const { desde, hasta, prevDesde, prevHasta } = periodo;
+    const abonos = fichas.flatMap((f) => (f.abonos || []).map((a: any) => ({ ...a, fechaDia: dia(a.fecha), montoNum: toMoneyNumber(a.monto) })));
+    const actual = abonos.filter((a) => enRango(a.fechaDia, desde, hasta));
+    const previo = abonos.filter((a) => enRango(a.fechaDia, prevDesde, prevHasta));
+    const cobrado = actual.reduce((s, a) => s + a.montoNum, 0);
+    const cobradoPrev = previo.reduce((s, a) => s + a.montoNum, 0);
+
+    // Saldos pendientes hoy, según cuándo es (o fue) el evento
+    const conSaldo = fichas
+      .map((f) => ({ f, saldo: Math.max(0, toMoneyNumber(f.saldo)), evento: fechaEventoDe(f) }))
+      .filter((x) => x.saldo > 0.005);
+    const en7 = sumarDias(hoy, 6);
+    const tramos = [
+      { tramo: "Evento ya pasó", filtro: (e: string) => e < hoy },
+      { tramo: "Hoy o próximos 7 días", filtro: (e: string) => e >= hoy && e <= en7 },
+      { tramo: "Más adelante", filtro: (e: string) => e > en7 },
+    ].map(({ tramo, filtro }) => {
+      const items = conSaldo.filter((x) => filtro(x.evento));
+      return { tramo, fichas: items.length, saldo: items.reduce((s, x) => s + x.saldo, 0) };
     });
-  }, [allFichas, filterMode, selectedMonth, filterDay, filterFrom, filterTo]);
+    const vencidas = conSaldo
+      .filter((x) => x.evento < hoy)
+      .sort((a, b) => b.saldo - a.saldo)
+      .slice(0, 8);
 
-  // Las fichas ya traen su detalle: el informe del período usa las mismas filas
-  const monthFichasDetalle = monthFichas;
+    return {
+      cobrado, cobradoPrev, pagos: actual.length,
+      porMedio: agrupar(actual, (a) => etiquetaMedio(a.medio), (a) => a.montoNum).sort((a, b) => b.valor - a.valor),
+      tramos,
+      saldoTotal: conSaldo.reduce((s, x) => s + x.saldo, 0),
+      vencidas,
+    };
+  }, [fichas, periodo, hoy]);
 
-  // ── Métricas financieras del mes ────────────────────────────────
-  const financialMonthly = useMemo(() => {
-    const ventaTotal = monthFichas.reduce((sum, f) => sum + Number(f.total || 0), 0);
-    const saldoPendiente = monthFichas.reduce((sum, f) => sum + Number(f.saldo || 0), 0);
-    const ingresoNeto = Math.max(0, ventaTotal - saldoPendiente);
-    const fichasPagadas = monthFichas.filter((f) => Number(f.saldo || 0) <= 0).length;
-    const fichasPendientes = monthFichas.filter((f) => Number(f.saldo || 0) > 0).length;
-    const fichasParciales = monthFichas.filter(
-      (f) => Number(f.saldo || 0) > 0 && Number(f.saldo || 0) < Number(f.total || 0)
-    ).length;
-    return { ventaTotal, ingresoNeto, saldoPendiente, fichasPagadas, fichasParciales, fichasPendientes };
-  }, [monthFichas]);
+  // ── Operación (por fecha del evento) ──
+  const operacion = useMemo(() => {
+    const { desde, hasta, prevDesde, prevHasta } = periodo;
+    const actual = fichas.filter((f) => enRango(fechaEventoDe(f), desde, hasta));
+    const previo = fichas.filter((f) => enRango(fechaEventoDe(f), prevDesde, prevHasta));
 
-  // ── Cuota mensual de la marca (configurable por un admin) ───────
+    const porDiaSemana = DIAS_SEMANA.map((etiqueta) => ({ etiqueta, valor: 0 }));
+    actual.forEach((f) => {
+      const d = parseLocalDate(fechaEventoDe(f));
+      if (!Number.isNaN(d.getTime())) porDiaSemana[(d.getDay() + 6) % 7].valor += 1; // lunes primero
+    });
+
+    const porHora = agrupar(actual, (f) => (f.hora_entrega ? `${String(f.hora_entrega).slice(0, 2)}:00` : "Sin hora"), () => 1)
+      .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta));
+
+    const tipoCarrito = new Map(catalogoCarritos.map((c) => [c.id, c.tipoNombre || c.modelo]));
+    const paquetes = topConOtros(agrupar(actual.flatMap((f) => f.paquetes || []), (p: any) => p.paquete_nombre || "Paquete", (p: any) => Number(p.cantidad || 1)));
+    const inflables = topConOtros(agrupar(actual.flatMap((f) => f.inflables || []), (i: any) => i.tipo_nombre || "Inflable", () => 1));
+    const carritos = topConOtros(agrupar(actual.flatMap((f) => f.carritos || []), (c: any) => tipoCarrito.get(c.id) || c.modelo || "Carrito", () => 1));
+
+    // Unidades de helado: contenido real de cada paquete según el catálogo, más los productos sueltos
+    const unidadesPorPaquete = new Map(catalogoPaquetes.map((p) => [p.id, p.contenido.reduce((s, it) => s + Number(it.cantidad || 0), 0)]));
+    const helados = actual.map((f) => {
+      const enPaquetes = (f.paquetes || []).reduce((s: number, p: any) => s + (unidadesPorPaquete.get(p.paquete_id) || 0) * Number(p.cantidad || 1), 0);
+      const sueltas = (f.productosSueltos || []).reduce((s: number, p: any) => s + Number(p.cantidad || 0), 0);
+      return { id: f.id, cliente: f.cliente_nombre || "Cliente", fecha: fechaEventoDe(f), enPaquetes, sueltas, total: enPaquetes + sueltas };
+    }).filter((h) => h.total > 0).sort((a, b) => b.total - a.total);
+
+    return {
+      eventos: actual.length, eventosPrev: previo.length,
+      porDiaSemana, porHora,
+      distritos: topConOtros(agrupar(actual, (f) => f.distrito || "Sin distrito", () => 1)),
+      paquetes, inflables, carritos,
+      helados, unidadesHelado: helados.reduce((s, h) => s + h.total, 0),
+      fichasPeriodo: actual,
+    };
+  }, [fichas, periodo, catalogoCarritos, catalogoPaquetes]);
+
+  // ── Clientes (altas y recurrencia en el período) ──
+  const clientesPeriodo = useMemo(() => {
+    const { desde, hasta, prevDesde, prevHasta } = periodo;
+    const fechaAlta = (c: any) => (c.created_at ? getLocalDateString(new Date(c.created_at)) : "");
+    const nuevos = clientes.filter((c) => enRango(fechaAlta(c), desde, hasta));
+    const nuevosPrev = clientes.filter((c) => enRango(fechaAlta(c), prevDesde, prevHasta));
+
+    // Recurrentes: clientes con una ficha vendida en el período que ya habían comprado antes
+    const primeraCompra = new Map<string, string>();
+    fichas.forEach((f) => {
+      if (!f.cliente_id) return;
+      const v = fechaVentaDe(f);
+      const prev = primeraCompra.get(f.cliente_id);
+      if (v && (!prev || v < prev)) primeraCompra.set(f.cliente_id, v);
+    });
+    const atendidos = new Set(fichas.filter((f) => f.cliente_id && enRango(fechaVentaDe(f), desde, hasta)).map((f) => f.cliente_id as string));
+    const recurrentes = Array.from(atendidos).filter((id) => (primeraCompra.get(id) || "") < desde).length;
+
+    return {
+      nuevos: nuevos.length, nuevosPrev: nuevosPrev.length,
+      atendidos: atendidos.size, recurrentes,
+      canales: topConOtros(agrupar(nuevos, (c) => c.canal || "Sin canal", () => 1)),
+    };
+  }, [clientes, fichas, periodo]);
+
+  // ── Cuota mensual de la marca (configurable por un admin) ──
   const esAdmin = isAdminUser();
-  const mesCuota = (filterMode === "month" ? selectedMonth : filterMode === "day" ? filterDay : filterFrom).slice(0, 7);
+  const mesCuota = periodo.desde.slice(0, 7);
   const [cuota, setCuota] = useState<CuotaMensual>({ monto: null, heredada: false, mes_origen: null });
   const [cuotaError, setCuotaError] = useState("");
   const [editandoCuota, setEditandoCuota] = useState(false);
@@ -182,12 +496,10 @@ export function ReportsPage() {
     return () => { cancelled = true; };
   }, [brand, mesCuota]);
 
-  // Lo vendido en el mes de la cuota: total cotizado (no lo cobrado) de las fichas vendidas ese mes
+  // Lo vendido en el mes de la cuota (el mes completo, aunque el período sea un día o un rango)
   const ventasMesCuota = useMemo(
-    () => allFichas
-      .filter((f) => monthKey(fechaVentaDe(f)) === mesCuota)
-      .reduce((sum, f) => sum + Number(f.total || 0), 0),
-    [allFichas, mesCuota]
+    () => fichas.filter((f) => fechaVentaDe(f).slice(0, 7) === mesCuota).reduce((s, f) => s + toMoneyNumber(f.total), 0),
+    [fichas, mesCuota]
   );
   const avanceCuota = cuota.monto ? (ventasMesCuota / cuota.monto) * 100 : 0;
 
@@ -200,10 +512,7 @@ export function ReportsPage() {
     setGuardandoCuota(true);
     setCuotaError("");
     try {
-      const data = await apiRequest<CuotaMensual>("/cuotas", {
-        method: "PUT",
-        body: JSON.stringify({ brand, mes: mesCuota, monto }),
-      });
+      const data = await apiRequest<CuotaMensual>("/cuotas", { method: "PUT", body: JSON.stringify({ brand, mes: mesCuota, monto }) });
       setCuota(data);
       setEditandoCuota(false);
     } catch (err) {
@@ -213,933 +522,352 @@ export function ReportsPage() {
     }
   };
 
-  const selectedMonthLabel = useMemo(() => {
-    if (filterMode === "day") return filterDay || "hoy";
-    if (filterMode === "range") return filterFrom && filterTo ? `${filterFrom} — ${filterTo}` : "rango seleccionado";
-    if (!selectedMonth) return "mes actual";
-    return nombreMes(selectedMonth);
-  }, [filterMode, filterDay, filterFrom, filterTo, selectedMonth]);
+  const etiquetaPeriodo = modo === "month"
+    ? nombreMes(mesSel)
+    : modo === "day"
+      ? parseLocalDate(diaSel).toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })
+      : `${periodo.desde.split("-").reverse().join("/")} — ${periodo.hasta.split("-").reverse().join("/")}`;
 
-  // Descuentos registrados en el período: los de cada ítem (paquete, inflable, movilidad…)
-  // más el descuento global de la ficha. Usa la misma fórmula que la cotización.
-  const descuentosDelPeriodo = useMemo(() => {
-    const catalogos = {
-      paquetes: catalogoPaquetes,
-      productos: catalogoProductos,
-      carritos: catalogoCarritos,
-      inflables: catalogoInflables,
-      recursos: catalogoRecursos,
-    };
-    let fichasConDescuento = 0;
-    let monto = 0;
-    monthFichasDetalle.forEach((f) => {
-      const lineas = construirLineasCotizacion(origenDesdeDetalleApi(f), catalogos);
-      const porItem = lineas.reduce((sum, l) => sum + l.descuentoMonto, 0);
-      const global = toMoneyNumber(f.cotizacion) * (toMoneyNumber(f.descuento) / 100);
-      const totalFicha = porItem + global;
-      if (totalFicha > 0.005) {
-        fichasConDescuento += 1;
-        monto += totalFicha;
-      }
-    });
-    return { fichasConDescuento, monto };
-  }, [monthFichasDetalle, catalogoPaquetes, catalogoProductos, catalogoCarritos, catalogoInflables, catalogoRecursos]);
-
-  const kpiData = useMemo(() => {
-    const ventasActuales = financialMonthly.ventaTotal;
-    const montoCobrado = financialMonthly.ingresoNeto;
-    const montoPorCobrar = financialMonthly.saldoPendiente;
-    const indiceCobranza = ventasActuales > 0 ? (montoCobrado / ventasActuales) * 100 : 0;
-    const promedioDiario = ventasActuales / diasDelPeriodo(filterMode, selectedMonth, filterFrom, filterTo);
-    const numDescuentos = descuentosDelPeriodo.fichasConDescuento;
-    const descuentoAcumulado = descuentosDelPeriodo.monto;
-    const grossTotal = ventasActuales + descuentoAcumulado;
-    const proporcionDescuentos = grossTotal > 0
-      ? Number(((descuentoAcumulado / grossTotal) * 100).toFixed(1))
-      : 0;
-    return {
-      ventasActuales,
-      promedioDiario,
-      indiceCobranza,
-      montoCobrado,
-      montoPorCobrar,
-      numDescuentos,
-      descuentoAcumulado,
-      proporcionDescuentos,
-    };
-  }, [financialMonthly, descuentosDelPeriodo, filterMode, selectedMonth, filterFrom, filterTo]);
-
-  // ── Gráficos basados en lista del mes (sin detalle) ─────────────
-  const ventasPorDiaSemana = useMemo(() => {
-    const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-    const acc = dias.map((dia) => ({ dia, monto: 0, cantidad: 0 }));
-    monthFichas.forEach((f) => {
-      const raw = fechaEventoDe(f);
-      const fecha = raw ? parseLocalDate(raw) : null;
-      if (!fecha || Number.isNaN(fecha.getTime())) return;
-      acc[fecha.getDay()].monto += Number(f.total || 0);
-      acc[fecha.getDay()].cantidad += 1;
-    });
-    return acc;
-  }, [monthFichas]);
-
-  const ventasPorFecha = useMemo(() => {
-    const map = new Map<string, { fecha: string; servicios: number; monto: number }>();
-    monthFichas.forEach((f) => {
-      const rawFecha = fechaEventoDe(f);
-      if (!rawFecha) return;
-      const key = rawFecha.slice(0, 10);
-      const label = filterMode === "month" ? rawFecha.slice(8, 10) : rawFecha.slice(5, 10);
-      const current = map.get(key) || { fecha: label, servicios: 0, monto: 0 };
-      current.servicios += 1;
-      current.monto += Number(f.total || 0);
-      map.set(key, current);
-    });
-    return Array.from(map.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [monthFichas, filterMode]);
-
-  const distritoTop = useMemo(() => {
-    const map = new Map<string, number>();
-    monthFichas.forEach((f) => {
-      const distrito = f.distrito || "Sin distrito";
-      map.set(distrito, (map.get(distrito) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([distrito, servicios]) => ({ distrito, servicios }))
-      .sort((a, b) => b.servicios - a.servicios)
-      .slice(0, 10);
-  }, [monthFichas]);
-
-  const ventasPorHora = useMemo(() => {
-    const horas = new Map<string, number>();
-    monthFichas.forEach((f) => {
-      const raw = (f.hora_entrega || "").toString();
-      const hora = raw ? `${raw.slice(0, 2)}:00` : "Sin hora";
-      horas.set(hora, (horas.get(hora) || 0) + 1);
-    });
-    return Array.from(horas.entries())
-      .map(([hora, servicios]) => ({ hora, servicios }))
-      .sort((a, b) => a.hora.localeCompare(b.hora));
-  }, [monthFichas]);
-
-  // ── Gráficos basados en detalles del mes (abonos, paquetes) ─────
-  const abonosPorMedio = useMemo(() => {
-    const byMedio = new Map<string, { medio: string; monto: number; cantidad: number }>();
-    monthFichasDetalle.forEach((f) => {
-      if (!Array.isArray(f.abonos)) return;
-      f.abonos.forEach((a: any) => {
-        const medio = (a.medio || "Sin medio") as string;
-        const current = byMedio.get(medio) || { medio, monto: 0, cantidad: 0 };
-        current.monto += Number(a.monto || 0);
-        current.cantidad += 1;
-        byMedio.set(medio, current);
-      });
-    });
-    return Array.from(byMedio.values()).sort((a, b) => b.monto - a.monto);
-  }, [monthFichasDetalle]);
-
-  // Medios de pago derivados de abonos reales (antes estaba hardcodeado)
-  const mediosPago = useMemo(() => {
-    const total = abonosPorMedio.reduce((s, a) => s + a.monto, 0);
-    if (!abonosPorMedio.length || total <= 0) {
-      return [
-        { medio: "Transferencia", monto: 0, porcentaje: 0 },
-        { medio: "Yape", monto: 0, porcentaje: 0 },
-        { medio: "Plin", monto: 0, porcentaje: 0 },
-        { medio: "Efectivo", monto: 0, porcentaje: 0 },
-      ];
-    }
-    return abonosPorMedio.map((a) => ({
-      medio: a.medio,
-      monto: a.monto,
-      porcentaje: Number(((a.monto / total) * 100).toFixed(1)),
-    }));
-  }, [abonosPorMedio]);
-
-  const ingresoVsVentaPorSemana = useMemo(() => {
-    const weeks = [1, 2, 3, 4, 5].map((n) => ({ semana: `Sem ${n}`, ventaTotal: 0, ingresoNeto: 0 }));
-    monthFichasDetalle.forEach((f) => {
-      const raw = fechaEventoDe(f);
-      const fecha = raw ? parseLocalDate(raw) : null;
-      if (!fecha || Number.isNaN(fecha.getTime())) return;
-      const weekIndex = Math.min(4, Math.max(0, Math.ceil(fecha.getDate() / 7) - 1));
-      const abonos = Array.isArray(f.abonos)
-        ? f.abonos.reduce((sum: number, a: any) => sum + Number(a.monto || 0), 0)
-        : Math.max(0, Number(f.total || 0) - Number(f.saldo || 0));
-      weeks[weekIndex].ventaTotal += Number(f.total || 0);
-      weeks[weekIndex].ingresoNeto += abonos;
-    });
-    return weeks.filter((w) => w.ventaTotal > 0 || w.ingresoNeto > 0);
-  }, [monthFichasDetalle]);
-
-  const flujoAbonos = useMemo(() => {
-    const abonosDia = new Map<string, number>();
-    monthFichasDetalle.forEach((f) => {
-      if (!Array.isArray(f.abonos)) return;
-      f.abonos.forEach((a: any) => {
-        const raw = typeof a.fecha === "string" ? a.fecha : "";
-        const dia = raw.length >= 10 ? raw.slice(8, 10) : raw.slice(-2);
-        if (!dia) return;
-        abonosDia.set(dia, (abonosDia.get(dia) || 0) + Number(a.monto || 0));
-      });
-    });
-    let acumulado = 0;
-    return Array.from(abonosDia.entries())
-      .map(([fecha, abonos]) => ({ fecha, abonos }))
-      .sort((a, b) => a.fecha.localeCompare(b.fecha))
-      .map((item) => { acumulado += item.abonos; return { ...item, acumulado }; });
-  }, [monthFichasDetalle]);
-
-  // Ventas por servicio (paquete o inflable) y tipo de evento.
-  // Antes solo consideraba fichas con paquetes, por lo que quedaba vacío para
-  // las fichas de Juguetón, que normalmente solo llevan inflables.
-  const ventasPorServicio = useMemo(() => {
-    const rows = new Map<string, Record<string, number | string>>();
-    const tipos = new Set<string>();
-
-    monthFichasDetalle.forEach((f) => {
-      const tipoEvento = (f.tipo_evento || "Sin tipo").toString();
-      tipos.add(tipoEvento);
-
-      const paquetes = Array.isArray(f.paquetes) ? f.paquetes : [];
-      const inflablesFicha = Array.isArray(f.inflables) ? f.inflables : [];
-      const servicios = paquetes.length > 0
-        ? paquetes.map((p: any) => (p.paquete_nombre || p.paquete_tipo || "Paquete").toString())
-        : inflablesFicha.length > 0
-          ? inflablesFicha.map((i: any) => (i.tipo_nombre || "Inflable").toString())
-          : ["Otros servicios"];
-
-      // El total de la ficha se reparte entre los servicios que la componen
-      const montoPorServicio = Number(f.total || 0) / servicios.length;
-      servicios.forEach((servicio: string) => {
-        const row = rows.get(servicio) || { servicio };
-        row[tipoEvento] = Number(row[tipoEvento] || 0) + montoPorServicio;
-        rows.set(servicio, row);
-      });
-    });
-
-    return {
-      data: Array.from(rows.values()).sort((a, b) => String(a.servicio).localeCompare(String(b.servicio))),
-      tipos: Array.from(tipos),
-    };
-  }, [monthFichasDetalle]);
-
-  const heladosReporte = useMemo(() => {
-    const unidadesPorTipo: Record<string, { nombre: string; unidades: number }> = {
-      BASICO: { nombre: "Paquete Básico", unidades: 100 },
-      "100 MINIS": { nombre: "Paquete 100 Minis", unidades: 100 },
-      VACILÓN: { nombre: "Paquete Vacilón", unidades: 150 },
-      PERSONALIZADO: { nombre: "Paquete Personalizado", unidades: 150 },
-    };
-
-    const detalle = monthFichasDetalle.map((ficha) => {
-      const paquetes = Array.isArray(ficha.paquetes) ? ficha.paquetes : [];
-      const productosSueltos = Array.isArray(ficha.productosSueltos) ? ficha.productosSueltos : [];
-      const paquetesDetalle = paquetes.map((p: any) => {
-        const pack = unidadesPorTipo[p.paquete_tipo] || { nombre: p.paquete_nombre || "Paquete", unidades: 0 };
-        return { nombre: pack.nombre, cantidad: Number(p.cantidad || 0), unidades: pack.unidades * Number(p.cantidad || 0) };
-      });
-      const unidadesPaquetes = paquetes.reduce((sum: number, p: any) => {
-        return sum + ((unidadesPorTipo[p.paquete_tipo]?.unidades ?? 0) * Number(p.cantidad || 0));
-      }, 0);
-      const unidadesSueltas = productosSueltos.reduce((sum: number, p: any) => sum + Number(p.cantidad || 0), 0);
-      return {
-        ficha: `#${ficha.id}`,
-        cliente: ficha.cliente_nombre || "Cliente",
-        paquetesDetalle,
-        detallePaquetes: paquetes.map((p: any) => {
-          const pack = unidadesPorTipo[p.paquete_tipo] || { nombre: p.paquete_nombre || "Paquete" };
-          return `${pack.nombre} x${Number(p.cantidad || 0)}`;
-        }).join(", "),
-        unidadesPaquetes,
-        unidadesSueltas,
-        unidades: unidadesPaquetes + unidadesSueltas,
-      };
-    });
-
-    const totalPaquetes = monthFichasDetalle.reduce((sum, f) => {
-      return sum + (Array.isArray(f.paquetes) ? f.paquetes : []).reduce((s: number, p: any) => s + Number(p.cantidad || 0), 0);
-    }, 0);
-
-    return {
-      detalle,
-      totalFichas: detalle.length,
-      totalUnidades: detalle.reduce((sum, f) => sum + f.unidades, 0),
-      totalPaquetes,
-    };
-  }, [monthFichasDetalle]);
-
-  // ── Datos de clientes (todos, no filtrados por mes) ──────────────
-  const canalesAdquisicion = useMemo(() => {
-    const map = new Map<string, number>();
-    allClients.forEach((c) => {
-      const canal = c.canal || c.canal_adquisicion || "Sin canal";
-      map.set(canal, (map.get(canal) || 0) + 1);
-    });
-    return Array.from(map.entries()).map(([canal, clientes]) => ({ canal, clientes }));
-  }, [allClients]);
-
-  const estadoClientes = useMemo(() => {
-    const byEstado = new Map<string, number>();
-    allClients.forEach((c) => {
-      const raw = (c.estado_cliente || c.estado || c.status || "").toString().toLowerCase();
-      const estado = raw === "active" || raw === "activo" ? "Activo"
-        : raw === "inactive" || raw === "inactivo" ? "Inactivo"
-        : raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Sin estado";
-      byEstado.set(estado, (byEstado.get(estado) || 0) + 1);
-    });
-    const palette = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
-    return Array.from(byEstado.entries()).map(([estado, cantidad], idx) => ({
-      estado, cantidad, color: palette[idx % palette.length],
-    }));
-  }, [allClients]);
-
-  const fichaDetalleSeleccionada = useMemo(() => {
-    if (!heladosReporte.detalle.length) return null;
-    return heladosReporte.detalle.find((f) => f.ficha === selectedFichaHelados) ?? heladosReporte.detalle[0];
-  }, [heladosReporte, selectedFichaHelados]);
-
+  // CSV de las fichas con evento en el período
   const exportCSV = () => {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const labelTransporte = (t?: string) =>
-      t === "corporativo" ? "Corporativo" : t === "delivery" ? "Delivery" : "Cumpleaños";
-    const labelEstado = (f: any) => {
-      const total = Number(f.total || 0);
-      const saldo = Number(f.saldo || 0);
+    const estado = (f: any) => {
+      const saldo = toMoneyNumber(f.saldo);
       if (saldo <= 0) return "Pagado";
-      const abonado = total - saldo;
-      return abonado > 0 ? "Parcial" : "Pendiente";
+      return toMoneyNumber(f.total) - saldo > 0 ? "Parcial" : "Pendiente";
     };
-
-    const headers = [
-      "# Ficha", "Cliente", "Celular", "Fecha Evento", "Fecha Reserva",
-      "Distrito", "Dirección", "Tipo", "Paquetes",
-      "Cotización", "Descuento", "Total", "Abonado", "Saldo", "Estado",
-      "Registrado por",
-    ];
-
-    const rows = monthFichasDetalle.map((f) => {
-      const paquetes = (f.paquetes || []).map((p: any) => `${p.paquete_nombre || ""} x${p.cantidad || 1}`).join(" | ");
-      const total      = Number(f.total      || 0);
-      const cotizacion = Number(f.cotizacion || 0);
-      const descPct    = Number(f.descuento  || 0);
-      const descMonto  = (cotizacion * descPct) / 100;
-      const saldo      = Number(f.saldo      || 0);
-      const abonado    = total - saldo;
-
-      return [
-        f.id,
-        f.cliente_nombre || "",
-        f.cliente_celular || "",
-        f.fecha_evento || f.fecha || "",
-        f.fecha_reserva || "",
-        f.distrito || "",
-        f.direccion || "",
-        labelTransporte(f.transporte),
-        paquetes,
-        cotizacion.toFixed(2),
-        descMonto.toFixed(2),
-        total.toFixed(2),
-        abonado.toFixed(2),
-        Math.max(0, saldo).toFixed(2),
-        labelEstado(f),
-        f.created_by_nombre || f.created_by || "",
-      ].map(esc).join(",");
-    });
-
-    const csv  = [headers.map(esc).join(","), ...rows].join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `reporte_${selectedMonthLabel.replace(/\s/g, "_")}.csv`;
+    const headers = ["# Ficha", "Cliente", "Celular", "Fecha Evento", "Fecha Venta", "Distrito", "Dirección", "Tipo de evento", "Paquetes", "Total", "Abonado", "Saldo", "Estado", "Registrado por"];
+    const rows = operacion.fichasPeriodo.map((f) => [
+      f.id, f.cliente_nombre || "", f.cliente_celular || "", fechaEventoDe(f), fechaVentaDe(f), f.distrito || "", f.direccion || "",
+      f.tipo_evento || "", (f.paquetes || []).map((p: any) => `${p.paquete_nombre || ""} x${p.cantidad || 1}`).join(" | "),
+      toMoneyNumber(f.total).toFixed(2), toMoneyNumber(f.total_abonado).toFixed(2), Math.max(0, toMoneyNumber(f.saldo)).toFixed(2),
+      estado(f), f.created_by_nombre || "",
+    ].map(esc).join(","));
+    const blob = new Blob(["﻿" + [headers.map(esc).join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `fichas_${etiquetaPeriodo.replace(/[\s/—]+/g, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const inputClass = "px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm";
+  const cmp = periodo.comparacion;
+
   return (
     <div className="p-4 sm:p-6 md:p-8 bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="mb-6 md:mb-8">
+      {/* Encabezado y filtro de período (aplica a todas las secciones salvo "Hoy") */}
+      <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <div>
-            <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-2">Reportes</h1>
-            <p className="text-gray-600 dark:text-gray-400">Análisis detallado de ventas y operaciones</p>
+            <h1 className="text-2xl md:text-3xl text-gray-900 dark:text-white mb-1">Reportes</h1>
+            <p className="text-gray-600 dark:text-gray-400">Resumen del día y análisis de ventas, cobranza y operación</p>
           </div>
           <button
             onClick={exportCSV}
-            disabled={monthFichasDetalle.length === 0}
-            className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={operacion.fichasPeriodo.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-[#EF8022] text-white rounded-lg hover:bg-[#d9711c] transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Download className="w-4 h-4" />
-            Exportar CSV
+            <Download className="w-4 h-4" /> Exportar CSV
           </button>
         </div>
-
-        {/* Controles de filtro */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Tabs de modo */}
-          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
-            {(["month", "day", "range"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setFilterMode(mode)}
-                className={`px-4 py-2 transition-colors ${
-                  filterMode === mode
-                    ? "bg-[#EF8022] text-white"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                }`}
-              >
-                {mode === "month" ? "Mensual" : mode === "day" ? "Diario" : "Por rango"}
-              </button>
-            ))}
-          </div>
-
-          {/* Inputs según modo */}
-          {filterMode === "month" && (
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm"
-            >
-              {availableMonths.map((month) => (
-                <option key={month} value={month}>{month}</option>
-              ))}
-            </select>
-          )}
-
-          {filterMode === "day" && (
-            <input
-              type="date"
-              value={filterDay}
-              onChange={(e) => setFilterDay(e.target.value)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm"
-            />
-          )}
-
-          {filterMode === "range" && (
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm"
-              />
-              <span className="text-gray-400">—</span>
-              <input
-                type="date"
-                value={filterTo}
-                min={filterFrom}
-                onChange={(e) => setFilterTo(e.target.value)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#EF8022] focus:border-transparent text-sm"
-              />
-            </div>
-          )}
-
-          {loadingDetails && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
-          <span className="text-xs text-gray-400 dark:text-gray-500">{monthFichas.length} ficha{monthFichas.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        {detallesError && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{detallesError}</span>
+        {errorCarga && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>{errorCarga}</span>
           </div>
         )}
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg">
-                <Target className="w-6 h-6 text-[#1F3C8B] dark:text-blue-400" />
-              </div>
-              <div>
-                <h3 className="text-gray-900 dark:text-white">Cuota mensual</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {mesCuota ? nombreMes(mesCuota) : "—"} · por fecha de venta
-                </p>
-              </div>
+      {/* ══ HOY Y PRÓXIMOS DÍAS ══ */}
+      <Seccion titulo="Hoy y próximos días" criterio="Fecha del evento · no depende del período" icono={<CalendarClock className="w-5 h-5 text-[#EF8022]" />}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Tile label="Eventos hoy" valor={entero(hoyYProximos.hoyLista.length)} />
+          <Tile label="Eventos mañana" valor={entero(hoyYProximos.mananaLista.length)} />
+          <Tile label="Sin chofer asignado" valor={entero(hoyYProximos.sinAsignar)} detalle={`de ${plural(hoyYProximos.totalProximos, "evento", "eventos")} en los próximos 7 días`} />
+          <Tile label="Por cobrar antes del evento" valor={soles(hoyYProximos.saldoProximos)} detalle={`${plural(hoyYProximos.conSaldo, "ficha", "fichas")} con saldo en los próximos 7 días`} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[{ titulo: "Hoy", lista: hoyYProximos.hoyLista }, { titulo: "Mañana", lista: hoyYProximos.mananaLista }].map(({ titulo, lista }) => (
+            <div key={titulo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+              <h3 className="text-gray-900 dark:text-white mb-3">{titulo}</h3>
+              {lista.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">Sin eventos</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                        <th className="py-2 pr-2 font-normal">Hora</th>
+                        <th className="py-2 px-2 font-normal">Cliente</th>
+                        <th className="py-2 px-2 font-normal">Distrito</th>
+                        <th className="py-2 px-2 font-normal">Chofer</th>
+                        <th className="py-2 pl-2 font-normal text-right">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lista.map((f) => (
+                        <tr key={f.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                          <td className="py-1.5 pr-2 text-gray-800 dark:text-gray-200 whitespace-nowrap">{horaCorta(f.hora_entrega)}</td>
+                          <td className="py-1.5 px-2 text-gray-800 dark:text-gray-200">{f.cliente_nombre}<span className="text-xs text-gray-400"> · #{f.id}</span></td>
+                          <td className="py-1.5 px-2 text-gray-600 dark:text-gray-300">{f.distrito || "—"}</td>
+                          <td className="py-1.5 px-2">
+                            {f.asignada
+                              ? <span className="text-xs text-green-700 dark:text-green-400">Asignado</span>
+                              : <span className="inline-flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><Truck className="w-3.5 h-3.5" />Sin asignar</span>}
+                          </td>
+                          <td className={`py-1.5 pl-2 text-right tabular-nums ${f.saldoNum > 0.005 ? "text-gray-900 dark:text-white" : "text-gray-400"}`}>
+                            {f.saldoNum > 0.005 ? soles(f.saldoNum) : "Pagado"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-            {esAdmin && !editandoCuota && mesCuota && (
-              <button
-                onClick={() => { setCuotaInput(cuota.monto ? String(cuota.monto) : ""); setCuotaError(""); setEditandoCuota(true); }}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 whitespace-nowrap"
-              >
-                <Pencil className="w-3.5 h-3.5" /> {cuota.monto && !cuota.heredada ? "Editar cuota" : "Asignar cuota"}
-              </button>
+          ))}
+        </div>
+      </Seccion>
+
+      {/* Filtro de período: una sola fila para todas las secciones de análisis */}
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 py-3 mb-6 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-y border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
+        <span className="text-sm text-gray-600 dark:text-gray-400">Período:</span>
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-sm">
+          {(["month", "day", "range"] as const).map((m) => (
+            <button key={m} onClick={() => setModo(m)}
+              className={`px-4 py-2 transition-colors ${modo === m ? "bg-[#EF8022] text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"}`}>
+              {m === "month" ? "Mensual" : m === "day" ? "Diario" : "Por rango"}
+            </button>
+          ))}
+        </div>
+        {modo === "month" && (
+          <select value={mesSel} onChange={(e) => setMesSel(e.target.value)} className={inputClass}>
+            {mesesDisponibles.map((m) => <option key={m} value={m}>{nombreMes(m)}</option>)}
+          </select>
+        )}
+        {modo === "day" && <input type="date" value={diaSel} onChange={(e) => e.target.value && setDiaSel(e.target.value)} className={inputClass} />}
+        {modo === "range" && (
+          <div className="flex items-center gap-2">
+            <input type="date" value={desdeSel} onChange={(e) => e.target.value && setDesdeSel(e.target.value)} className={inputClass} />
+            <span className="text-gray-400">—</span>
+            <input type="date" value={hastaSel} min={desdeSel} onChange={(e) => e.target.value && setHastaSel(e.target.value)} className={inputClass} />
+          </div>
+        )}
+        {cargando && <Loader2 className="w-5 h-5 text-[#EF8022] animate-spin shrink-0" />}
+        <span className="text-xs text-gray-500 dark:text-gray-400">Comparado con el {cmp}</span>
+      </div>
+
+      {/* ══ VENTAS ══ */}
+      <Seccion titulo="Ventas" criterio="Según la fecha en que se vendió la ficha · total cotizado, no lo cobrado" icono={<Target className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" />}>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+          {/* Cuota mensual */}
+          <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div>
+                <h3 className="text-gray-900 dark:text-white">Cuota de {nombreMes(mesCuota)}</h3>
+                {modo !== "month" && <p className="text-xs text-gray-500 dark:text-gray-400">Mes completo del período elegido</p>}
+              </div>
+              {esAdmin && !editandoCuota && (
+                <button
+                  onClick={() => { setCuotaInput(cuota.monto ? String(cuota.monto) : ""); setCuotaError(""); setEditandoCuota(true); }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 whitespace-nowrap"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> {cuota.monto && !cuota.heredada ? "Editar cuota" : "Asignar cuota"}
+                </button>
+              )}
+            </div>
+            {editandoCuota && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Cuota de {nombreMes(mesCuota)}: S/</span>
+                <input type="number" min={1} step="0.01" autoFocus value={cuotaInput}
+                  onChange={(e) => setCuotaInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") guardarCuota(); if (e.key === "Escape") setEditandoCuota(false); }}
+                  className="w-36 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]" />
+                <button onClick={guardarCuota} disabled={guardandoCuota} className="text-sm px-3 py-1.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] disabled:opacity-60">
+                  {guardandoCuota ? "Guardando..." : "Guardar"}
+                </button>
+                <button onClick={() => setEditandoCuota(false)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Cancelar</button>
+              </div>
+            )}
+            {cuotaError && <p className="text-xs text-red-600 dark:text-red-400 mb-2">{cuotaError}</p>}
+            {cuota.monto ? (
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                <CuotaGauge porcentaje={avanceCuota} />
+                <div className="flex-1 w-full space-y-1.5">
+                  <p className="text-4xl font-semibold" style={{ color: colorDeAvance(avanceCuota) }}>{avanceCuota.toFixed(1)}%</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Vendido <span className="text-gray-900 dark:text-white">{soles(ventasMesCuota)}</span> de {soles(cuota.monto)}
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {ventasMesCuota >= cuota.monto ? `Cuota superada por ${soles(ventasMesCuota - cuota.monto)}` : `Faltan ${soles(cuota.monto - ventasMesCuota)}`}
+                  </p>
+                  {cuota.heredada && cuota.mes_origen && <p className="text-xs text-gray-400 dark:text-gray-500">Usa la cuota de {nombreMes(cuota.mes_origen)}</p>}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">
+                {esAdmin ? "Aún no hay cuota asignada para este mes." : "Aún no hay cuota asignada para este mes. Pídele a un administrador que la configure."}
+                {" "}Vendido en el mes: {soles(ventasMesCuota)}
+              </p>
             )}
           </div>
+          <div className="grid grid-cols-2 lg:col-span-2 gap-4">
+            <Tile label="Vendido" valor={soles(ventas.vendido)} delta={variacion(ventas.vendido, ventas.vendidoPrev)} comparacion={cmp} />
+            <Tile label="Fichas vendidas" valor={entero(ventas.cantidad)} delta={variacion(ventas.cantidad, ventas.cantidadPrev)} comparacion={cmp} />
+            <Tile label="Ticket promedio" valor={soles(ventas.ticket)} delta={variacion(ventas.ticket, ventas.ticketPrev)} comparacion={cmp} />
+            <Tile label="Descuentos otorgados" valor={soles(ventas.descuentos)}
+              detalle={`${plural(ventas.fichasConDescuento, "ficha", "fichas")} · ${ventas.proporcionDescuentos.toLocaleString("es-PE", { maximumFractionDigits: 1 })}% del valor de lista`} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <ChartCard className="lg:col-span-2" titulo={ventas.porMes ? "Ventas por mes" : "Ventas por día"} descripcion={etiquetaPeriodo}
+            filas={ventas.serie.filter((s) => s.valor > 0)} vacio="No hubo ventas en el período"
+            columnas={[{ titulo: ventas.porMes ? "Mes" : "Día", valor: (f) => (ventas.porMes ? nombreMes(f.clave) : f.clave.split("-").reverse().join("/")) }, { titulo: "Vendido", valor: (f) => soles(f.valor), derecha: true }]}>
+            <BarrasVerticales data={ventas.serie} formato={soles} nombre="Vendido" />
+          </ChartCard>
+          <ChartCard titulo="Por tipo de evento" filas={ventas.porTipoEvento} vacio="Sin ventas en el período"
+            columnas={[{ titulo: "Tipo", valor: (f) => f.etiqueta }, { titulo: "Vendido", valor: (f) => soles(f.valor), derecha: true }]}>
+            <BarrasHorizontales data={ventas.porTipoEvento} formato={soles} nombre="Vendido" />
+          </ChartCard>
+        </div>
+      </Seccion>
 
-          {editandoCuota && (
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Cuota de {nombreMes(mesCuota)}: S/</span>
-              <input
-                type="number"
-                min={1}
-                step="0.01"
-                autoFocus
-                value={cuotaInput}
-                onChange={(e) => setCuotaInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") guardarCuota(); if (e.key === "Escape") setEditandoCuota(false); }}
-                className="w-36 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
-              />
-              <button onClick={guardarCuota} disabled={guardandoCuota}
-                className="text-sm px-3 py-1.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] disabled:opacity-60">
-                {guardandoCuota ? "Guardando..." : "Guardar"}
-              </button>
-              <button onClick={() => setEditandoCuota(false)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">
-                Cancelar
-              </button>
-            </div>
+      {/* ══ COBRANZA ══ */}
+      <Seccion titulo="Cobranza" criterio="Según la fecha de cada pago · el saldo pendiente es a hoy" icono={<Wallet className="w-5 h-5 text-green-600 dark:text-green-400" />}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Tile label="Cobrado" valor={soles(cobranza.cobrado)} delta={variacion(cobranza.cobrado, cobranza.cobradoPrev)} comparacion={cmp} detalle={`${plural(cobranza.pagos, "pago", "pagos")} en el período`} />
+          <Tile label="Saldo por cobrar (hoy)" valor={soles(cobranza.saldoTotal)} detalle="Todas las fichas con saldo" />
+          <Tile label="De eventos que ya pasaron" valor={soles(cobranza.tramos[0].saldo)} detalle={plural(cobranza.tramos[0].fichas, "ficha", "fichas")} />
+          <Tile label="De eventos en 7 días" valor={soles(cobranza.tramos[1].saldo)} detalle={plural(cobranza.tramos[1].fichas, "ficha", "fichas")} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ChartCard titulo="Cobrado por medio de pago" descripcion={etiquetaPeriodo} filas={cobranza.porMedio} vacio="No hubo pagos en el período"
+            columnas={[{ titulo: "Medio", valor: (f) => f.etiqueta }, { titulo: "Cobrado", valor: (f) => soles(f.valor), derecha: true }]}>
+            <BarrasHorizontales data={cobranza.porMedio} formato={soles} nombre="Cobrado" />
+          </ChartCard>
+          <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+            <h3 className="text-gray-900 dark:text-white">Saldos de eventos que ya pasaron</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">Los más altos primero</p>
+            {cobranza.vencidas.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 py-10 text-center">No hay saldos de eventos pasados</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th className="py-2 pr-2 font-normal">Ficha</th>
+                    <th className="py-2 px-2 font-normal">Evento</th>
+                    <th className="py-2 pl-2 font-normal text-right">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cobranza.vencidas.map(({ f, saldo, evento }) => (
+                    <tr key={f.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                      <td className="py-1.5 pr-2 text-gray-800 dark:text-gray-200">{f.cliente_nombre}<span className="text-xs text-gray-400"> · #{f.id}</span></td>
+                      <td className="py-1.5 px-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{evento.split("-").reverse().join("/")}</td>
+                      <td className="py-1.5 pl-2 text-right tabular-nums text-gray-900 dark:text-white">{soles(saldo)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </Seccion>
+
+      {/* ══ OPERACIÓN ══ */}
+      <Seccion titulo="Operación" criterio="Según la fecha del evento" icono={<Truck className="w-5 h-5 text-purple-600 dark:text-purple-400" />}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Tile label="Eventos" valor={entero(operacion.eventos)} delta={variacion(operacion.eventos, operacion.eventosPrev)} comparacion={cmp} />
+          {brand === "donofrio" && (
+            <Tile label="Unidades de helado" valor={entero(operacion.unidadesHelado)} detalle={`${plural(operacion.helados.length, "ficha", "fichas")} con helados`} />
           )}
-          {cuotaError && <p className="text-xs text-red-600 dark:text-red-400 mb-2">{cuotaError}</p>}
-
-          {cuota.monto ? (
-            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-              <CuotaGauge porcentaje={avanceCuota} />
-              <div className="flex-1 w-full space-y-1.5">
-                <p className="text-4xl font-semibold" style={{ color: colorDeAvance(avanceCuota) }}>{avanceCuota.toFixed(1)}%</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Vendido <span className="text-gray-900 dark:text-white">S/ {ventasMesCuota.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  {" "}de S/ {cuota.monto.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {ventasMesCuota >= cuota.monto
-                    ? `Cuota superada por S/ ${(ventasMesCuota - cuota.monto).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : `Faltan S/ ${(cuota.monto - ventasMesCuota).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                </p>
-                {cuota.heredada && cuota.mes_origen && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">Usa la cuota de {nombreMes(cuota.mes_origen)}</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">
-              {esAdmin ? "Aún no hay cuota asignada para este mes." : "Aún no hay cuota asignada para este mes. Pídele a un administrador que la configure."}
-              {" "}Vendido en el mes: S/ {ventasMesCuota.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
+          <Tile label="Día con más eventos" valor={operacion.eventos ? [...operacion.porDiaSemana].sort((a, b) => b.valor - a.valor)[0].etiqueta : "—"} />
+          <Tile label="Distrito principal" valor={operacion.distritos[0]?.etiqueta ?? "—"} detalle={operacion.distritos[0] ? plural(operacion.distritos[0].valor, "evento", "eventos") : undefined} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <ChartCard titulo="Eventos por día de la semana" filas={operacion.eventos ? operacion.porDiaSemana : []} vacio="Sin eventos en el período"
+            columnas={[{ titulo: "Día", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
+            <BarrasVerticales data={operacion.porDiaSemana} formato={entero} nombre="Eventos" />
+          </ChartCard>
+          <ChartCard titulo="Eventos por hora de entrega" filas={operacion.porHora} vacio="Sin eventos en el período"
+            columnas={[{ titulo: "Hora", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
+            <BarrasVerticales data={operacion.porHora} formato={entero} nombre="Eventos" />
+          </ChartCard>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <ChartCard titulo="Distritos" filas={operacion.distritos} vacio="Sin eventos en el período"
+            columnas={[{ titulo: "Distrito", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
+            <BarrasHorizontales data={operacion.distritos} formato={entero} nombre="Eventos" />
+          </ChartCard>
+          <ChartCard titulo="Paquetes más pedidos" filas={operacion.paquetes} vacio="Sin paquetes en el período"
+            columnas={[{ titulo: "Paquete", valor: (f) => f.etiqueta }, { titulo: "Cantidad", valor: (f) => entero(f.valor), derecha: true }]}>
+            <BarrasHorizontales data={operacion.paquetes} formato={entero} nombre="Cantidad" />
+          </ChartCard>
+          {/* Las tarjetas de inflables y carritos solo aparecen si hubo alguno en el período */}
+          {operacion.inflables.length > 0 && (
+            <ChartCard titulo="Inflables más pedidos" filas={operacion.inflables} vacio="Sin inflables en el período"
+              columnas={[{ titulo: "Inflable", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
+              <BarrasHorizontales data={operacion.inflables} formato={entero} nombre="Eventos" />
+            </ChartCard>
           )}
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start justify-between mb-4">
-            <div className="bg-[#EF8022]/10 dark:bg-[#EF8022]/20 p-3 rounded-lg">
-              <Percent className="w-6 h-6 text-[#EF8022]" />
-            </div>
-            <span className="text-xs text-[#EF8022] bg-orange-50 dark:bg-[#EF8022]/10 px-2 py-1 rounded-full">
-              {kpiData.indiceCobranza.toFixed(1)}%
-            </span>
-          </div>
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Índice de Cobranza</h3>
-          <p className="text-3xl text-gray-900 dark:text-white mb-1">{kpiData.indiceCobranza.toFixed(1)}%</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Por cobrar: S/ {kpiData.montoPorCobrar.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start justify-between mb-4">
-            <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            </div>
-            <span className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-full">
-              Diario
-            </span>
-          </div>
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Promedio Diario</h3>
-          <p className="text-3xl text-gray-900 dark:text-white mb-1">S/ {kpiData.promedioDiario.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Ventas por día</p>
-        </div>
-      </div>
-
-      {/* ══ REPORTE FINANCIERO ══ */}
-      <div className="bg-gradient-to-r from-[#1F3C8B]/5 to-[#EF8022]/5 dark:from-[#1F3C8B]/10 dark:to-[#EF8022]/10 border border-[#1F3C8B]/20 dark:border-[#1F3C8B]/30 rounded-xl p-6 mb-8">
-        <h2 className="text-lg text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-          <Banknote className="w-5 h-5 text-[#1F3C8B] dark:text-blue-400" /> Reporte Financiero
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-          Diferencia entre monto reservado y dinero real cobrado en el mes
-        </p>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowUpRight className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" />
-              <span className="text-xs text-gray-500 dark:text-gray-400">Venta Total</span>
-            </div>
-            <p className="text-2xl text-gray-900 dark:text-white">S/ {financialMonthly.ventaTotal.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-            <p className="text-xs text-gray-400 mt-1">Monto total cotizado/reservado</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 mb-2">
-              <Receipt className="w-4 h-4 text-green-500" />
-              <span className="text-xs text-gray-500 dark:text-gray-400">Ingreso Neto</span>
-            </div>
-            <p className="text-2xl text-green-600 dark:text-green-400">S/ {financialMonthly.ingresoNeto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-            <p className="text-xs text-gray-400 mt-1">Dinero real cobrado este mes</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-red-200 dark:border-red-800">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowDownRight className="w-4 h-4 text-red-500" />
-              <span className="text-xs text-gray-500 dark:text-gray-400">Saldo Pendiente</span>
-            </div>
-            <p className="text-2xl text-red-500">S/ {financialMonthly.saldoPendiente.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-            <p className="text-xs text-gray-400 mt-1">Por cobrar de fichas del mes</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-2">
-              <CreditCard className="w-4 h-4 text-[#EF8022]" />
-              <span className="text-xs text-gray-500 dark:text-gray-400">Estado Fichas</span>
-            </div>
-            <div className="flex items-center gap-3 mt-1">
-              <div className="text-center"><p className="text-lg text-green-600 dark:text-green-400">{financialMonthly.fichasPagadas}</p><p className="text-[10px] text-gray-400">Pagadas</p></div>
-              <div className="text-center"><p className="text-lg text-[#EF8022]">{financialMonthly.fichasParciales}</p><p className="text-[10px] text-gray-400">Parcial</p></div>
-              <div className="text-center"><p className="text-lg text-red-500">{financialMonthly.fichasPendientes}</p><p className="text-[10px] text-gray-400">Pend.</p></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-lg border border-gray-200 dark:border-gray-700">
-            <h4 className="text-sm text-gray-900 dark:text-white mb-4">Venta Total vs Ingreso Neto</h4>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={ingresoVsVentaPorSemana}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="semana" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                <Legend />
-                <Bar dataKey="ventaTotal" fill={COLORS.primary} name="Venta Total" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="ingresoNeto" fill={COLORS.success} name="Ingreso Neto" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-lg border border-gray-200 dark:border-gray-700">
-            <h4 className="text-sm text-gray-900 dark:text-white mb-4">Flujo de Abonos Acumulado</h4>
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={flujoAbonos}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="fecha" stroke="#6b7280" />
-                <YAxis yAxisId="left" stroke="#6b7280" />
-                <YAxis yAxisId="right" orientation="right" stroke="#6b7280" />
-                <Tooltip formatter={(value: number, name: string) => [`S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`, name === "acumulado" ? "Acumulado" : "Abonos"]} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                <Legend />
-                <Bar yAxisId="left" dataKey="abonos" fill={COLORS.secondary} name="Abonos del Día" radius={[6, 6, 0, 0]} />
-                <Area yAxisId="right" type="monotone" dataKey="acumulado" fill={COLORS.success} fillOpacity={0.15} stroke={COLORS.success} strokeWidth={2} name="Acumulado" />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="mt-6 bg-white dark:bg-gray-800 p-5 rounded-lg border border-gray-200 dark:border-gray-700">
-          <h4 className="text-sm text-gray-900 dark:text-white mb-4">Abonos por Medio de Pago</h4>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {abonosPorMedio.map((item, i) => {
-              const colors = [COLORS.primary, COLORS.secondary, COLORS.success, COLORS.gray];
-              const totalAbonos = abonosPorMedio.reduce((s, a) => s + a.monto, 0);
-              const pct = totalAbonos > 0 ? ((item.monto / totalAbonos) * 100).toFixed(1) : "0";
-              return (
-                <div key={item.medio} className="relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{item.medio}</span>
-                    </div>
-                    <span className="text-xs text-gray-400">{pct}%</span>
-                  </div>
-                  <p className="text-lg text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
-                  <p className="text-xs text-gray-400">{item.cantidad} operaciones</p>
-                  <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: colors[i % colors.length] }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 1: Ventas por Día de Semana + Ventas por Hora */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Ventas por Día de Semana</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={ventasPorDiaSemana}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis dataKey="dia" stroke="#6b7280" />
-              <YAxis yAxisId="left" stroke="#6b7280" />
-              <YAxis yAxisId="right" orientation="right" stroke="#6b7280" />
-              <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-              <Legend />
-              <Bar yAxisId="left" dataKey="monto" fill={COLORS.primary} name="Monto (S/)" radius={[8, 8, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="cantidad" stroke={COLORS.secondary} strokeWidth={3} name="N° Ventas" dot={{ fill: COLORS.secondary, r: 5 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Distribución por Hora de Servicio</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={ventasPorHora}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis dataKey="hora" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-              <Bar dataKey="servicios" fill={COLORS.info} name="Servicios" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Row 2: Distritos Top + Ventas por Fecha */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Distritos con Más Servicios</h3>
-          <div className="space-y-3">
-            {distritoTop.map((item, index) => (
-              <div key={item.distrito} className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-[#1F3C8B] to-[#EF8022] text-white text-sm font-semibold">
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-900 dark:text-white">{item.distrito}</span>
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{item.servicios}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-[#1F3C8B] to-[#EF8022] h-2 rounded-full transition-all"
-                      style={{ width: `${(item.servicios / (distritoTop[0]?.servicios || 1)) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Ventas Diarias del Mes</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={ventasPorFecha}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis dataKey="fecha" stroke="#6b7280" />
-              <YAxis yAxisId="left" stroke="#6b7280" />
-              <YAxis yAxisId="right" orientation="right" stroke="#6b7280" />
-              <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-              <Legend />
-              <Bar yAxisId="left" dataKey="monto" fill={COLORS.primary} name="Monto (S/)" radius={[8, 8, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="servicios" stroke={COLORS.secondary} strokeWidth={3} name="N° Servicios" dot={{ fill: COLORS.secondary, r: 4 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Row 3: Paquetes por Tipo + Medios de Pago */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Ventas por Servicio y Tipo de Evento</h3>
-          {ventasPorServicio.data.length === 0 ? (
-            <div className="flex h-[350px] items-center justify-center text-sm text-gray-400 dark:text-gray-500">
-              Sin ventas registradas en el período
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={ventasPorServicio.data} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-                <XAxis type="number" stroke="#6b7280" />
-                <YAxis dataKey="servicio" type="category" stroke="#6b7280" width={140} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 0 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                <Legend />
-                {ventasPorServicio.tipos.map((tipo, index) => (
-                  <Bar
-                    key={tipo}
-                    dataKey={tipo}
-                    stackId="a"
-                    name={tipo}
-                    fill={[COLORS.primary, COLORS.secondary, COLORS.success, COLORS.warning, COLORS.info, COLORS.gray][index % 6]}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+          {operacion.carritos.length > 0 && (
+            <ChartCard titulo="Carritos más pedidos" filas={operacion.carritos} vacio="Sin carritos en el período"
+              columnas={[{ titulo: "Carrito", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
+              <BarrasHorizontales data={operacion.carritos} formato={entero} nombre="Eventos" />
+            </ChartCard>
           )}
         </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Distribución por Medio de Pago</h3>
-          <ResponsiveContainer width="100%" height={350}>
-            <PieChart>
-              <Pie data={mediosPago} cx="50%" cy="50%" labelLine={false} label={({ medio, porcentaje }) => `${medio} (${porcentaje}%)`} outerRadius={110} fill="#8884d8" dataKey="monto">
-                {mediosPago.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={[COLORS.primary, COLORS.secondary, COLORS.success, COLORS.gray, COLORS.warning][index % 5]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-4 space-y-2">
-            {mediosPago.map((item, index) => (
-              <div key={item.medio} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: [COLORS.primary, COLORS.secondary, COLORS.success, COLORS.gray, COLORS.warning][index % 5] }} />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">{item.medio}</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</span>
+        {brand === "donofrio" && (
+          <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+            <h3 className="text-gray-900 dark:text-white">Helados por ficha</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">Contenido de cada paquete según el catálogo, más los productos sueltos</p>
+            {operacion.helados.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center">Sin helados en el período</p>
+            ) : (
+              <div className="overflow-x-auto max-h-80">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                      <th className="py-2 pr-2 font-normal">Ficha</th>
+                      <th className="py-2 px-2 font-normal">Evento</th>
+                      <th className="py-2 px-2 font-normal text-right">En paquetes</th>
+                      <th className="py-2 px-2 font-normal text-right">Sueltos</th>
+                      <th className="py-2 pl-2 font-normal text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operacion.helados.map((h) => (
+                      <tr key={h.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                        <td className="py-1.5 pr-2 text-gray-800 dark:text-gray-200">{h.cliente}<span className="text-xs text-gray-400"> · #{h.id}</span></td>
+                        <td className="py-1.5 px-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{h.fecha.split("-").reverse().join("/")}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{entero(h.enPaquetes)}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{entero(h.sueltas)}</td>
+                        <td className="py-1.5 pl-2 text-right tabular-nums text-gray-900 dark:text-white">{entero(h.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 4: Canales de Adquisición + Estado de Clientes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Canales de Adquisición de Clientes</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={canalesAdquisicion} layout="horizontal">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-              <XAxis dataKey="canal" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip formatter={(value: number) => `${value} clientes`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-              <Bar dataKey="clientes" fill={COLORS.secondary} name="Clientes" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg text-gray-900 dark:text-white mb-6">Estado de Clientes</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <PieChart>
-              <Pie data={estadoClientes} cx="50%" cy="50%" labelLine={false} label={({ estado, cantidad }) => `${estado}: ${cantidad}`} outerRadius={100} innerRadius={60} fill="#8884d8" dataKey="cantidad">
-                {estadoClientes.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            {estadoClientes.map((item) => (
-              <div key={item.estado} className="text-center">
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">{item.cantidad}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">{item.estado}</div>
-                <div className="w-full h-2 rounded-full mt-2" style={{ backgroundColor: item.color }} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 5: Cantidad de Helados por Ficha */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
-          <h3 className="text-lg text-gray-900 dark:text-white">Cantidad de Helados por Ficha</h3>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Total: {heladosReporte.totalUnidades} unidades</span>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-[#EF8022] focus:border-transparent"
-            >
-              {availableMonths.map((month) => (
-                <option key={month} value={month}>{month}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="bg-[#1F3C8B]/5 dark:bg-[#1F3C8B]/10 border border-[#1F3C8B]/20 dark:border-[#1F3C8B]/30 rounded-lg p-4 mb-6">
-          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-            En <strong>{selectedMonthLabel}</strong> se generaron <strong>{heladosReporte.totalFichas} fichas</strong>.
-            En esas fichas se registraron <strong>{heladosReporte.totalPaquetes} paquetes</strong> y, en total,
-            se vendieron <strong>{heladosReporte.totalUnidades} helados</strong>.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={heladosReporte.detalle}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" className="dark:stroke-gray-700" />
-                <XAxis dataKey="ficha" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip formatter={(value: number) => `${value} unidades`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                <Bar dataKey="unidades" fill={COLORS.success} name="Unidades de helado" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4">
-            <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3">Desglose por ficha</h4>
-            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-              {heladosReporte.detalle.map((item) => (
-                <button
-                  key={item.ficha}
-                  type="button"
-                  onClick={() => setSelectedFichaHelados(item.ficha)}
-                  className={`w-full text-left rounded-md border px-3 py-2 transition-colors ${fichaDetalleSeleccionada?.ficha === item.ficha ? "border-[#EF8022] bg-[#EF8022]/10 dark:bg-[#EF8022]/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-900 dark:text-white">{item.ficha}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{item.cliente}</p>
-                    </div>
-                    <p className="text-sm text-green-600 dark:text-green-400">{item.unidades} u.</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {fichaDetalleSeleccionada && (
-          <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-            <h4 className="text-sm text-gray-900 dark:text-white mb-3">
-              Detalle completo de {fichaDetalleSeleccionada.ficha} - {fichaDetalleSeleccionada.cliente}
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Unidades por paquetes</p>
-                <p className="text-lg text-gray-900 dark:text-white">{fichaDetalleSeleccionada.unidadesPaquetes}</p>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Unidades sueltas</p>
-                <p className="text-lg text-gray-900 dark:text-white">{fichaDetalleSeleccionada.unidadesSueltas}</p>
-              </div>
-              <div className="rounded-md bg-white dark:bg-gray-800 border border-green-200 dark:border-green-700 p-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Total ficha</p>
-                <p className="text-lg text-green-600 dark:text-green-400">{fichaDetalleSeleccionada.unidades}</p>
-              </div>
-            </div>
-            <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Paquetes incluidos</p>
-              <div className="space-y-1.5">
-                {fichaDetalleSeleccionada.paquetesDetalle.map((p: { nombre: string; cantidad: number; unidades: number }, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">{p.nombre} x{p.cantidad}</span>
-                    <span className="text-gray-900 dark:text-white">{p.unidades} u.</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         )}
-      </div>
+      </Seccion>
 
-      {/* Alert de Descuentos */}
-      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 rounded-xl flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-400 mb-1">Descuentos Brindados</h4>
-          <p className="text-sm text-amber-800 dark:text-amber-300">
-            Se han otorgado <strong>{kpiData.numDescuentos} descuentos</strong> por un total de{" "}
-            <strong>S/ {kpiData.descuentoAcumulado.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</strong> (
-            {kpiData.proporcionDescuentos}% del total de ventas)
-          </p>
+      {/* ══ CLIENTES ══ */}
+      <Seccion titulo="Clientes" criterio="Altas y compras en el período" icono={<Users className="w-5 h-5 text-[#EF8022]" />}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-1 gap-4">
+            <Tile label="Clientes nuevos" valor={entero(clientesPeriodo.nuevos)} delta={variacion(clientesPeriodo.nuevos, clientesPeriodo.nuevosPrev)} comparacion={cmp} />
+            <Tile label="Clientes que compraron" valor={entero(clientesPeriodo.atendidos)}
+              detalle={clientesPeriodo.recurrentes === 1 ? "1 ya había comprado antes" : `${entero(clientesPeriodo.recurrentes)} ya habían comprado antes`} />
+          </div>
+          <ChartCard className="lg:col-span-2" titulo="Canal de los clientes nuevos" filas={clientesPeriodo.canales} vacio="No se registraron clientes nuevos en el período"
+            columnas={[{ titulo: "Canal", valor: (f) => f.etiqueta }, { titulo: "Clientes", valor: (f) => entero(f.valor), derecha: true }]}>
+            <BarrasHorizontales data={clientesPeriodo.canales} formato={entero} nombre="Clientes" />
+          </ChartCard>
         </div>
-      </div>
+      </Seccion>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from "react-router";
-import { Box, Package, LayoutDashboard, Users, Map, LogOut, FileText, Moon, Sun, BarChart3, Wind, ArrowLeftRight, Truck, Menu, Coffee, Receipt } from "lucide-react";
+import { Box, Package, Users, Map, LogOut, FileText, Moon, Sun, BarChart3, Wind, ArrowLeftRight, Truck, Menu, Coffee, Receipt } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useBrand } from "../contexts/BrandContext";
@@ -44,7 +44,6 @@ export function DashboardLayout() {
 
   // Menu items based on brand
   const allMenuItems = [
-    { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/clientes", label: "Clientes", icon: Users, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/productos", label: "Productos", icon: Package, brands: ["donofrio", "jugueton"] },
     { path: "/dashboard/inflables", label: "Inflables", icon: Wind, brands: ["jugueton"] },

@@ -4,7 +4,7 @@ import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTri
 import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
 import { apiRequest } from "../lib/api";
-import { obtenerFichasConDetalle, obtenerFichasLista } from "../lib/queries";
+import { invalidarAsignaciones, obtenerFichasConDetalle, obtenerFichasLista } from "../lib/queries";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { canManageResources } from "../lib/auth";
 
@@ -362,6 +362,8 @@ export function LogisticsPage() {
           fichas_ids: asignacionForm.fichasIds,
         }),
       });
+      // Reportes muestra qué fichas próximas no tienen chofer: debe ver la nueva asignación
+      void invalidarAsignaciones();
       setShowAddAsignacion(false);
       setAsignacionForm({ choferId: 0, vehiculoId: 0, fecha: getLocalDateString(), ruta: "", entregas: 0, marcaEntregas: [], fichasIds: [] });
       setFichasSearch("");

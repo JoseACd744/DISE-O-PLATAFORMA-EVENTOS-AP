@@ -1,9 +1,8 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { LoginPage } from "./pages/LoginPage";
 import { BrandSelectPage } from "./pages/BrandSelectPage";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import { DriverLayout } from "./layouts/DriverLayout";
-import { DashboardPage } from "./pages/DashboardPage";
 import { DriverHomePage } from "./pages/DriverHomePage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -35,8 +34,9 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       {
+        // El antiguo Dashboard se fusionó con Reportes: al entrar se va directo a Fichas
         index: true,
-        Component: DashboardPage,
+        element: <Navigate to="/dashboard/fichas" replace />,
       },
       {
         path: "clientes",

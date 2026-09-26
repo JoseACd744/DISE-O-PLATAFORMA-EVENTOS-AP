@@ -26,6 +26,7 @@ export const claves = {
   fichasLista: (brand: string) => ["fichas", brand, "lista"] as const,
   clientes: (brand?: string) => ["clientes", brand ?? "todas"] as const,
   tarifasEnvio: ["tarifas-envio"] as const,
+  asignaciones: ["asignaciones"] as const,
 };
 
 type Opciones = { forzar?: boolean };
@@ -64,6 +65,19 @@ export function obtenerTarifasEnvio<T = any>() {
     queryFn: () => apiRequest<T[]>("/tarifas-envio"),
     staleTime: 10 * 60_000,
   });
+}
+
+// Asignaciones de chofer/vehículo (qué fichas ya tienen quién las lleve)
+export function obtenerAsignaciones<T = any>({ forzar }: Opciones = {}) {
+  return queryClient.fetchQuery({
+    queryKey: claves.asignaciones,
+    queryFn: () => apiRequest<T[]>("/logistics/asignaciones"),
+    ...(forzar ? { staleTime: 0 } : {}),
+  });
+}
+
+export function invalidarAsignaciones() {
+  return queryClient.invalidateQueries({ queryKey: claves.asignaciones });
 }
 
 // Tras crear, editar o borrar una ficha o un abono: todo lo derivado de fichas queda viejo
