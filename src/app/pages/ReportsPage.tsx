@@ -16,12 +16,14 @@ import {
   ComposedChart,
   Area,
 } from "recharts";
-import { TrendingUp, Target, DollarSign, Percent, AlertCircle, Receipt, CreditCard, Banknote, ArrowDownRight, ArrowUpRight, Loader2, Download } from "lucide-react";
+import { TrendingUp, Target, Pencil, Percent, AlertCircle, Receipt, CreditCard, Banknote, ArrowDownRight, ArrowUpRight, Loader2, Download } from "lucide-react";
 import { apiRequest } from "../lib/api";
 import { getLocalDateString, parseLocalDate } from "../lib/date";
 import { useProducts } from "../contexts/ProductsContext";
 import { construirLineasCotizacion, origenDesdeDetalleApi, toMoneyNumber } from "../lib/cotizacion";
 import { useBrand } from "../contexts/BrandContext";
+import { isAdminUser } from "../lib/auth";
+import { CuotaGauge, colorDeAvance } from "../components/CuotaGauge";
 
 const COLORS = {
   primary: "#1F3C8B",
@@ -42,12 +44,22 @@ const tooltipContentStyle = {
 const tooltipLabelStyle = { color: "#f9fafb", fontWeight: 600 };
 const tooltipItemStyle = { color: "#f3f4f6" };
 
-const OBJETIVO_MENSUAL = 10000;
+type CuotaMensual = { monto: number | null; heredada: boolean; mes_origen: string | null };
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const nombreMes = (mes: string) => {
+  const [year, month] = mes.split("-");
+  const idx = Number(month) - 1;
+  return idx >= 0 && idx <= 11 ? `${MESES[idx]} ${year}` : mes;
+};
 
 const monthKey = (value?: string) => {
   if (!value) return "";
   return value.slice(0, 7);
 };
+
+// Fecha en que se vendió la ficha (fecha de contacto/reserva): es la que cuenta para la cuota
+const fechaVentaDe = (f: any): string => (f?.fecha_reserva || f?.fecha || "").slice(0, 10);
 
 // Fecha del evento "YYYY-MM-DD". La API devuelve la fecha como medianoche UTC
 // ("2026-10-10T00:00:00.000Z"); hacer `new Date()` directo la corre al día anterior en Perú.
@@ -171,14 +183,66 @@ export function ReportsPage() {
     return { ventaTotal, ingresoNeto, saldoPendiente, fichasPagadas, fichasParciales, fichasPendientes };
   }, [monthFichas]);
 
+  // ── Cuota mensual de la marca (configurable por un admin) ───────
+  const esAdmin = isAdminUser();
+  const mesCuota = (filterMode === "month" ? selectedMonth : filterMode === "day" ? filterDay : filterFrom).slice(0, 7);
+  const [cuota, setCuota] = useState<CuotaMensual>({ monto: null, heredada: false, mes_origen: null });
+  const [cuotaError, setCuotaError] = useState("");
+  const [editandoCuota, setEditandoCuota] = useState(false);
+  const [cuotaInput, setCuotaInput] = useState("");
+  const [guardandoCuota, setGuardandoCuota] = useState(false);
+
+  useEffect(() => {
+    if (!brand || !mesCuota) return;
+    let cancelled = false;
+    setCuotaError("");
+    apiRequest<CuotaMensual>(`/cuotas?brand=${brand}&mes=${mesCuota}`)
+      .then((data) => { if (!cancelled) setCuota(data); })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("No se pudo cargar la cuota:", err);
+        setCuota({ monto: null, heredada: false, mes_origen: null });
+        setCuotaError("No se pudo cargar la cuota del mes.");
+      });
+    return () => { cancelled = true; };
+  }, [brand, mesCuota]);
+
+  // Lo vendido en el mes de la cuota: total cotizado (no lo cobrado) de las fichas vendidas ese mes
+  const ventasMesCuota = useMemo(
+    () => allFichas
+      .filter((f) => monthKey(fechaVentaDe(f)) === mesCuota)
+      .reduce((sum, f) => sum + Number(f.total || 0), 0),
+    [allFichas, mesCuota]
+  );
+  const avanceCuota = cuota.monto ? (ventasMesCuota / cuota.monto) * 100 : 0;
+
+  const guardarCuota = async () => {
+    const monto = Number(cuotaInput);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      setCuotaError("Ingresa un monto mayor a 0.");
+      return;
+    }
+    setGuardandoCuota(true);
+    setCuotaError("");
+    try {
+      const data = await apiRequest<CuotaMensual>("/cuotas", {
+        method: "PUT",
+        body: JSON.stringify({ brand, mes: mesCuota, monto }),
+      });
+      setCuota(data);
+      setEditandoCuota(false);
+    } catch (err) {
+      setCuotaError(err instanceof Error ? err.message : "No se pudo guardar la cuota.");
+    } finally {
+      setGuardandoCuota(false);
+    }
+  };
+
   const selectedMonthLabel = useMemo(() => {
     if (filterMode === "day") return filterDay || "hoy";
     if (filterMode === "range") return filterFrom && filterTo ? `${filterFrom} — ${filterTo}` : "rango seleccionado";
     if (!selectedMonth) return "mes actual";
-    const [year, month] = selectedMonth.split("-");
-    const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-    const idx = Number(month) - 1;
-    return idx >= 0 && idx <= 11 ? `${monthNames[idx]} ${year}` : selectedMonth;
+    return nombreMes(selectedMonth);
   }, [filterMode, filterDay, filterFrom, filterTo, selectedMonth]);
 
   // Descuentos registrados en el período: los de cada ítem (paquete, inflable, movilidad…)
@@ -208,7 +272,6 @@ export function ReportsPage() {
 
   const kpiData = useMemo(() => {
     const ventasActuales = financialMonthly.ventaTotal;
-    const nivelAvance = OBJETIVO_MENSUAL > 0 ? ventasActuales / OBJETIVO_MENSUAL : 0;
     const montoCobrado = financialMonthly.ingresoNeto;
     const montoPorCobrar = financialMonthly.saldoPendiente;
     const indiceCobranza = ventasActuales > 0 ? (montoCobrado / ventasActuales) * 100 : 0;
@@ -220,9 +283,7 @@ export function ReportsPage() {
       ? Number(((descuentoAcumulado / grossTotal) * 100).toFixed(1))
       : 0;
     return {
-      objetivo: OBJETIVO_MENSUAL,
       ventasActuales,
-      nivelAvance,
       promedioDiario,
       indiceCobranza,
       montoCobrado,
@@ -463,8 +524,6 @@ export function ReportsPage() {
     return heladosReporte.detalle.find((f) => f.ficha === selectedFichaHelados) ?? heladosReporte.detalle[0];
   }, [heladosReporte, selectedFichaHelados]);
 
-  const avancePercentage = (kpiData.ventasActuales / kpiData.objetivo) * 100;
-
   const exportCSV = () => {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const labelTransporte = (t?: string) =>
@@ -616,32 +675,78 @@ export function ReportsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start justify-between mb-4">
-            <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-lg">
-              <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
+        <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg">
+                <Target className="w-6 h-6 text-[#1F3C8B] dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-gray-900 dark:text-white">Cuota mensual</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {mesCuota ? nombreMes(mesCuota) : "—"} · por fecha de venta
+                </p>
+              </div>
             </div>
-            <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full">
-              {avancePercentage.toFixed(0)}%
-            </span>
+            {esAdmin && !editandoCuota && mesCuota && (
+              <button
+                onClick={() => { setCuotaInput(cuota.monto ? String(cuota.monto) : ""); setCuotaError(""); setEditandoCuota(true); }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 whitespace-nowrap"
+              >
+                <Pencil className="w-3.5 h-3.5" /> {cuota.monto && !cuota.heredada ? "Editar cuota" : "Asignar cuota"}
+              </button>
+            )}
           </div>
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Ventas Actuales</h3>
-          <p className="text-3xl text-gray-900 dark:text-white mb-1">S/ {kpiData.ventasActuales.toLocaleString("es-PE")}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Objetivo: S/ {kpiData.objetivo.toLocaleString("es-PE")}</p>
-        </div>
 
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="flex items-start justify-between mb-4">
-            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg">
-              <Target className="w-6 h-6 text-[#1F3C8B] dark:text-blue-400" />
+          {editandoCuota && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Cuota de {nombreMes(mesCuota)}: S/</span>
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                autoFocus
+                value={cuotaInput}
+                onChange={(e) => setCuotaInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") guardarCuota(); if (e.key === "Escape") setEditandoCuota(false); }}
+                className="w-36 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF8022]"
+              />
+              <button onClick={guardarCuota} disabled={guardandoCuota}
+                className="text-sm px-3 py-1.5 rounded-lg bg-[#EF8022] text-white hover:bg-[#d9711c] disabled:opacity-60">
+                {guardandoCuota ? "Guardando..." : "Guardar"}
+              </button>
+              <button onClick={() => setEditandoCuota(false)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+                Cancelar
+              </button>
             </div>
-            <span className="text-xs text-[#1F3C8B] dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full">
-              {kpiData.nivelAvance.toFixed(2)}x
-            </span>
-          </div>
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Nivel de Avance</h3>
-          <p className="text-3xl text-gray-900 dark:text-white mb-1">{kpiData.nivelAvance.toFixed(2)}x</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Meta cumplida</p>
+          )}
+          {cuotaError && <p className="text-xs text-red-600 dark:text-red-400 mb-2">{cuotaError}</p>}
+
+          {cuota.monto ? (
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+              <CuotaGauge porcentaje={avanceCuota} />
+              <div className="flex-1 w-full space-y-1.5">
+                <p className="text-4xl font-semibold" style={{ color: colorDeAvance(avanceCuota) }}>{avanceCuota.toFixed(1)}%</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Vendido <span className="text-gray-900 dark:text-white">S/ {ventasMesCuota.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  {" "}de S/ {cuota.monto.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {ventasMesCuota >= cuota.monto
+                    ? `Cuota superada por S/ ${(ventasMesCuota - cuota.monto).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `Faltan S/ ${(cuota.monto - ventasMesCuota).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                </p>
+                {cuota.heredada && cuota.mes_origen && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Usa la cuota de {nombreMes(cuota.mes_origen)}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">
+              {esAdmin ? "Aún no hay cuota asignada para este mes." : "Aún no hay cuota asignada para este mes. Pídele a un administrador que la configure."}
+              {" "}Vendido en el mes: S/ {ventasMesCuota.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          )}
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -655,7 +760,7 @@ export function ReportsPage() {
           </div>
           <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Índice de Cobranza</h3>
           <p className="text-3xl text-gray-900 dark:text-white mb-1">{kpiData.indiceCobranza.toFixed(1)}%</p>
-          <p className="text-xs text-gray-500 dark:text-gray-500">Por cobrar: S/ {kpiData.montoPorCobrar.toLocaleString("es-PE")}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">Por cobrar: S/ {kpiData.montoPorCobrar.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -668,7 +773,7 @@ export function ReportsPage() {
             </span>
           </div>
           <h3 className="text-gray-600 dark:text-gray-400 text-sm mb-1">Promedio Diario</h3>
-          <p className="text-3xl text-gray-900 dark:text-white mb-1">S/ {kpiData.promedioDiario.toLocaleString("es-PE")}</p>
+          <p className="text-3xl text-gray-900 dark:text-white mb-1">S/ {kpiData.promedioDiario.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
           <p className="text-xs text-gray-500 dark:text-gray-500">Ventas por día</p>
         </div>
       </div>
@@ -688,7 +793,7 @@ export function ReportsPage() {
               <ArrowUpRight className="w-4 h-4 text-[#1F3C8B] dark:text-blue-400" />
               <span className="text-xs text-gray-500 dark:text-gray-400">Venta Total</span>
             </div>
-            <p className="text-2xl text-gray-900 dark:text-white">S/ {financialMonthly.ventaTotal.toLocaleString("es-PE")}</p>
+            <p className="text-2xl text-gray-900 dark:text-white">S/ {financialMonthly.ventaTotal.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
             <p className="text-xs text-gray-400 mt-1">Monto total cotizado/reservado</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-green-200 dark:border-green-800">
@@ -696,7 +801,7 @@ export function ReportsPage() {
               <Receipt className="w-4 h-4 text-green-500" />
               <span className="text-xs text-gray-500 dark:text-gray-400">Ingreso Neto</span>
             </div>
-            <p className="text-2xl text-green-600 dark:text-green-400">S/ {financialMonthly.ingresoNeto.toLocaleString("es-PE")}</p>
+            <p className="text-2xl text-green-600 dark:text-green-400">S/ {financialMonthly.ingresoNeto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
             <p className="text-xs text-gray-400 mt-1">Dinero real cobrado este mes</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-red-200 dark:border-red-800">
@@ -704,7 +809,7 @@ export function ReportsPage() {
               <ArrowDownRight className="w-4 h-4 text-red-500" />
               <span className="text-xs text-gray-500 dark:text-gray-400">Saldo Pendiente</span>
             </div>
-            <p className="text-2xl text-red-500">S/ {financialMonthly.saldoPendiente.toLocaleString("es-PE")}</p>
+            <p className="text-2xl text-red-500">S/ {financialMonthly.saldoPendiente.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
             <p className="text-xs text-gray-400 mt-1">Por cobrar de fichas del mes</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -728,7 +833,7 @@ export function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="semana" stroke="#6b7280" />
                 <YAxis stroke="#6b7280" />
-                <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE")}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                 <Legend />
                 <Bar dataKey="ventaTotal" fill={COLORS.primary} name="Venta Total" radius={[8, 8, 0, 0]} />
                 <Bar dataKey="ingresoNeto" fill={COLORS.success} name="Ingreso Neto" radius={[8, 8, 0, 0]} />
@@ -744,7 +849,7 @@ export function ReportsPage() {
                 <XAxis dataKey="fecha" stroke="#6b7280" />
                 <YAxis yAxisId="left" stroke="#6b7280" />
                 <YAxis yAxisId="right" orientation="right" stroke="#6b7280" />
-                <Tooltip formatter={(value: number, name: string) => [`S/ ${value.toLocaleString("es-PE")}`, name === "acumulado" ? "Acumulado" : "Abonos"]} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                <Tooltip formatter={(value: number, name: string) => [`S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`, name === "acumulado" ? "Acumulado" : "Abonos"]} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                 <Legend />
                 <Bar yAxisId="left" dataKey="abonos" fill={COLORS.secondary} name="Abonos del Día" radius={[6, 6, 0, 0]} />
                 <Area yAxisId="right" type="monotone" dataKey="acumulado" fill={COLORS.success} fillOpacity={0.15} stroke={COLORS.success} strokeWidth={2} name="Acumulado" />
@@ -769,7 +874,7 @@ export function ReportsPage() {
                     </div>
                     <span className="text-xs text-gray-400">{pct}%</span>
                   </div>
-                  <p className="text-lg text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE")}</p>
+                  <p className="text-lg text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</p>
                   <p className="text-xs text-gray-400">{item.cantidad} operaciones</p>
                   <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                     <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: colors[i % colors.length] }} />
@@ -896,7 +1001,7 @@ export function ReportsPage() {
                   <Cell key={`cell-${index}`} fill={[COLORS.primary, COLORS.secondary, COLORS.success, COLORS.gray, COLORS.warning][index % 5]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE")}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+              <Tooltip formatter={(value: number) => `S/ ${value.toLocaleString("es-PE", { maximumFractionDigits: 2 })}`} contentStyle={tooltipContentStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-4 space-y-2">
@@ -906,7 +1011,7 @@ export function ReportsPage() {
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: [COLORS.primary, COLORS.secondary, COLORS.success, COLORS.gray, COLORS.warning][index % 5] }} />
                   <span className="text-sm text-gray-600 dark:text-gray-400">{item.medio}</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE")}</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">S/ {item.monto.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</span>
               </div>
             ))}
           </div>
@@ -1055,7 +1160,7 @@ export function ReportsPage() {
           <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-400 mb-1">Descuentos Brindados</h4>
           <p className="text-sm text-amber-800 dark:text-amber-300">
             Se han otorgado <strong>{kpiData.numDescuentos} descuentos</strong> por un total de{" "}
-            <strong>S/ {kpiData.descuentoAcumulado.toLocaleString("es-PE")}</strong> (
+            <strong>S/ {kpiData.descuentoAcumulado.toLocaleString("es-PE", { maximumFractionDigits: 2 })}</strong> (
             {kpiData.proporcionDescuentos}% del total de ventas)
           </p>
         </div>
