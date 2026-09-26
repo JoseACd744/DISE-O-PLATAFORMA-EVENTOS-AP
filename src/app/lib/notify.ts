@@ -50,6 +50,7 @@ const TRADUCCIONES: [RegExp, string | ((m: RegExpMatchArray) => string)][] = [
   [/Recurso \d+ not found/i, "Uno de los recursos ya no existe."],
   [/recursoNombre is required/i, "Falta el nombre de un recurso."],
   [/No file provided/i, "No se recibió ningún archivo."],
+  [/Tipo has (\d+) units/i, (m) => `Este tipo tiene ${m[1]} ${m[1] === "1" ? "unidad registrada" : "unidades registradas"}: solo se puede eliminar un tipo sin unidades.`],
   [/Only images or PDF files are allowed/i, "Solo se pueden subir imágenes (JPG, PNG, WEBP) o PDF."],
   [/File too large/i, "El archivo es demasiado grande (máximo 10 MB)."],
   [/Invalid (ficha|personal) id/i, "El registro no es válido."],

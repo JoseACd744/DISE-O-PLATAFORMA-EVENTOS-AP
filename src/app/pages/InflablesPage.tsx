@@ -787,6 +787,11 @@ export function InflablesPage() {
   const handleDeleteInflable = async (id: number) => {
     const inflable = inflables.find((item) => item.id === id);
     if (!inflable) return;
+    // Con unidades físicas no se puede borrar (el servidor también lo impide): se explica antes de intentar
+    if (inflable.cantidadUnidades > 0) {
+      notify.aviso(`«${inflable.nombre}» tiene ${inflable.cantidadUnidades} ${inflable.cantidadUnidades === 1 ? "unidad registrada" : "unidades registradas"}. Solo se puede eliminar un tipo sin unidades, para no perder su historial de reservas.`);
+      return;
+    }
     setDeleteTarget({ kind: "inflable", id, label: inflable.nombre });
   };
 
@@ -809,7 +814,7 @@ export function InflablesPage() {
         if (selectedType?.id === deleteTarget.id) setSelectedType(null);
       }
       setDeleteTarget(null);
-      notify.ok("Eliminado correctamente");
+      notify.ok(deleteTarget.kind === "inflable" ? `Tipo «${deleteTarget.label}» eliminado` : "Reserva eliminada");
       await loadData();
     } catch (err) {
       setDeleteError(mensajeDeError(err, "No se pudo eliminar el registro."));
@@ -1021,13 +1026,24 @@ export function InflablesPage() {
                       <div className="flex justify-between items-start gap-1">
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate" title={inflable.nombre}>{inflable.nombre}</h3>
                         {canManage && (
-                          <button
-                            onClick={e => { e.stopPropagation(); handleOpenEditInflable(inflable); }}
-                            className="p-1 rounded hover:bg-brand-navy/10 text-gray-400 hover:text-brand-navy dark:hover:text-blue-400 transition-colors shrink-0"
-                            title="Editar inflable"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); handleOpenEditInflable(inflable); }}
+                              className="p-1 rounded hover:bg-brand-navy/10 text-gray-400 hover:text-brand-navy dark:hover:text-blue-400 transition-colors"
+                              title="Editar inflable"
+                              aria-label={`Editar ${inflable.nombre}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleDeleteInflable(inflable.id); }}
+                              className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              title="Eliminar tipo de inflable"
+                              aria-label={`Eliminar ${inflable.nombre}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
 
