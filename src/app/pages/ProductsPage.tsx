@@ -151,7 +151,10 @@ function ProductSelector({
 
 export function ProductsPage() {
   const canManage = canManageResources();
-  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos" | "personal">("productos");
+  const [activeTab, setActiveTab] = useState<"productos" | "paquetes" | "carritos" | "recursos" | "personal">(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return tab === "paquetes" || tab === "carritos" || tab === "recursos" || tab === "personal" ? tab : "productos";
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [currentPage, setCurrentPage] = useState(1);

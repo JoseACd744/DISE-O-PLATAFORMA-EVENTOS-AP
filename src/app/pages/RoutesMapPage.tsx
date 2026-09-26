@@ -406,7 +406,7 @@ export function RoutesMapPage() {
   const defaultCenter: [number, number] = [-12.0464, -77.0428];
 
   return (
-    <div className="h-[calc(100dvh-61px)] lg:h-dvh flex flex-col lg:flex-row">
+    <div className="h-[calc(100%-61px)] lg:h-full flex flex-col lg:flex-row">
 
       {/* ── Sidebar ───────────────────────────────────── */}
       <div className="lg:w-96 bg-white dark:bg-gray-800 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden lg:h-full max-h-[45vh] lg:max-h-none">
