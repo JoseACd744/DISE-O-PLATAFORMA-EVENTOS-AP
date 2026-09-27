@@ -7,20 +7,27 @@ import { isAuthenticated, isDriverUser } from "../lib/auth";
  * Para publicar otro, cambia `id` (así se vuelve a mostrar a quien cerró el anterior) y `hasta`.
  * Pasada la fecha `hasta` deja de mostrarse solo, sin tener que volver a publicar.
  */
-const AVISO = {
-  id: "aviso-ti-2026-09-26-stock-recursos",
-  hasta: "2026-09-27T02:15:00Z", // 26/09 21:15 (Lima), unas 5 h después de publicarse
-  titulo: "Aviso de TI · Stock de recursos por regularizar",
+const AVISO: {
+  id: string;
+  hasta: string;
+  titulo: string;
+  mensaje: string;
+  /** Lista opcional que se despliega con "Ver detalle" */
+  detalle?: string[];
+  /** Enlace opcional (solo se muestra a quien ya inició sesión en el panel) */
+  enlace?: { href: string; texto: string };
+} = {
+  id: "aviso-ti-2026-09-27-clientes-direccion-opcional",
+  hasta: "2026-09-27T06:15:00Z", // 27/09 01:15 (Lima), unas 5 h después de publicarse
+  titulo: "Aviso de TI · Novedad en Clientes",
   mensaje:
-    "Algunos recursos estaban en 0 unidades y eso impedía guardar fichas. TI les cargó 10 unidades temporales para no frenar el trabajo: revisen el conteo real y corrijan el stock en Productos › Recursos.",
-  recursos: [
-    "Carrito Modelo Delgado CMD-15, CMD-17 y CMD-18",
-    "Carrito Modelo Clásico CMC-04",
-    "Carrito cerámica para pintar",
-    "Medias D'Onofrio",
-    "Lonchera térmica",
-    "Torito Pucará rojo, celeste y azul",
+    "La dirección y la ciudad de un cliente ya no son obligatorias: ahora puedes crear o editar un cliente solo con su nombre y teléfono.",
+  detalle: [
+    "Vale para Clientes y para \"+ Nuevo cliente\" dentro de una ficha.",
+    "Al editar, si dejas la dirección o la ciudad vacías, se borran.",
+    "En la lista de clientes, los que no tienen dirección muestran \"—\".",
   ],
+  enlace: { href: "/dashboard/clientes", texto: "Ir a Clientes" },
 };
 
 const CLAVE = `avisoCerrado:${AVISO.id}`;
@@ -57,20 +64,22 @@ export function AvisoTI() {
           <p>
             <span className="font-semibold">{AVISO.titulo}.</span> {AVISO.mensaje}
           </p>
-          {verLista && (
+          {verLista && AVISO.detalle && (
             <ul className="mt-1.5 list-disc pl-5 space-y-0.5">
-              {AVISO.recursos.map((r) => <li key={r}>{r}</li>)}
+              {AVISO.detalle.map((r) => <li key={r}>{r}</li>)}
             </ul>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-            <button type="button" onClick={() => setVerLista((v) => !v)} aria-expanded={verLista}
-              className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">
-              {verLista ? "Ocultar recursos" : "Ver recursos ajustados"}
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${verLista ? "rotate-180" : ""}`} aria-hidden="true" />
-            </button>
-            {mostrarEnlace && (
-              <a href="/dashboard/productos?tab=recursos" className="font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">
-                Ir a Recursos
+            {AVISO.detalle?.length ? (
+              <button type="button" onClick={() => setVerLista((v) => !v)} aria-expanded={verLista}
+                className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">
+                {verLista ? "Ocultar detalle" : "Ver detalle"}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${verLista ? "rotate-180" : ""}`} aria-hidden="true" />
+              </button>
+            ) : null}
+            {mostrarEnlace && AVISO.enlace && (
+              <a href={AVISO.enlace.href} className="font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">
+                {AVISO.enlace.texto}
               </a>
             )}
           </div>
