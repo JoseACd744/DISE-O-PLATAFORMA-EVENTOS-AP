@@ -185,12 +185,11 @@ export function ClientsPage() {
     loadClients();
   }, []);
 
-  const validarCliente = (c: { nombre: string; phone: string; address: string; city: string }) => {
+  // Dirección y ciudad son opcionales
+  const validarCliente = (c: { nombre: string; phone: string }) => {
     const faltan = [
       !c.nombre.trim() && "nombre",
       !c.phone.trim() && "teléfono",
-      !c.address.trim() && "dirección",
-      !c.city.trim() && "ciudad",
     ].filter(Boolean);
     return faltan.length ? `Completa los campos obligatorios: ${faltan.join(", ")}.` : "";
   };
@@ -471,8 +470,8 @@ export function ClientsPage() {
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                       <div>
-                        <p className="text-sm text-gray-900 dark:text-white">{client.address}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{client.city}</p>
+                        <p className="text-sm text-gray-900 dark:text-white">{client.address || "—"}</p>
+                        {client.city ? <p className="text-xs text-gray-500 dark:text-gray-400">{client.city}</p> : null}
                       </div>
                     </div>
                   </td>
@@ -659,7 +658,7 @@ export function ClientsPage() {
                 </div>
               </div>
               <div>
-                <label className={etiqueta}>Dirección *</label>
+                <label className={etiqueta}>Dirección</label>
                 <input
                   type="text"
                   value={newClient.address}
@@ -670,7 +669,7 @@ export function ClientsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={etiqueta}>Distrito / Ciudad *</label>
+                  <label className={etiqueta}>Distrito / Ciudad</label>
                   <input
                     type="text"
                     value={newClient.city}
@@ -821,7 +820,7 @@ export function ClientsPage() {
                 </div>
               </div>
               <div>
-                <label className={etiqueta}>Dirección *</label>
+                <label className={etiqueta}>Dirección</label>
                 <input
                   type="text"
                   value={editingClient.address}
@@ -831,7 +830,7 @@ export function ClientsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={etiqueta}>Distrito / Ciudad *</label>
+                  <label className={etiqueta}>Distrito / Ciudad</label>
                   <input
                     type="text"
                     value={editingClient.city}
