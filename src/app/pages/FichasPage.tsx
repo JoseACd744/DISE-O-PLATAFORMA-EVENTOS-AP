@@ -3042,6 +3042,7 @@ export function FichasPage() {
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
+          <DateRangePicker label="Fecha de Contacto del Cliente" selectedRange={contactDateRange} onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
           <DateRangePicker label="Fecha del Evento" selectedRange={dateRange}
             onRangeChange={(range) => {
               setDateRange(range);
@@ -3049,7 +3050,6 @@ export function FichasPage() {
               if (range?.from && (sortBy === "created_desc" || sortBy === "created_asc")) setSortBy("evento_asc");
             }}
             onClear={() => setDateRange(undefined)} />
-          <DateRangePicker label="Fecha de Contacto del Cliente" selectedRange={contactDateRange} onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
         </div>
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div className="flex-1 w-full lg:max-w-md">
@@ -3323,8 +3323,8 @@ export function FichasPage() {
               <div className="min-w-0">
                 <h3 className="text-xl sm:text-2xl text-gray-900 dark:text-white mb-2 break-words">{getFichaTitulo(selectedFicha)}</h3>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
@@ -3745,6 +3745,15 @@ export function FichasPage() {
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Evento</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
+                    <label className={etiqueta}>Fecha de Contacto del Cliente *</label>
+                    <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                    {formData.fecha_reserva && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {formatDiaSemana(formData.fecha_reserva)} {formatDate(formData.fecha_reserva)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
                     <label className={etiqueta}>Fecha del Evento *</label>
                     <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
                     {formData.fecha_evento && (
@@ -3754,15 +3763,11 @@ export function FichasPage() {
                       </p>
                     )}
                   </div>
-                  <div>
-                    <label className={etiqueta}>Fecha de Contacto del Cliente *</label>
-                    <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
-                    {formData.fecha_reserva && (
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {formatDiaSemana(formData.fecha_reserva)} {formatDate(formData.fecha_reserva)}
-                      </p>
-                    )}
-                  </div>
+                  {formData.fecha_evento && formData.fecha_reserva && formData.fecha_evento < formData.fecha_reserva && (
+                    <p className="md:col-span-2 -mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      La fecha del evento es anterior a la fecha de contacto. Revisa que estén bien.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -4398,6 +4403,7 @@ export function FichasPage() {
                             <option value="Yape">Yape</option>
                             <option value="Plin">Plin</option>
                             <option value="Efectivo">Efectivo</option>
+                            <option value="Link de Pago">Link de Pago</option>
                           </select>
                         </div>
                         <div>

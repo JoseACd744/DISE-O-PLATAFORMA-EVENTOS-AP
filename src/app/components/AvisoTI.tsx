@@ -17,17 +17,17 @@ const AVISO: {
   /** Enlace opcional (solo se muestra a quien ya inició sesión en el panel) */
   enlace?: { href: string; texto: string };
 } = {
-  id: "aviso-ti-2026-09-27-clientes-direccion-opcional",
-  hasta: "2026-09-27T06:15:00Z", // 27/09 01:15 (Lima), unas 5 h después de publicarse
-  titulo: "Aviso de TI · Novedad en Clientes",
+  id: "aviso-ti-2026-09-27-novedades-clientes-fichas",
+  hasta: "2026-09-27T06:27:00Z", // 27/09 01:27 (Lima), unas 5 h después de publicarse
+  titulo: "Aviso de TI · Novedades",
   mensaje:
-    "La dirección y la ciudad de un cliente ya no son obligatorias: ahora puedes crear o editar un cliente solo con su nombre y teléfono.",
+    "La dirección y la ciudad de un cliente ya no son obligatorias, el abono inicial de una ficha ya acepta \"Link de Pago\" y en la ficha la fecha de contacto va antes que la del evento.",
   detalle: [
-    "Vale para Clientes y para \"+ Nuevo cliente\" dentro de una ficha.",
-    "Al editar, si dejas la dirección o la ciudad vacías, se borran.",
-    "En la lista de clientes, los que no tienen dirección muestran \"—\".",
+    "Clientes: puedes crear o editar un cliente solo con su nombre y teléfono (también en \"+ Nuevo cliente\" dentro de una ficha). Al editar, si dejas la dirección o la ciudad vacías, se borran.",
+    "Fichas: al registrar el abono inicial ya aparece el medio de pago \"Link de Pago\".",
+    "Fichas: primero va la fecha de contacto del cliente y luego la fecha del evento (en el formulario, los filtros y el detalle). Si la fecha del evento es anterior a la de contacto, se muestra un aviso para revisarla.",
   ],
-  enlace: { href: "/dashboard/clientes", texto: "Ir a Clientes" },
+  enlace: { href: "/dashboard/fichas", texto: "Ir a Fichas" },
 };
 
 const CLAVE = `avisoCerrado:${AVISO.id}`;
