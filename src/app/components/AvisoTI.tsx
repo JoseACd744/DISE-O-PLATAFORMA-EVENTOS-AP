@@ -21,9 +21,9 @@ const AVISO: {
   hasta: "2026-09-29T22:30:00Z", // 29/09 17:30 (Lima), unas 5 h después de publicarse
   titulo: "Aviso de TI · Novedades",
   mensaje:
-    "En la ficha, al elegir un paquete que incluye inflables, ahora se marcan los inflables incluidos sin costo. También: dirección y ciudad del cliente opcionales, \"Link de Pago\" en el abono inicial y la fecha de contacto antes que la del evento.",
+    "En la ficha, al elegir un paquete que incluye inflables, ahora esos inflables se marcan solos y con precio S/ 0. También: dirección y ciudad del cliente opcionales, \"Link de Pago\" en el abono inicial y la fecha de contacto antes que la del evento.",
   detalle: [
-    "Fichas (Juguetón): si el paquete incluye inflables (por ejemplo un COMBO), aparece un aviso con cuántos incluye y esos inflables se muestran primero con «Incluido en … · S/ 0». Al marcarlos, el resumen los cobra en S/ 0; cualquier inflable adicional se cobra aparte.",
+    "Fichas (Juguetón): al elegir un paquete que incluye inflables (por ejemplo un COMBO), se marca sola una unidad libre de cada inflable incluido, con «Incluido en … · S/ 0». Puedes cambiarla por otra; si quitas el paquete, se desmarcan. Cualquier inflable adicional se cobra aparte.",
     "Clientes: puedes crear o editar un cliente solo con su nombre y teléfono (también en \"+ Nuevo cliente\" dentro de una ficha). Al editar, si dejas la dirección o la ciudad vacías, se borran.",
     "Fichas: al registrar el abono inicial ya aparece el medio de pago \"Link de Pago\".",
     "Fichas: primero va la fecha de contacto del cliente y luego la fecha del evento (en el formulario, los filtros y el detalle). Si la fecha del evento es anterior a la de contacto, se muestra un aviso para revisarla.",

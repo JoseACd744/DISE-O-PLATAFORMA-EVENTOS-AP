@@ -909,6 +909,8 @@ export function FichasPage() {
   const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
+  // Inflables que se marcaron solos por venir incluidos en un paquete
+  const autoInflablesRef = useRef<number[]>([]);
   const dateRefreshLockRef = useRef(false);
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
@@ -2427,22 +2429,58 @@ export function FichasPage() {
   const handleAddFormPaquete = () => {
     setFormData(prev => ({ ...prev, paquetes: [...prev.paquetes, { paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }] }));
   };
+  // Al cambiar los paquetes se marcan solos los inflables que incluyen (una unidad libre por cupo).
+  // Lo que marcó la persona se respeta; al quitar el paquete solo se desmarcan los que se marcaron solos.
+  const aplicarPaquetes = (paquetes: typeof formData.paquetes) => {
+    if (brand !== "jugueton") {
+      setFormData({ ...formData, paquetes });
+      return;
+    }
+    const auto = new Set(autoInflablesRef.current);
+    const manuales = formData.inflableIds.filter((id) => !auto.has(id));
+    const cupos = paquetes
+      .filter((p) => p.paqueteId > 0)
+      .flatMap((p) => {
+        const catalogo = contextPaquetes.find((item) => item.id === p.paqueteId);
+        const cantidadPaquete = Math.max(0, toMoneyNumber(p.cantidad));
+        return (catalogo?.inflablesIncluidos ?? []).map((slot) => ({ tipoIds: slot.tipoIds, restante: slot.cantidad * cantidadPaquete }));
+      })
+      .filter((c) => c.restante > 0);
+    // Los marcados a mano ocupan su cupo primero (misma regla que la cotización)
+    manuales.forEach((id) => {
+      const tipo = inflables.find((i) => i.id === id)?.tipoId;
+      const cupo = cupos.find((c) => c.restante > 0 && tipo !== undefined && c.tipoIds.includes(tipo));
+      if (cupo) cupo.restante -= 1;
+    });
+    const usados = new Set(manuales);
+    const libre = (i: (typeof inflables)[number]) =>
+      !usados.has(i.id) && i.estado !== "mantenimiento" &&
+      (!formData.fecha_evento || getDynamicInflableEstado(i.id, formData.fecha_evento) !== "Ocupado");
+    const elegidos: number[] = [];
+    cupos.forEach((cupo) => {
+      while (cupo.restante > 0) {
+        const candidatos = inflables.filter((i) => cupo.tipoIds.includes(i.tipoId) && libre(i));
+        // Si ya estaba marcado solo, se mantiene el mismo (no cambia de unidad al tocar la cantidad)
+        const elegido = candidatos.find((i) => auto.has(i.id)) ?? candidatos[0];
+        if (!elegido) break;
+        elegidos.push(elegido.id);
+        usados.add(elegido.id);
+        cupo.restante -= 1;
+      }
+    });
+    autoInflablesRef.current = elegidos;
+    setFormData({ ...formData, paquetes, inflableIds: [...manuales, ...elegidos] });
+  };
   const handleRemoveFormPaquete = (idx: number) => {
-    setFormData(prev => ({ ...prev, paquetes: prev.paquetes.filter((_, i) => i !== idx) }));
+    aplicarPaquetes(formData.paquetes.filter((_, i) => i !== idx));
   };
   const handlePaqueteChange = (idx: number, paqueteId: number) => {
     const paq = paquetesDisponibles.find(p => p.id === paqueteId);
     if (!paq) return;
-    setFormData(prev => ({
-      ...prev,
-      paquetes: prev.paquetes.map((p, i) => i === idx ? { ...p, paqueteId: paq.id, paqueteNombre: paq.nombre } : p)
-    }));
+    aplicarPaquetes(formData.paquetes.map((p, i) => i === idx ? { ...p, paqueteId: paq.id, paqueteNombre: paq.nombre } : p));
   };
   const handlePaqueteCantidadChange = (idx: number, cantidad: number) => {
-      setFormData(prev => ({
-      ...prev,
-      paquetes: prev.paquetes.map((p, i) => i === idx ? { ...p, cantidad } : p)
-    }));
+    aplicarPaquetes(formData.paquetes.map((p, i) => i === idx ? { ...p, cantidad } : p));
   };
   const handleAddProductoSuelto = () => {
     setFormData(prev => ({ ...prev, productosSueltos: [...prev.productosSueltos, { productoNombre: "", cantidad: 0, ...SIN_DESCUENTO }] }));
@@ -2467,6 +2505,8 @@ export function FichasPage() {
   };
 
   const handleToggleInflable = (inflableId: number) => {
+    // Si la persona lo toca, deja de considerarse "marcado solo por el paquete"
+    autoInflablesRef.current = autoInflablesRef.current.filter((id) => id !== inflableId);
     setFormData(prev => {
       const ids = prev.inflableIds;
       return { ...prev, inflableIds: ids.includes(inflableId) ? ids.filter(id => id !== inflableId) : [...ids, inflableId] };
@@ -2605,6 +2645,7 @@ export function FichasPage() {
   };
 
   const handleOpenEditModal = (ficha: Ficha) => {
+    autoInflablesRef.current = [];
     setFormData({
       fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
       fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
@@ -3111,7 +3152,7 @@ export function FichasPage() {
               <option value="evento_asc">Evento: fecha ascendente</option>
               <option value="evento_desc">Evento: fecha descendente</option>
             </select>
-            <button onClick={() => { setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
+            <button onClick={() => { autoInflablesRef.current = []; setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
               className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
