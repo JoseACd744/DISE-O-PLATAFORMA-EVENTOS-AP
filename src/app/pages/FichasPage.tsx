@@ -32,6 +32,7 @@ import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
 import { buildJuguetonContractHtml, type JuguetonContractItem } from "../lib/juguetonContract";
 import { PageHeader } from "../components/ui/page-header";
+import { AvisoDisponibilidad, sugerirCodigo, type OcupacionUnidad, type OtraUnidad } from "../components/AvisoDisponibilidad";
 import { campo, etiqueta } from "../lib/ui";
 
 // ── Financial types ──────────────────────────────────────────────
@@ -916,8 +917,12 @@ export function FichasPage() {
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
   const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
   const [distritosOptions, setDistritosOptions] = useState<string[]>([]);
-  const [carritoConflicts, setCarritoConflicts] = useState<CarritoConflict[] | null>(null);
-  const [inflableConflicts, setInflableConflicts] = useState<InflableConflict[] | null>(null);
+  // Advertencia de disponibilidad: inflable/carrito ocupado ese día o recurso sin stock suficiente
+  const [avisoDisp, setAvisoDisp] = useState<
+    | { tipo: "inflable" | "carrito"; unidadId: number; filaIdx?: number; servidor?: OcupacionUnidad }
+    | { tipo: "recurso"; recursoId: number; pedido: number }
+    | null
+  >(null);
   const [carritoCalendarId, setCarritoCalendarId] = useState<number | null>(null);
   const [descuentoMaxPct, setDescuentoMaxPctState] = useState<number>(() => getDescuentoMaxPct());
   const [editingDescuentoCap, setEditingDescuentoCap] = useState(false);
@@ -2521,6 +2526,10 @@ export function FichasPage() {
   };
 
   const handleCarritoChange = (idx: number, carritoId: number) => {
+    if (carritoId > 0 && formData.fecha_evento && getDynamicCarritoEstado(carritoId, formData.fecha_evento) === "Ocupado") {
+      setAvisoDisp({ tipo: "carrito", unidadId: carritoId, filaIdx: idx });
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       carritoIds: prev.carritoIds.map((value, i) => (i === idx ? carritoId : value)),
@@ -2528,6 +2537,11 @@ export function FichasPage() {
   };
 
   const handleToggleInflable = (inflableId: number) => {
+    // Marcar uno ocupado ese día: primero se avisa dónde está y se ofrecen alternativas
+    if (!formData.inflableIds.includes(inflableId) && formData.fecha_evento && getDynamicInflableEstado(inflableId, formData.fecha_evento) === "Ocupado") {
+      setAvisoDisp({ tipo: "inflable", unidadId: inflableId });
+      return;
+    }
     // Si la persona lo toca, deja de considerarse "marcado solo por el paquete"
     autoInflablesRef.current = autoInflablesRef.current.filter((id) => id !== inflableId);
     setFormData(prev => {
@@ -2554,6 +2568,11 @@ export function FichasPage() {
       ...prev,
       recursos: prev.recursos.map((recurso, i) => (i === idx ? { ...recurso, recursoId } : recurso)),
     }));
+    if (recursoId > 0 && formData.transporte !== "delivery") {
+      const disponible = stockDisponibleRecurso(recursoId);
+      const pedido = Number(formData.recursos[idx]?.cantidad || 1);
+      if (disponible !== null && pedido > disponible) setAvisoDisp({ tipo: "recurso", recursoId, pedido });
+    }
   };
 
   const handleRecursoCantidadChange = (idx: number, cantidad: number) => {
@@ -2842,8 +2861,7 @@ export function FichasPage() {
       for (const [recursoId, cantidad] of pedidos) {
         const disponible = stockDisponibleRecurso(recursoId);
         if (disponible !== null && cantidad > disponible) {
-          const nombre = recursos.find((r) => r.id === recursoId);
-          setFormError(`No hay stock suficiente de «${nombre?.recurso ?? "recurso"}${nombre?.sku ? ` · ${nombre.sku}` : ""}»: ${disponible === 1 ? "queda 1" : `quedan ${disponible}`} y pediste ${cantidad}. Baja la cantidad, elige otro o quítalo de la ficha.`);
+          setAvisoDisp({ tipo: "recurso", recursoId, pedido: cantidad });
           return;
         }
       }
@@ -2969,10 +2987,20 @@ export function FichasPage() {
       if (err instanceof ApiError && err.status === 409 && conflictosRespuesta.length > 0) {
         const body = err.body as { error?: string; conflicts?: Record<string, unknown>[] };
         const conflicts = body.conflicts ?? [];
-        if (conflicts.length > 0 && "inflable_id" in conflicts[0]) {
-          setInflableConflicts(conflicts as unknown as InflableConflict[]);
+        const primero = conflicts[0] as Partial<InflableConflict & CarritoConflict>;
+        const servidor: OcupacionUnidad = {
+          fichaId: Number(primero.ficha_id),
+          titulo: fichas.find((f) => f.id === Number(primero.ficha_id)) ? getFichaTitulo(fichas.find((f) => f.id === Number(primero.ficha_id))!) : `Ficha #${primero.ficha_id}`,
+          cliente: String(primero.cliente_nombre ?? ""),
+          fecha: String(primero.fecha_evento ?? ""),
+        };
+        if ("inflable_id" in primero) {
+          setAvisoDisp({ tipo: "inflable", unidadId: Number(primero.inflable_id), servidor });
+        } else if ("carrito_id" in primero) {
+          setAvisoDisp({ tipo: "carrito", unidadId: Number(primero.carrito_id), filaIdx: formData.carritoIds.indexOf(Number(primero.carrito_id)), servidor });
         } else {
-          setCarritoConflicts(conflicts as unknown as CarritoConflict[]);
+          // Personal de apoyo ya asignado a otra ficha ese día
+          setFormError(`${conflicts.map((c) => `${String((c as { personal_nombre?: string }).personal_nombre ?? "Personal")} ya está en la ficha #${String(c.ficha_id)} (${String(c.cliente_nombre ?? "")})`).join("; ")} para esa fecha. Quítalo o elige a otra persona.`);
         }
         return;
       }
@@ -3026,37 +3054,120 @@ export function FichasPage() {
         error={deleteAbonoError}
       />
 
-      {/* Conflictos 409: carritos o inflables ya usados en otra ficha ese día */}
-      {[
-        { abierto: carritoConflicts !== null, titulo: "Conflicto de carritos", item: "carritos", cerrar: () => setCarritoConflicts(null),
-          filas: (carritoConflicts ?? []).map((c) => ({ codigo: c.carrito_codigo, nombre: c.carrito_modelo, ficha: c.ficha_id, cliente: c.cliente_nombre, fecha: c.fecha_evento })) },
-        { abierto: inflableConflicts !== null, titulo: "Conflicto de inflables", item: "inflables", cerrar: () => setInflableConflicts(null),
-          filas: (inflableConflicts ?? []).map((c) => ({ codigo: c.inflable_codigo, nombre: c.inflable_tipo, ficha: c.ficha_id, cliente: c.cliente_nombre, fecha: c.fecha_evento })) },
-      ].map((conf) => (
-        <Modal
-          key={conf.titulo}
-          open={conf.abierto}
-          onClose={conf.cerrar}
-          elevated
-          title={<span className="flex items-center gap-2"><AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />{conf.titulo}</span>}
-          description={`Estos ${conf.item} ya están asignados en otra ficha para esa fecha. Quítalos o cambia la fecha para continuar.`}
-          footer={<Button variant="brand" size="lg" onClick={conf.cerrar}>Entendido, voy a corregirlo</Button>}
-        >
-          <div className="space-y-3">
-            {conf.filas.map((c, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <PackageIcon className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                <div className="min-w-0 text-sm">
-                  <p className="text-gray-900 dark:text-white"><span className="text-red-600 dark:text-red-400">{c.codigo}</span> — {c.nombre}</p>
-                  <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                    Asignado en ficha <span className="font-medium">#{c.ficha}</span> · {c.cliente} · {formatDate(c.fecha)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Modal>
-      ))}
+      {/* Disponibilidad: inflable/carrito ocupado ese día o recurso sin stock (con opción de agregar unidades) */}
+      {avisoDisp && avisoDisp.tipo === "recurso" && (() => {
+        const recurso = recursos.find((r) => r.id === avisoDisp.recursoId);
+        if (!recurso) return null;
+        return (
+          <AvisoDisponibilidad
+            modo="recurso"
+            nombre={`${recurso.recurso}${recurso.sku ? ` · ${recurso.sku}` : ""}`}
+            disponible={stockDisponibleRecurso(recurso.id) ?? 0}
+            pedido={avisoDisp.pedido}
+            onClose={() => setAvisoDisp(null)}
+            onAgregar={async (cantidad) => {
+              await apiRequest(`/recursos/${recurso.id}/stock/movements`, {
+                method: "POST",
+                body: JSON.stringify({
+                  tipo: "entrada",
+                  cantidad,
+                  motivo: "Agregado desde la ficha (faltaba stock)",
+                  referencia: editingFichaId !== null ? `ficha:${editingFichaId}` : "ficha-nueva",
+                }),
+              });
+              await reloadData("recursos");
+              setAvisoDisp(null);
+              notify.ok(`Se ${cantidad === 1 ? "agregó 1 unidad" : `agregaron ${cantidad} unidades`} de «${recurso.recurso}» al stock. Ya puedes guardar la ficha.`);
+            }}
+          />
+        );
+      })()}
+      {avisoDisp && avisoDisp.tipo !== "recurso" && (() => {
+        const esInflable = avisoDisp.tipo === "inflable";
+        const lista: Array<{ id: number; codigo: string; estado: string; tipoId: number }> = esInflable ? inflables : carritos;
+        const unidad = lista.find((u) => u.id === avisoDisp.unidadId);
+        if (!unidad) return null;
+        const nombre = esInflable ? (unidad as (typeof inflables)[number]).tipoNombre : (unidad as (typeof carritos)[number]).modelo;
+        const mismoTipo = (u: (typeof lista)[number]) => (esInflable || unidad.tipoId)
+          ? u.tipoId === unidad.tipoId
+          : (u as (typeof carritos)[number]).modelo === nombre;
+        const seleccionados = esInflable ? formData.inflableIds : formData.carritoIds;
+        const ocupacionesDe = (id: number): OcupacionUnidad[] => {
+          const fecha = (formData.fecha_evento || "").split("T")[0];
+          if (!fecha) return [];
+          return fichas
+            .filter((f) => f.id !== editingFichaId && (esInflable ? f.inflableIds : f.carritoIds)?.includes(id)
+              && (f.fecha_evento || f.fecha || "").split("T")[0] === fecha)
+            .map((f) => ({ fichaId: f.id, titulo: getFichaTitulo(f), cliente: f.cliente_nombre, fecha: f.fecha_evento || f.fecha }));
+        };
+        const orden = { libre: 0, "en-esta-ficha": 1, ocupada: 2, mantenimiento: 3 } as const;
+        const otras: OtraUnidad[] = lista
+          .filter((u) => u.id !== unidad.id && mismoTipo(u))
+          .map((u) => {
+            const oc = ocupacionesDe(u.id);
+            const estado: OtraUnidad["estado"] = u.estado === "mantenimiento" ? "mantenimiento" : seleccionados.includes(u.id) ? "en-esta-ficha" : oc.length ? "ocupada" : "libre";
+            return { id: u.id, codigo: u.codigo, estado, ocupacion: oc[0] };
+          })
+          .sort((a, b) => orden[a.estado] - orden[b.estado] || a.codigo.localeCompare(b.codigo));
+        const ocupaciones = ocupacionesDe(unidad.id);
+        const codigos = lista.map((u) => u.codigo || "");
+        // Reemplaza la unidad ocupada por la elegida (o la agrega si aún no estaba en la ficha)
+        const asignar = (nuevoId: number) => {
+          autoInflablesRef.current = autoInflablesRef.current.filter((id) => id !== unidad.id);
+          if (esInflable) {
+            setFormData((prev) => ({ ...prev, inflableIds: [...prev.inflableIds.filter((id) => id !== unidad.id && id !== nuevoId), nuevoId] }));
+          } else {
+            setFormData((prev) => {
+              const ids = [...prev.carritoIds];
+              const idx = avisoDisp.filaIdx !== undefined && avisoDisp.filaIdx >= 0 ? avisoDisp.filaIdx : ids.indexOf(unidad.id);
+              if (idx >= 0 && idx < ids.length) ids[idx] = nuevoId; else ids.push(nuevoId);
+              return { ...prev, carritoIds: ids };
+            });
+          }
+          setAvisoDisp(null);
+        };
+        return (
+          <AvisoDisponibilidad
+            modo="unidad"
+            tipo={avisoDisp.tipo}
+            nombre={nombre}
+            codigo={unidad.codigo}
+            ocupaciones={ocupaciones.length ? ocupaciones : avisoDisp.servidor ? [avisoDisp.servidor] : []}
+            otras={otras}
+            codigoSugerido={sugerirCodigo(unidad.codigo || nombre, codigos)}
+            codigosExistentes={codigos}
+            formatFecha={(iso) => `${formatDiaSemana(iso)} ${formatDate(iso)}`.trim()}
+            onClose={() => setAvisoDisp(null)}
+            onUsar={(id) => {
+              const elegida = lista.find((u) => u.id === id);
+              asignar(id);
+              notify.ok(`Se asignó ${elegida?.codigo ?? "la unidad"} en lugar de ${unidad.codigo}.`);
+            }}
+            onRegistrar={async (codigo) => {
+              let creada: { id: number };
+              if (esInflable) {
+                creada = await apiRequest<{ id: number }>("/inflables", {
+                  method: "POST",
+                  body: JSON.stringify({ tipo_id: unidad.tipoId, codigo, estado: "disponible" }),
+                });
+                await reloadData("inflables");
+              } else {
+                const c = unidad as (typeof carritos)[number];
+                creada = await apiRequest<{ id: number }>("/carritos", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    modelo: c.modelo, codigo, tipo_id: c.tipoId || null, descripcion: c.descripcion || null,
+                    precio_alquiler: c.precioAlquiler ?? null, imagen_url: c.imagenUrl || null, estado: "disponible",
+                  }),
+                });
+                await reloadData("carritos");
+              }
+              asignar(creada.id);
+              notify.ok(`Se registró ${esInflable ? "el inflable" : "el carrito"} ${codigo} (${nombre}) y se asignó a esta ficha.`);
+            }}
+          />
+        );
+      })()}
 
       {error ? (
         <ErrorBanner className="mb-4" onRetry={() => void loadFichas({ forzar: true })}>{error}</ErrorBanner>
@@ -4097,7 +4208,7 @@ export function FichasPage() {
                                 {availableRecursos.map((recurso) => {
                                   const disponible = stockDisponibleRecurso(recurso.id) ?? 0;
                                   return (
-                                    <option key={recurso.id} value={recurso.id} disabled={disponible <= 0 && recurso.id !== item.recursoId}>
+                                    <option key={recurso.id} value={recurso.id}>
                                       {recurso.recurso} · {recurso.sku} · {disponible > 0 ? `${disponible} disp.` : "sin stock"}
                                     </option>
                                   );
