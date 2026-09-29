@@ -930,17 +930,24 @@ export function FichasPage() {
 
   const { brand } = useBrand();
   const { paquetes: paquetesCatalogo, allProducts, carritos, inflables, personales, recursos, reloadData, isLoadingData } = useProducts();
-  // Paquetes sin "inflables incluidos" configurados: si un contenido se llama igual que un tipo de
-  // inflable (p. ej. "1 BURBUJA TRANSPARENTE" en un COMBO), se toma como inflable incluido sin costo.
+  // Paquetes sin "inflables incluidos" configurados: se deducen del contenido.
+  // - Un contenido con el nombre de un tipo de inflable ("1 BURBUJA TRANSPARENTE" en un COMBO) es ese inflable.
+  // - Un contenido genérico "INFLABLE …" ("1 INFLABLE MEDIANO", "1 INFLABLE GRANDE") es un inflable a elección:
+  //   cualquier tipo entra sin costo (incluye los tipos que se agreguen después).
   const contextPaquetes = useMemo(() => {
     const tipoPorNombre = new Map<string, number>();
     inflables.forEach((i) => { if (i.tipoNombre) tipoPorNombre.set(i.tipoNombre.trim().toUpperCase(), i.tipoId); });
+    const todosLosTipos = Array.from(new Set(inflables.map((i) => i.tipoId)));
     return paquetesCatalogo.map((p) => {
       if (p.inflablesIncluidos.length || p.brand !== "jugueton") return p;
-      const derivados = p.contenido
-        .map((item) => ({ tipoId: tipoPorNombre.get((item.productoNombre || "").trim().toUpperCase()), cantidad: Number(item.cantidad) || 1 }))
-        .filter((x): x is { tipoId: number; cantidad: number } => x.tipoId !== undefined)
-        .map((x) => ({ tipoIds: [x.tipoId], cantidad: x.cantidad }));
+      const derivados = p.contenido.flatMap((item) => {
+        const nombre = (item.productoNombre || "").trim().toUpperCase();
+        const cantidad = Number(item.cantidad) || 1;
+        const tipoId = tipoPorNombre.get(nombre);
+        if (tipoId !== undefined) return [{ tipoIds: [tipoId], cantidad }];
+        const generico = /^INFLABLE/.test(nombre) || /^INFLABLE/i.test(item.productoSku || "");
+        return generico && todosLosTipos.length ? [{ tipoIds: todosLosTipos, cantidad }] : [];
+      });
       return derivados.length ? { ...p, inflablesIncluidos: derivados } : p;
     });
   }, [paquetesCatalogo, inflables]);
@@ -2472,6 +2479,8 @@ export function FichasPage() {
       (!formData.fecha_evento || getDynamicInflableEstado(i.id, formData.fecha_evento) !== "Ocupado");
     const elegidos: number[] = [];
     cupos.forEach((cupo) => {
+      // Cupo "a elección" (varios tipos posibles): no se elige por la persona, solo se marcan los que entran
+      if (cupo.tipoIds.length > 1) return;
       while (cupo.restante > 0) {
         const candidatos = inflables.filter((i) => cupo.tipoIds.includes(i.tipoId) && libre(i));
         // Si ya estaba marcado solo, se mantiene el mismo (no cambia de unidad al tocar la cantidad)
