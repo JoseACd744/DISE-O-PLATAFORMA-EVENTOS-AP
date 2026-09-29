@@ -929,7 +929,21 @@ export function FichasPage() {
   const canEditFicha = (ficha: Ficha) => !isVendedor || ficha.created_by === currentUserId;
 
   const { brand } = useBrand();
-  const { paquetes: contextPaquetes, allProducts, carritos, inflables, personales, recursos, reloadData, isLoadingData } = useProducts();
+  const { paquetes: paquetesCatalogo, allProducts, carritos, inflables, personales, recursos, reloadData, isLoadingData } = useProducts();
+  // Paquetes sin "inflables incluidos" configurados: si un contenido se llama igual que un tipo de
+  // inflable (p. ej. "1 BURBUJA TRANSPARENTE" en un COMBO), se toma como inflable incluido sin costo.
+  const contextPaquetes = useMemo(() => {
+    const tipoPorNombre = new Map<string, number>();
+    inflables.forEach((i) => { if (i.tipoNombre) tipoPorNombre.set(i.tipoNombre.trim().toUpperCase(), i.tipoId); });
+    return paquetesCatalogo.map((p) => {
+      if (p.inflablesIncluidos.length || p.brand !== "jugueton") return p;
+      const derivados = p.contenido
+        .map((item) => ({ tipoId: tipoPorNombre.get((item.productoNombre || "").trim().toUpperCase()), cantidad: Number(item.cantidad) || 1 }))
+        .filter((x): x is { tipoId: number; cantidad: number } => x.tipoId !== undefined)
+        .map((x) => ({ tipoIds: [x.tipoId], cantidad: x.cantidad }));
+      return derivados.length ? { ...p, inflablesIncluidos: derivados } : p;
+    });
+  }, [paquetesCatalogo, inflables]);
 
   // Productos y nombres de la marca activa únicamente
   const productsDeLaMarca = useMemo(() => allProducts.filter((p) => p.brand === brand), [allProducts, brand]);
