@@ -11,6 +11,7 @@ import {
   IGV_RATE,
   SIN_DESCUENTO,
   construirLineasCotizacion,
+  getInflablesGratisIds,
   mapDescuentoApi,
   mapDescuentosPorId,
   toMoneyNumber,
@@ -1222,6 +1223,37 @@ export function FichasPage() {
       })
       .catch(() => setTarifaCache(null));
   }, [formData.distrito, showAddModal]);
+  // Inflables que ya vienen incluidos (S/ 0) en los paquetes elegidos: cuántos cupos hay, cuántos se
+  // usaron y qué tipos entran, para marcarlos en la lista y que no parezca que se cobran aparte.
+  const inflablesIncluidos = useMemo(() => {
+    const paquetesElegidos = formData.paquetes.filter((p) => p.paqueteId > 0);
+    const cupos = paquetesElegidos.flatMap((p) => {
+      const catalogo = contextPaquetes.find((item) => item.id === p.paqueteId);
+      const cantidadPaquete = Math.max(0, toMoneyNumber(p.cantidad));
+      return (catalogo?.inflablesIncluidos ?? [])
+        .filter((slot) => slot.cantidad > 0 && cantidadPaquete > 0)
+        .map((slot) => ({ nombre: catalogo?.nombre ?? "el paquete", tipoIds: slot.tipoIds, cantidad: slot.cantidad * cantidadPaquete }));
+    });
+    const total = cupos.reduce((sum, c) => sum + c.cantidad, 0);
+    const gratisIds = total > 0
+      ? getInflablesGratisIds(paquetesElegidos, formData.inflableIds, contextPaquetes, inflables)
+      : new Set<number>();
+    // Se reparte igual que en la cotización: cada inflable marcado ocupa el primer cupo libre de su tipo.
+    // Así, sin marcar, solo se ofrecen como incluidos los tipos que aún tienen cupo libre.
+    const restantePorCupo = cupos.map((c) => c.cantidad);
+    formData.inflableIds.forEach((id) => {
+      const tipo = inflables.find((i) => i.id === id)?.tipoId;
+      const idx = cupos.findIndex((c, k) => restantePorCupo[k] > 0 && tipo !== undefined && c.tipoIds.includes(tipo));
+      if (idx >= 0) restantePorCupo[idx] -= 1;
+    });
+    const tiposIncluidos = new Set(cupos.flatMap((c) => c.tipoIds));
+    const tiposConCupoLibre = new Set(cupos.flatMap((c, k) => (restantePorCupo[k] > 0 ? c.tipoIds : [])));
+    const paquetePorTipo = new Map<number, string>();
+    cupos.forEach((c) => c.tipoIds.forEach((t) => { if (!paquetePorTipo.has(t)) paquetePorTipo.set(t, c.nombre); }));
+    const nombres = Array.from(new Set(cupos.map((c) => c.nombre)));
+    return { total, usados: gratisIds.size, restantes: Math.max(0, total - gratisIds.size), gratisIds, tiposIncluidos, tiposConCupoLibre, paquetePorTipo, nombres };
+  }, [formData.paquetes, formData.inflableIds, contextPaquetes, inflables]);
+
   // Catálogo de paquetes filtrado por la marca activa
   const paquetesDisponibles = contextPaquetes
     .filter(p => p.brand === brand)
@@ -3940,17 +3972,36 @@ export function FichasPage() {
                   {brand === "jugueton" && (
                     <div>
                       <label className={etiqueta}>Inflables</label>
+                      {inflablesIncluidos.total > 0 && (
+                        <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${inflablesIncluidos.restantes > 0 ? "border-brand-orange/40 bg-brand-orange/10 text-brand-orange" : "border-green-200 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-900/20 dark:text-green-400"}`}>
+                          {inflablesIncluidos.restantes > 0
+                            ? `${inflablesIncluidos.nombres.join(" y ")} ${inflablesIncluidos.nombres.length > 1 ? "incluyen" : "incluye"} ${inflablesIncluidos.total} inflable${inflablesIncluidos.total > 1 ? "s" : ""} a elección sin costo: elige ${inflablesIncluidos.restantes > 1 ? `${inflablesIncluidos.restantes} de` : "uno de"} los marcados «Incluido».`
+                            : `Inflable${inflablesIncluidos.total > 1 ? "s" : ""} incluido${inflablesIncluidos.total > 1 ? "s" : ""} elegido${inflablesIncluidos.total > 1 ? "s" : ""} ✓ Cualquier otro inflable que marques se cobra aparte.`}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {inflables.map(inflable => {
+                        {[...inflables]
+                          // Con paquetes que incluyen inflables, los que entran en el cupo van primero
+                          .sort((x, y) => Number(inflablesIncluidos.tiposIncluidos.has(y.tipoId)) - Number(inflablesIncluidos.tiposIncluidos.has(x.tipoId)))
+                          .map(inflable => {
                           const inflableEstado = getDynamicInflableEstado(inflable.id, formData.fecha_evento);
                           const isOcupado = inflableEstado === "Ocupado";
                           const isSelected = formData.inflableIds.includes(inflable.id);
+                          const incluido = isSelected
+                            ? inflablesIncluidos.gratisIds.has(inflable.id)
+                            : inflablesIncluidos.tiposConCupoLibre.has(inflable.tipoId);
                           return (
-                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10' : incluido ? 'border-brand-orange/40 bg-brand-orange/5 hover:bg-brand-orange/10 dark:bg-brand-orange/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                               <input type="checkbox" checked={isSelected} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-brand-navy" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.tipoNombre}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.codigo} · S/{inflable.precioAlquiler}/día</p>
+                                {incluido ? (
+                                  <p className="text-xs text-brand-orange truncate" title={`Incluido en ${inflablesIncluidos.paquetePorTipo.get(inflable.tipoId) ?? "el paquete"}`}>
+                                    {inflable.codigo} · Incluido en {inflablesIncluidos.paquetePorTipo.get(inflable.tipoId) ?? "el paquete"} · S/ 0
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.codigo} · S/{inflable.precioAlquiler}/día</p>
+                                )}
                               </div>
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${isOcupado ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
                                 {inflableEstado}
