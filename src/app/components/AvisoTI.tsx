@@ -27,6 +27,7 @@ const AVISO: {
     "INFANTIL 1, 2 y 3 («INFLABLE MEDIANO / GRANDE»): puedes elegir cualquier inflable sin costo; todos aparecen como «Incluido» hasta que elijas uno. Cualquier inflable adicional se cobra aparte.",
     "Inflables y carritos ocupados ese día: al elegirlos se muestra a qué ficha están asignados y para qué fecha, las otras unidades del mismo tipo (con «Usar esta» si hay una libre) y la opción de registrar una unidad nueva con un código sugerido.",
     "Recursos sin stock suficiente: se avisa cuántos quedan y puedes agregar al stock las unidades que faltan; queda en el historial del recurso.",
+    "Productos › Personal: el calendario ahora muestra a las personas asignadas cada día (apoyo en fichas y choferes en rutas), no los nombres de las fichas.",
   ],
   enlace: { href: "/dashboard/fichas", texto: "Ir a Fichas" },
 };

@@ -5,7 +5,7 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { useProducts } from "../contexts/ProductsContext";
 import type { PaqueteItem, PaqueteInflableIncluido, Paquete, FlatProduct, Carrito, Recurso, RecursoStockMovement, Personal } from "../contexts/ProductsContext";
 import { apiRequest } from "../lib/api";
-import { obtenerFichasConDetalle } from "../lib/queries";
+import { obtenerAsignaciones, obtenerFichasConDetalle } from "../lib/queries";
 import { Modal } from "../components/ui/modal";
 import { StatCard } from "../components/ui/stat-card";
 import { PageHeader } from "../components/ui/page-header";
@@ -270,6 +270,8 @@ export function ProductsPage() {
   const [personalFormSubmitting, setPersonalFormSubmitting] = useState(false);
   const [personalSearch, setPersonalSearch] = useState("");
   const [fichasCalendario, setFichasCalendario] = useState<CalendarFicha[]>([]);
+  // Rutas de Logística: el chofer queda ocupado el día de la ruta
+  const [asignacionesCalendario, setAsignacionesCalendario] = useState<Array<{ fecha: string; choferId: number; ruta: string }>>([]);
   const [personalCalendarMonth, setPersonalCalendarMonth] = useState(new Date().getMonth());
   const [personalCalendarYear, setPersonalCalendarYear] = useState(new Date().getFullYear());
   const [selectedPersonalCalendarId, setSelectedPersonalCalendarId] = useState(0);
@@ -430,6 +432,7 @@ export function ProductsPage() {
 
   const personalCalendarEvents = useMemo(() => {
     return fichasCalendario
+      .filter((ficha) => ficha.personalIds.length > 0)
       .filter((ficha) => selectedPersonalCalendarId === 0 || ficha.personalIds.includes(selectedPersonalCalendarId))
       .sort((a, b) => a.fechaEvento.localeCompare(b.fechaEvento));
   }, [fichasCalendario, selectedPersonalCalendarId]);
@@ -453,8 +456,39 @@ export function ProductsPage() {
     }, {});
   }, [personalCalendarEvents]);
 
+  // Calendario del personal: quién está asignado cada día (apoyo por ficha y choferes por ruta)
+  const personasPorFecha = useMemo(() => {
+    const out: Record<string, Array<{ personalId: number; nombre: string; rol: string; hora: string; detalle: string }>> = {};
+    const persona = (id: number) => personales.find((x) => x.id === id);
+    const agregar = (fecha: string, e: { personalId: number; nombre: string; rol: string; hora: string; detalle: string }) => {
+      if (!fecha) return;
+      const lista = (out[fecha] ||= []);
+      if (!lista.some((x) => x.personalId === e.personalId && x.detalle === e.detalle)) lista.push(e);
+    };
+    fichasCalendario.forEach((f) => f.personalIds.forEach((id) => {
+      if (selectedPersonalCalendarId && id !== selectedPersonalCalendarId) return;
+      const p = persona(id);
+      if (!p) return;
+      agregar(f.fechaEvento, {
+        personalId: id,
+        nombre: p.nombre_completo || p.nombre || `Personal #${id}`,
+        rol: p.rol,
+        hora: (f.horaEntrega || "").slice(0, 5),
+        detalle: f.clienteNombre ? `Evento de ${f.clienteNombre}` : `Ficha #${f.id}`,
+      });
+    }));
+    asignacionesCalendario.forEach((a) => {
+      if (selectedPersonalCalendarId && a.choferId !== selectedPersonalCalendarId) return;
+      const p = persona(a.choferId);
+      if (!p) return;
+      agregar(a.fecha, { personalId: a.choferId, nombre: p.nombre_completo || p.nombre || `Chofer #${a.choferId}`, rol: "chofer", hora: "", detalle: a.ruta ? `Ruta: ${a.ruta}` : "Ruta asignada" });
+    });
+    Object.values(out).forEach((lista) => lista.sort((x, y) => (x.hora || "99").localeCompare(y.hora || "99") || x.nombre.localeCompare(y.nombre)));
+    return out;
+  }, [fichasCalendario, asignacionesCalendario, personales, selectedPersonalCalendarId]);
+
   const selectedPersonalCalendarDateEvents = selectedPersonalCalendarDate
-    ? personalCalendarByDate[selectedPersonalCalendarDate] || []
+    ? personasPorFecha[selectedPersonalCalendarDate] || []
     : [];
 
   const personalCalendarMonthLabel = new Date(personalCalendarYear, personalCalendarMonth, 1).toLocaleDateString("es-PE", {
@@ -597,7 +631,15 @@ export function ProductsPage() {
     setPersonalCalendarError("");
 
     try {
-      const details = await obtenerFichasConDetalle(brand);
+      const [details, asignaciones] = await Promise.all([
+        obtenerFichasConDetalle(brand),
+        obtenerAsignaciones<{ fecha?: string; chofer_id?: number; ruta?: string }>().catch(() => []),
+      ]);
+      setAsignacionesCalendario(
+        asignaciones
+          .filter((a) => a.chofer_id && a.fecha)
+          .map((a) => ({ fecha: normalizeDateString(a.fecha as string), choferId: Number(a.chofer_id), ruta: a.ruta || "" }))
+      );
 
       const mapped: CalendarFicha[] = details.map((f) => {
         const fechaNormalizada = normalizeDateString(f.fecha_evento || f.fecha);
@@ -2354,7 +2396,7 @@ export function ProductsPage() {
                   {Array.from({ length: getDaysInMonth(personalCalendarYear, personalCalendarMonth) }, (_, index) => {
                     const day = index + 1;
                     const dateStr = formatCalendarDate(new Date(personalCalendarYear, personalCalendarMonth, day));
-                    const entries = personalCalendarByDate[dateStr] || [];
+                    const entries = personasPorFecha[dateStr] || [];
                     const isToday = dateStr === personalCalendarToday;
                     const isSelected = dateStr === selectedPersonalCalendarDate;
 
@@ -2384,11 +2426,9 @@ export function ProductsPage() {
                         {entries.length > 0 && (
                           <div className="space-y-0.5 flex-1 overflow-y-auto">
                             {entries.slice(0, 2).map((entry, idx) => (
-                              <div key={idx} className="bg-brand-orange/90 rounded px-1.5 py-0.5 text-white">
-                                <p className="text-[10px] font-semibold truncate leading-tight">{entry.clienteNombre}</p>
-                                {entry.horaEntrega && (
-                                  <p className="text-[8px] opacity-90">{entry.horaEntrega}</p>
-                                )}
+                              <div key={idx} className={`${entry.rol === "chofer" ? "bg-brand-navy/90" : "bg-brand-orange/90"} rounded px-1.5 py-0.5 text-white`} title={`${entry.nombre} · ${entry.detalle}`}>
+                                <p className="text-[10px] font-semibold truncate leading-tight">{entry.nombre}</p>
+                                <p className="text-[8px] opacity-90 truncate">{entry.hora ? `${entry.hora} · ` : ""}{entry.rol === "chofer" ? "Chofer" : "Apoyo"}</p>
                               </div>
                             ))}
                             {entries.length > 2 && (
@@ -2407,19 +2447,21 @@ export function ProductsPage() {
                 {selectedPersonalCalendarDate && (
                   <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 mt-3">
                     <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
-                      Eventos del {new Date(`${selectedPersonalCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" })}
+                      Personal asignado el {new Date(`${selectedPersonalCalendarDate}T12:00:00`).toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" })}
                     </h4>
                     {selectedPersonalCalendarDateEvents.length > 0 ? (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {selectedPersonalCalendarDateEvents.map((entry) => (
-                          <div key={entry.fichaId} className="rounded border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50">
-                            <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{entry.clienteNombre}</p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400">Hora: {entry.horaEntrega || entry.horaRecojo || "—"}</p>
+                        {selectedPersonalCalendarDateEvents.map((entry, idx) => (
+                          <div key={`${entry.personalId}-${idx}`} className="rounded border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700/50">
+                            <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{entry.nombre}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                              {entry.rol === "chofer" ? "Chofer" : "Apoyo"} · {entry.detalle}{entry.hora ? ` · ${entry.hora}` : ""}
+                            </p>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Sin eventos registrados</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Nadie asignado ese día</p>
                     )}
                   </div>
                 )}
@@ -2510,8 +2552,26 @@ export function ProductsPage() {
                       year: "numeric" 
                     })}</>}
               size="lg"
-              description={<>{personalCalendarByDate[selectedPersonalCalendarDayDate]?.length || 0} evento(s) registrado(s)</>}
+              description={<>{(personasPorFecha[selectedPersonalCalendarDayDate] || []).length} persona(s) asignada(s)</>}
             >
+                {(personasPorFecha[selectedPersonalCalendarDayDate] || []).length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Personal asignado</p>
+                    <ul className="space-y-1.5">
+                      {(personasPorFecha[selectedPersonalCalendarDayDate] || []).map((entry, idx) => (
+                        <li key={`${entry.personalId}-${idx}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+                          <span className="inline-flex items-center gap-2 text-sm text-gray-900 dark:text-white min-w-0">
+                            <User className="w-4 h-4 shrink-0 text-brand-orange" />
+                            <span className="truncate">{entry.nombre}</span>
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {entry.rol === "chofer" ? "Chofer" : "Apoyo"} · {entry.detalle}{entry.hora ? ` · ${entry.hora}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {personalCalendarByDate[selectedPersonalCalendarDayDate] && 
                  personalCalendarByDate[selectedPersonalCalendarDayDate].length > 0 ? (
@@ -2579,11 +2639,11 @@ export function ProductsPage() {
                       );
                     })}
                   </div>
-                ) : (
+                ) : (personasPorFecha[selectedPersonalCalendarDayDate] || []).length === 0 ? (
                   <p className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    Sin eventos registrados para esta fecha
+                    Nadie asignado para esta fecha
                   </p>
-                )}
+                ) : null}
 
                 <button
                   onClick={() => setShowPersonalCalendarDayModal(false)}
