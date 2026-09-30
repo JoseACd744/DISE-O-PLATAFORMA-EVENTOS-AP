@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
-import { DayPicker, DateRange } from "react-day-picker";
+import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
-import { DateRangePicker } from "../components/DateRangePicker";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
@@ -121,6 +120,8 @@ interface Ficha {
 }
 
 interface FichaFormData {
+  entregaEnRango: boolean;
+  recojoEnRango: boolean;
   fecha_evento: string;
   fecha_reserva: string;
   distrito: string;
@@ -162,6 +163,8 @@ interface FichaFormData {
 const FICHAS_PER_PAGE = 10;
 
 const getInitialFormData = (): FichaFormData => ({
+  entregaEnRango: true,
+  recojoEnRango: true,
   fecha_evento: getLocalDateString(),
   fecha_reserva: getLocalDateString(),
   distrito: "",
@@ -301,16 +304,8 @@ function addHoraMasUnaHora(hora: string): string {
 
 function formatHoraRango(inicio: string | undefined | null, fin?: string | undefined | null): string {
   if (!inicio) return "-";
-  const startHour24 = Number(inicio.split(":")[0]);
-  if (!Number.isFinite(startHour24)) return inicio;
-  const finHour24 = fin ? Number(fin.split(":")[0]) : NaN;
-  const endHour24 = Number.isFinite(finHour24) ? finHour24 : (startHour24 + HORA_VENTANA_AUTOCOMPLETAR_HORAS) % 24;
-  const startPeriod = startHour24 >= 12 ? "pm" : "am";
-  const endPeriod = endHour24 >= 12 ? "pm" : "am";
-  const startHour12 = startHour24 % 12 || 12;
-  const endHour12 = endHour24 % 12 || 12;
-  const startLabel = startPeriod === endPeriod ? `${startHour12}` : `${startHour12}${startPeriod}`;
-  return `${startLabel} a ${endHour12}${endPeriod}`;
+  if (!fin) return formatHoraFija(inicio);
+  return `${formatHoraFija(inicio)} a ${formatHoraFija(fin)}`;
 }
 
 function formatHoraFija(hora: string | undefined | null): string {
@@ -322,6 +317,19 @@ function formatHoraFija(hora: string | undefined | null): string {
   const period = hour24 >= 12 ? "pm" : "am";
   const hour12 = hour24 % 12 || 12;
   return `${hour12}:${String(minutes).padStart(2, "0")}${period}`;
+}
+
+function HorarioSelector({ label, enRango, onChange }: { label: string; enRango: boolean; onChange: (enRango: boolean) => void }) {
+  return (
+    <div role="group" aria-label={`Tipo de horario de ${label}`} className="flex gap-2 mb-3">
+      {([false, true] as const).map((value) => (
+        <button key={String(value)} type="button" aria-pressed={enRango === value} onClick={() => onChange(value)}
+          className={`px-3 py-2 rounded-lg text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${enRango === value ? "bg-brand-orange text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}>
+          {value ? "Rango de hora" : "Hora exacta"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function getLocalDateString(d: Date = new Date()): string {
@@ -395,7 +403,7 @@ function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        Pagado
+        Completado
       </span>
     );
   }
@@ -906,8 +914,6 @@ export function FichasPage() {
     fichasBase: 0,
     recomendaciones: 0,
   });
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
   const createFichaLockRef = useRef(false);
   // Inflables que se marcaron solos por venir incluidos en un paquete
@@ -1299,19 +1305,7 @@ export function FichasPage() {
     const matchesDistrito = selectedDistrito === "Todos" || ficha.distrito === selectedDistrito;
     const matchesEstado = estadoFilter === "Todos" || getEstadoPago(ficha) === estadoFilter;
     const matchesBrand = ficha.brand === brand; // Solo mostrar fichas de la marca actual
-    let matchesFecha = true;
-    const fichaFechaEvento = (ficha.fecha_evento || ficha.fecha || "").slice(0, 10);
-    if (dateRange?.from && dateRange?.to) {
-      matchesFecha = fichaFechaEvento >= getLocalDateString(dateRange.from) && fichaFechaEvento <= getLocalDateString(dateRange.to);
-    } else if (dateRange?.from) matchesFecha = fichaFechaEvento >= getLocalDateString(dateRange.from);
-    else if (dateRange?.to) matchesFecha = fichaFechaEvento <= getLocalDateString(dateRange.to);
-    let matchesFechaContacto = true;
-    const fichaFechaReserva = (ficha.fecha_reserva || ficha.fecha || "").slice(0, 10);
-    if (contactDateRange?.from && contactDateRange?.to) {
-      matchesFechaContacto = fichaFechaReserva >= getLocalDateString(contactDateRange.from) && fichaFechaReserva <= getLocalDateString(contactDateRange.to);
-    } else if (contactDateRange?.from) matchesFechaContacto = fichaFechaReserva >= getLocalDateString(contactDateRange.from);
-    else if (contactDateRange?.to) matchesFechaContacto = fichaFechaReserva <= getLocalDateString(contactDateRange.to);
-    return matchesSearch && matchesDistrito && matchesFecha && matchesFechaContacto && matchesEstado && matchesBrand;
+    return matchesSearch && matchesDistrito && matchesEstado && matchesBrand;
   }).sort((a, b) => {
     if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
     if (sortBy === "created_asc") return (a.created_at || "").localeCompare(b.created_at || "");
@@ -1329,7 +1323,7 @@ export function FichasPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand, sortBy]);
+  }, [searchTerm, selectedDistrito, estadoFilter, brand, sortBy]);
 
   // Financial stats
   const stats = useMemo(() => {
@@ -2318,13 +2312,13 @@ export function FichasPage() {
       setFormData((prev) => ({
         ...prev,
         hora_entrega: value,
-        hora_entrega_fin: brand === "jugueton" ? prev.hora_entrega_fin : (value ? addHoraMasUnaHora(value) : prev.hora_entrega_fin),
+        hora_entrega_fin: brand === "jugueton" ? prev.hora_entrega_fin : (prev.entregaEnRango && value ? addHoraMasUnaHora(value) : ""),
       }));
     } else if (name === "hora_recojo") {
       setFormData((prev) => ({
         ...prev,
         hora_recojo: value,
-        hora_recojo_fin: brand === "jugueton" ? prev.hora_recojo_fin : (value ? addHoraMasUnaHora(value) : prev.hora_recojo_fin),
+        hora_recojo_fin: brand === "jugueton" ? prev.hora_recojo_fin : (prev.recojoEnRango && value ? addHoraMasUnaHora(value) : ""),
       }));
     } else if (name === "descuento_movilidad") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
@@ -2689,6 +2683,8 @@ export function FichasPage() {
   const handleOpenEditModal = (ficha: Ficha) => {
     autoInflablesRef.current = [];
     setFormData({
+      entregaEnRango: Boolean(ficha.hora_entrega_fin),
+      recojoEnRango: Boolean(ficha.hora_recojo_fin),
       fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
       fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
       distrito: ficha.distrito || "",
@@ -3248,15 +3244,21 @@ export function FichasPage() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <DateRangePicker label="Fecha de Contacto del Cliente" selectedRange={contactDateRange} onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
-          <DateRangePicker label="Fecha del Evento" selectedRange={dateRange}
-            onRangeChange={(range) => {
-              setDateRange(range);
-              // Al filtrar por fecha de evento lo natural es verlas en orden cronológico
-              if (range?.from && (sortBy === "created_desc" || sortBy === "created_asc")) setSortBy("evento_asc");
-            }}
-            onClear={() => setDateRange(undefined)} />
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"><CreditCard className="w-4 h-4" /> Crédito</span>
+          <div role="group" aria-label="Filtrar por estado de crédito" className="flex flex-wrap gap-2">
+            {([
+              { value: "Todos", label: "Todos" },
+              { value: "pagado", label: "Completado" },
+              { value: "pendiente", label: "Pendiente" },
+              { value: "parcial", label: "Parcial" },
+            ] as const).map(({ value, label }) => (
+              <button key={value} type="button" aria-pressed={estadoFilter === value} onClick={() => setEstadoFilter(value)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${estadoFilter === value ? "bg-brand-orange text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div className="flex-1 w-full lg:max-w-md">
@@ -3271,13 +3273,6 @@ export function FichasPage() {
             <select value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)}
               className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
               {distritos.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select value={estadoFilter} onChange={e => setEstadoFilter(e.target.value as typeof estadoFilter)}
-              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
-              <option value="Todos">Estado: Todos</option>
-              <option value="pagado">Pagado</option>
-              <option value="parcial">Parcial</option>
-              <option value="pendiente">Pendiente</option>
             </select>
             <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
               className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
@@ -4346,29 +4341,33 @@ export function FichasPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className={etiqueta}>Hora de Entrega *</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <HorarioSelector label="entrega" enRango={formData.entregaEnRango}
+                        onChange={(enRango) => setFormData(prev => ({ ...prev, entregaEnRango: enRango, hora_entrega_fin: enRango && prev.hora_entrega ? (prev.hora_entrega_fin || addHoraMasUnaHora(prev.hora_entrega)) : "" }))} />
+                      <div className={`grid gap-2 ${formData.entregaEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                         <div>
-                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.entregaEnRango ? "Desde" : "Hora exacta"}</span>
                           <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
                         </div>
-                        <div>
+                        {formData.entregaEnRango && <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
                           <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
-                        </div>
+                        </div>}
                       </div>
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
                         <label className={etiqueta}>Hora de Recojo *</label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <HorarioSelector label="recojo" enRango={formData.recojoEnRango}
+                          onChange={(enRango) => setFormData(prev => ({ ...prev, recojoEnRango: enRango, hora_recojo_fin: enRango && prev.hora_recojo ? (prev.hora_recojo_fin || addHoraMasUnaHora(prev.hora_recojo)) : "" }))} />
+                        <div className={`grid gap-2 ${formData.recojoEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                           <div>
-                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Desde</span>
+                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.recojoEnRango ? "Desde" : "Hora exacta"}</span>
                             <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
                           </div>
-                          <div>
+                          {formData.recojoEnRango && <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
                             <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required className={inputClass} />
-                          </div>
+                          </div>}
                         </div>
                       </div>
                     )}
