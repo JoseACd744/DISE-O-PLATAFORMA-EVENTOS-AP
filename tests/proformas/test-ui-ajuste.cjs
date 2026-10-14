@@ -1,0 +1,77 @@
+const http=require('http'),fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/JOSE/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root=path.resolve('dist');let browser;
+const server=http.createServer((req,res)=>{const target=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));let file=target.startsWith(root)&&fs.existsSync(target)&&fs.statSync(target).isFile()?target:path.join(root,'index.html');res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.jpg')?'image/jpeg':'text/html');res.end(fs.readFileSync(file));});
+(async()=>{
+ await new Promise(resolve=>server.listen(5188,'127.0.0.1',resolve));
+ browser=await chromium.launch({headless:true,executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
+ const page=await browser.newPage({viewport:{width:1365,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));let payload;
+ let ficha={id:254,titulo:'Ejemplo trazabilidad',es_cotizacion:true,brand:'donofrio',presentacion:'carrito',fecha_evento:'2026-12-10',fecha_reserva:'2026-10-13',cliente_nombre:'CLIENTE PRUEBA',distrito:'Miraflores',transporte:'cumpleanos',cotizacion:805,descuento:0,costo_envio:50,dias_movilidad:1,paquetes:[],productosSueltos:[{producto_nombre:'COPA K-BANA',cantidad:100,descuento_valor:0,descuento_tipo:'porcentaje'}],carritoIds:[1],carritos:[{id:1,descuento_tipo:'porcentaje',descuento_valor:15}],recursos:[],personal:[],abonos:[],inflableIds:[],personalIds:[]};
+ const premium={id:39,nombre:'PREMIUM I',precio_unitario:400,tipo:'premium',brand:'donofrio',presentacion:'carrito',contenido:['BOM BOM','SIN PARAR','DONOSANDWICH','KIT KAT','FRIO RICO CONO','ALASKA FRUTAS'].map(producto_nombre=>({producto_nombre,producto_sku:producto_nombre.replaceAll(' ','_'),cantidad:10}))};
+ const cat={ '/products/categories':[{id:1,nombre:'HELADOS'}],'/products':[{id:1,categoria_id:1,producto:'COPA K-BANA',sku:'KB',precio:2.5,brand:'donofrio'}],'/carritos':[{id:1,codigo:'CAR-01',modelo:'Carrito personalizado',estado:'disponible',precio_alquiler:150,tipo_id:1,tipo_nombre:'Carrito'}],'/tarifas-envio':[{id:1,distrito:'Miraflores',zona:'Lima Moderna',costo_cumpleanos:50,costo_corporativo:50,costo_delivery:20}]};
+ await page.addInitScript(()=>{localStorage.setItem('authToken','TOKEN_SINTETICO');localStorage.setItem('authUser',JSON.stringify({id:'prueba',nombre:'OPERADOR PRUEBA',rol:'admin',brand:'donofrio'}));localStorage.setItem('selectedBrand','donofrio');});
+ await page.context().route('**/*',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/images/donofrio.jpg')return route.fulfill({status:200,contentType:'image/jpeg',body:fs.readFileSync('public/images/donofrio.jpg')});const ix=url.pathname.indexOf('/api/');if(ix<0){if(url.hostname!=='127.0.0.1')return route.abort();return route.continue();}const p=url.pathname.slice(ix+4);let data=cat[p]??[];
+  if(p==='/fichas')data=[ficha];
+  if(p==='/paquetes')data=[premium];
+  if(p.startsWith('/tarifas-envio/'))data=cat['/tarifas-envio'][0];
+  if(p==='/fichas'&&req.method()==='POST'){
+    payload=req.postDataJSON();const r=payload.cotizacion_registro;const actual={...r,cotizacion:payload.cotizacion,ajuste:payload.cotizacion-r.base,descuentoGlobal:payload.descuento,fecha:'2026-10-14T15:00:00Z',usuario:'OPERADOR PRUEBA'};
+    ficha={...ficha,...payload,productosSueltos:[],paquetes:payload.paquetes.map(p=>({paquete_id:p.paqueteId,paquete_nombre:p.paqueteNombre,paquete_tipo:p.paqueteTipo,cantidad:p.cantidad,descuento_tipo:p.descuentoTipo,descuento_valor:p.descuentoValor})),cotizacion_trazabilidad:{actual,historial:[actual]}};data=ficha;
+  }
+  if(p==='/fichas/254'&&req.method()==='PUT'){
+   payload=req.postDataJSON();const r=payload.cotizacion_registro;const actual={...r,cotizacion:payload.cotizacion,ajuste:payload.cotizacion-r.base,descuentoGlobal:payload.descuento,fecha:'2026-10-13T20:00:00Z',usuario:'OPERADOR PRUEBA',cotizacionAnterior:805};
+   ficha={...ficha,...payload,productosSueltos:payload.productosSueltos.map(p=>({producto_nombre:p.productoNombre,cantidad:p.cantidad,descuento_valor:p.descuentoValor,descuento_tipo:p.descuentoTipo})),cotizacion_trazabilidad:{actual,historial:[actual]}};data=ficha;
+  }else if(p==='/fichas/254')data=ficha;
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data),headers:{'Access-Control-Allow-Origin':'*'}});
+ });
+ await page.goto('http://127.0.0.1:5188/dashboard/fichas');
+ await page.getByTitle('Ver detalle').click();
+ await page.getByRole('button',{name:'Editar',exact:true}).click();
+ await page.getByText('Origen de la diferencia',{exact:true}).waitFor();
+ assert.equal(await page.locator('input[name="cotizacion"]').inputValue(),'805');
+ assert(await page.getByText('Este total no tiene un ajuste manual documentado.',{exact:false}).isVisible());
+ assert(await page.getByText('Cotización S/ 805.00 − desglose S/ 427.50 = + S/ 377.50.',{exact:true}).isVisible());
+ fs.mkdirSync('output/qa',{recursive:true});
+ await page.getByText('Origen de la diferencia',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:'output/qa/cotizacion-origen-anterior.png'});
+ await page.locator('input[name="dias_movilidad"]').fill('4');assert.equal(await page.locator('input[name="cotizacion"]').inputValue(),'577.5');
+ await page.locator('input[name="cotizacion"]').fill('1000');
+ const reason=page.getByPlaceholder('Ej.: servicio adicional de montaje, S/ 60');assert.equal(await reason.getAttribute('required'),'');
+ await reason.fill('Montaje adicional');await page.getByRole('button',{name:'Guardar Cambios',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('input[name="cotizacion"]'));
+ assert.equal(payload.cotizacion,1000);assert.equal(payload.cotizacion_registro.origen,'manual');assert.equal(payload.cotizacion_registro.motivo,'Montaje adicional');assert.equal(payload.cotizacion_registro.base,577.5);
+ await page.getByTitle('Ver detalle').click();await page.getByRole('button',{name:'Editar',exact:true}).click();
+ await page.getByText('Ajuste registrado en «Cotización Total»:',{exact:false}).waitFor();
+ await page.getByText('Origen de la diferencia',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:'output/qa/cotizacion-ajuste-registrado.png'});
+ // Cambiar el catálogo no altera los precios impresos de una cotización ya guardada.
+ cat['/products'][0].precio=99;
+ await page.reload();
+ const popupWait=page.waitForEvent('popup');await page.getByTitle('Generar proforma').first().click();const popup=await popupWait;
+ await popup.waitForLoadState('domcontentloaded');assert((await popup.locator('body').innerText()).includes('S/ 2.50'));assert(!(await popup.locator('body').innerText()).includes('S/ 99.00'));await popup.close();
+ // Flujo exacto de los PDF: original 200 helados / 2 carritos, actualizado 100 / 1.
+ cat['/products'][0].precio=2.5;cat['/carritos'].push({...cat['/carritos'][0],id:2,codigo:'CAR-02'});
+ ficha={...ficha,cotizacion_trazabilidad:null,cotizacion:805,costo_envio:50,dias_movilidad:1,productosSueltos:[{producto_nombre:'COPA K-BANA',cantidad:200,descuento_valor:0,descuento_tipo:'porcentaje'}],carritoIds:[1,2],carritos:[{id:1,descuento_tipo:'porcentaje',descuento_valor:15},{id:2,descuento_tipo:'porcentaje',descuento_valor:15}]};
+ await page.reload();await page.getByTitle('Ver detalle').click();await page.getByRole('button',{name:'Editar',exact:true}).click();
+ assert.equal(await page.locator('input[name="cotizacion"]').inputValue(),'805');
+ await page.getByRole('heading',{name:'Productos Adicionales',exact:true}).locator('..').locator('input[type="number"]').fill('100');
+ const carSelectors=page.locator('select').filter({has:page.locator('option').filter({hasText:'CAR-02'})});await carSelectors.selectOption('0');
+ assert.equal(await page.locator('input[name="cotizacion"]').inputValue(),'427.5');
+ await page.getByRole('button',{name:'Guardar Cambios',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('input[name="cotizacion"]'));
+ assert.equal(payload.cotizacion,427.5);assert.equal(payload.cotizacion_registro.origen,'calculado');
+ const fixedWait=page.waitForEvent('popup');await page.getByTitle('Generar proforma').first().click();const fixed=await fixedWait;await fixed.waitForLoadState('domcontentloaded');
+ const text=await fixed.locator('body').innerText();assert(text.includes('S/ 427.50'));assert(!text.includes('Ajuste del total'));assert(!text.includes('Diferencia respecto al desglose'));
+ await fixed.bringToFront();await fixed.evaluate(data=>{document.querySelector('img.logo').src=data;},'data:image/jpeg;base64,'+fs.readFileSync('public/images/donofrio.jpg').toString('base64'));await fixed.waitForFunction(()=>Array.from(document.images).every(img=>img.complete && img.naturalWidth>0),null,{timeout:5000}).catch(async e=>{console.log(await fixed.evaluate(()=>Array.from(document.images).map(img=>({src:img.src,complete:img.complete,width:img.naturalWidth}))));throw e;});await fixed.screenshot({path:'output/qa/proforma-actualizada-calculo-correcto.png',fullPage:true});await fixed.close();
+ await page.getByRole('button',{name:'Nueva Ficha',exact:true}).click();
+ await page.getByRole('button',{name:'Cotización / proforma',exact:true}).click();await page.getByText('Delivery',{exact:true}).click();
+ const presentation=page.locator('select').filter({has:page.locator('option[value="solo_helados"]')});await presentation.selectOption('solo_helados');
+ await page.locator('select').filter({has:page.locator('option').filter({hasText:'PREMIUM I - S/400'})}).selectOption('39');
+ await page.locator('input[name="cliente_nombre"]').fill('CLIENTE SOLO HELADOS');await page.locator('select[name="distrito"]').selectOption('Miraflores');
+ await page.getByRole('button',{name:'Guardar Proforma',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('input[name="cotizacion"]'));
+ assert.equal(payload.presentacion,'solo_helados');assert.equal(payload.transporte,'delivery');assert.deepEqual(payload.carritoIds,[]);assert.deepEqual(payload.personalIds,[]);assert.deepEqual(payload.recursos,[]);
+ await page.getByText('60 unid. helado',{exact:true}).waitFor();
+ await page.getByTitle('Ver detalle').click();await page.getByRole('button',{name:'Editar',exact:true}).click();assert.equal(await presentation.inputValue(),'solo_helados');
+ await page.getByRole('button',{name:'Cancelar',exact:true}).click();
+ const deliveryWait=page.waitForEvent('popup');await page.getByTitle('Generar proforma').first().click();const delivery=await deliveryWait;await delivery.waitForLoadState('domcontentloaded');assert((await delivery.locator('body').innerText()).includes('Solo helados'));await delivery.close();
+ assert.equal(errors.length,0,errors.join('\n'));
+ console.log('UI Edge OK: cotización original 805 actualizada a 427.50 al reducir cantidades, sin cargo artificial; motivo/historial; precio impreso estable ante cambio de catálogo; sin errores JS.');
+ console.log('Delivery Solo helados OK: Premium I muestra 60 unidades, paquetes seleccionables, guardado/reapertura y presentación en proforma.');
+})().catch(e=>{console.error(e.message);process.exitCode=1}).finally(async()=>{await browser?.close();server.close();});

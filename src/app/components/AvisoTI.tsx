@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Megaphone, X } from "lucide-react";
-import { isAuthenticated, isDriverUser } from "../lib/auth";
 
 /**
- * Aviso temporal del área de TI: franja arriba del todo, en todas las páginas.
+ * Aviso temporal del área de TI: franja dentro del panel, después de iniciar sesión.
  * Para publicar otro, cambia `id` (así se vuelve a mostrar a quien cerró el anterior) y `hasta`.
  * Pasada la fecha `hasta` deja de mostrarse solo, sin tener que volver a publicar.
  */
@@ -14,22 +13,20 @@ const AVISO: {
   mensaje: string;
   /** Lista opcional que se despliega con "Ver detalle" */
   detalle?: string[];
-  /** Enlace opcional (solo se muestra a quien ya inició sesión en el panel) */
-  enlace?: { href: string; texto: string };
 } = {
-  id: "aviso-ti-2026-09-29-inflables-y-unidades",
-  hasta: "2026-09-29T22:57:00Z", // 29/09 17:57 (Lima), unas 5 h después de publicarse
-  titulo: "Aviso de TI · Novedades en Fichas",
+  id: "aviso-ti-2026-10-01-movilidad-y-personal",
+  hasta: "2026-10-02T02:20:00Z", // 01/10 21:20 (Lima), aproximadamente 5 h de publicación
+  titulo: "Aviso de TI · Mejoras en cotizaciones y fichas",
   mensaje:
-    "Los inflables incluidos en los paquetes ya se marcan sin costo, y si un inflable, carrito o recurso no está disponible ese día, la ficha te avisa dónde está asignado y te deja usar otra unidad o registrar una nueva.",
+    "Ya puedes cotizar la movilidad por varios días y agregar personal de reparto con precio editable. También tienes filtros de crédito y fechas, y horarios exactos o por rango para D’Onofrio.",
   detalle: [
-    "COMBOS: al elegir el paquete, sus inflables se marcan solos con «Incluido en … · S/ 0». Puedes cambiarlos por otra unidad; si quitas el paquete, se desmarcan.",
-    "INFANTIL 1, 2 y 3 («INFLABLE MEDIANO / GRANDE»): puedes elegir cualquier inflable sin costo; todos aparecen como «Incluido» hasta que elijas uno. Cualquier inflable adicional se cobra aparte.",
-    "Inflables y carritos ocupados ese día: al elegirlos se muestra a qué ficha están asignados y para qué fecha, las otras unidades del mismo tipo (con «Usar esta» si hay una libre) y la opción de registrar una unidad nueva con un código sugerido.",
-    "Recursos sin stock suficiente: se avisa cuántos quedan y puedes agregar al stock las unidades que faltan; queda en el historial del recurso.",
-    "Productos › Personal: el calendario ahora muestra a las personas asignadas cada día (apoyo en fichas y choferes en rutas), no los nombres de las fichas.",
+    "Movilidad por días: ingresa el precio por día y la cantidad de días. Por ejemplo, 4 días × S/ 80 = S/ 320. Se refleja en el total y en la proforma.",
+    "Al editar una ficha, se conserva el precio de movilidad guardado y el total se ajusta cuando cambias el costo, los días o el descuento de movilidad.",
+    "Productos › Personal: puedes crear y reutilizar tipos de personal con el nombre que necesites. El nombre del tipo y el precio del servicio se editan por separado.",
+    "Al asignar personal a una ficha, su tarifa se suma una vez a la cotización y aparece en la proforma. El precio queda guardado para conservar las cotizaciones anteriores.",
+    "Fichas: filtra por crédito completado, pendiente o parcial, y combina ese filtro con los rangos de fecha de contacto y fecha del evento.",
+    "D’Onofrio: elige hora exacta o rango de hora por separado para entrega y recojo. Al cambiar de rango a hora exacta, la hora final anterior se elimina.",
   ],
-  enlace: { href: "/dashboard/fichas", texto: "Ir a Fichas" },
 };
 
 const CLAVE = `avisoCerrado:${AVISO.id}`;
@@ -55,8 +52,6 @@ export function AvisoTI() {
     setCerrado(true);
     try { localStorage.setItem(CLAVE, "1"); } catch { /* sin almacenamiento: solo se oculta en esta visita */ }
   };
-  // El enlace solo sirve a quien ya inició sesión en el panel (no en el login ni en el módulo de choferes)
-  const mostrarEnlace = isAuthenticated() && !isDriverUser();
 
   return (
     <div role="status" className="shrink-0 border-b border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
@@ -79,11 +74,6 @@ export function AvisoTI() {
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${verLista ? "rotate-180" : ""}`} aria-hidden="true" />
               </button>
             ) : null}
-            {mostrarEnlace && AVISO.enlace && (
-              <a href={AVISO.enlace.href} className="font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">
-                {AVISO.enlace.texto}
-              </a>
-            )}
           </div>
         </div>
         <button type="button" onClick={cerrar} aria-label="Cerrar aviso" title="Cerrar aviso"

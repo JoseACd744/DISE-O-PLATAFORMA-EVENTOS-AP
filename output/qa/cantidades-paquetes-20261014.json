@@ -1,0 +1,401 @@
+[
+  {
+    "id": 24,
+    "nombre": "50 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "180.00",
+    "cantidad": 50
+  },
+  {
+    "id": 25,
+    "nombre": "100 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "250.00",
+    "cantidad": 100
+  },
+  {
+    "id": 26,
+    "nombre": "150 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "cantidad": 150
+  },
+  {
+    "id": 27,
+    "nombre": "200 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "380.00",
+    "cantidad": 200
+  },
+  {
+    "id": 28,
+    "nombre": "250 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "450.00",
+    "cantidad": 250
+  },
+  {
+    "id": 29,
+    "nombre": "300 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "530.00",
+    "cantidad": 300
+  },
+  {
+    "id": 30,
+    "nombre": "400 MINIS",
+    "presentacion": "carrito",
+    "precio_unitario": "690.00",
+    "cantidad": 400
+  },
+  {
+    "id": 31,
+    "nombre": "MINI VACILÓN",
+    "presentacion": "carrito",
+    "precio_unitario": "199.00",
+    "cantidad": 60
+  },
+  {
+    "id": 32,
+    "nombre": "VACILÓN",
+    "presentacion": "carrito",
+    "precio_unitario": "250.00",
+    "cantidad": 90
+  },
+  {
+    "id": 33,
+    "nombre": "EXTRA VACILON",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "cantidad": 120
+  },
+  {
+    "id": 34,
+    "nombre": "FULL VACILÓN",
+    "presentacion": "carrito",
+    "precio_unitario": "350.00",
+    "cantidad": 150
+  },
+  {
+    "id": 35,
+    "nombre": "VERANO I",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "cantidad": 60
+  },
+  {
+    "id": 36,
+    "nombre": "VERANO II",
+    "presentacion": "carrito",
+    "precio_unitario": "400.00",
+    "cantidad": 100
+  },
+  {
+    "id": 37,
+    "nombre": "VERANO III",
+    "presentacion": "carrito",
+    "precio_unitario": "550.00",
+    "cantidad": 150
+  },
+  {
+    "id": 38,
+    "nombre": "VERANO IV",
+    "presentacion": "carrito",
+    "precio_unitario": "700.00",
+    "cantidad": 200
+  },
+  {
+    "id": 39,
+    "nombre": "PREMIUM I",
+    "presentacion": "carrito",
+    "precio_unitario": "400.00",
+    "cantidad": 60
+  },
+  {
+    "id": 40,
+    "nombre": "PREMIUM II",
+    "presentacion": "carrito",
+    "precio_unitario": "580.00",
+    "cantidad": 90
+  },
+  {
+    "id": 41,
+    "nombre": "PREMIUM III",
+    "presentacion": "carrito",
+    "precio_unitario": "700.00",
+    "cantidad": 120
+  },
+  {
+    "id": 42,
+    "nombre": "PREMIUM IV",
+    "presentacion": "carrito",
+    "precio_unitario": "880.00",
+    "cantidad": 150
+  },
+  {
+    "id": 43,
+    "nombre": "50 MINIS-BOX LONCHERAS",
+    "presentacion": "lonchera",
+    "precio_unitario": "130.00",
+    "cantidad": 50
+  },
+  {
+    "id": 44,
+    "nombre": "100 MINIS-BOX LONCHERAS",
+    "presentacion": "lonchera",
+    "precio_unitario": "200.00",
+    "cantidad": 100
+  },
+  {
+    "id": 45,
+    "nombre": "MINI VACILÓN-BOX LONCHERAS",
+    "presentacion": "lonchera",
+    "precio_unitario": "150.00",
+    "cantidad": 60
+  },
+  {
+    "id": 46,
+    "nombre": "VACILÓN-BOX LONCHERAS",
+    "presentacion": "lonchera",
+    "precio_unitario": "200.00",
+    "cantidad": 90
+  },
+  {
+    "id": 54,
+    "nombre": "BOX TECNOPOR - 50 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "180.00",
+    "cantidad": 50
+  },
+  {
+    "id": 55,
+    "nombre": "LONCHERA - 150 MINIS",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "cantidad": 150
+  },
+  {
+    "id": 56,
+    "nombre": "LONCHERA - 200 MINIS",
+    "presentacion": "lonchera",
+    "precio_unitario": "380.00",
+    "cantidad": 200
+  },
+  {
+    "id": 57,
+    "nombre": "LONCHERA - 250 MINIS",
+    "presentacion": "lonchera",
+    "precio_unitario": "450.00",
+    "cantidad": 250
+  },
+  {
+    "id": 58,
+    "nombre": "BOX TECNOPOR - 250 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "450.00",
+    "cantidad": 250
+  },
+  {
+    "id": 59,
+    "nombre": "LONCHERA - 300 MINIS",
+    "presentacion": "lonchera",
+    "precio_unitario": "530.00",
+    "cantidad": 300
+  },
+  {
+    "id": 60,
+    "nombre": "BOX TECNOPOR - 300 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "cantidad": 300
+  },
+  {
+    "id": 61,
+    "nombre": "LONCHERA - 400 MINIS",
+    "presentacion": "lonchera",
+    "precio_unitario": "690.00",
+    "cantidad": 400
+  },
+  {
+    "id": 62,
+    "nombre": "BOX TECNOPOR - 400 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "690.00",
+    "cantidad": 400
+  },
+  {
+    "id": 63,
+    "nombre": "BOX TECNOPOR - MINI VACILÓN",
+    "presentacion": "tecnopor",
+    "precio_unitario": "199.00",
+    "cantidad": 60
+  },
+  {
+    "id": 64,
+    "nombre": "LONCHERA - EXTRA VACILON",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "cantidad": 120
+  },
+  {
+    "id": 65,
+    "nombre": "LONCHERA - FULL VACILÓN",
+    "presentacion": "lonchera",
+    "precio_unitario": "350.00",
+    "cantidad": 150
+  },
+  {
+    "id": 66,
+    "nombre": "LONCHERA - VERANO I",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "cantidad": 60
+  },
+  {
+    "id": 67,
+    "nombre": "LONCHERA - VERANO II",
+    "presentacion": "lonchera",
+    "precio_unitario": "400.00",
+    "cantidad": 100
+  },
+  {
+    "id": 68,
+    "nombre": "LONCHERA - VERANO III",
+    "presentacion": "lonchera",
+    "precio_unitario": "550.00",
+    "cantidad": 150
+  },
+  {
+    "id": 69,
+    "nombre": "LONCHERA - VERANO IV",
+    "presentacion": "lonchera",
+    "precio_unitario": "700.00",
+    "cantidad": 200
+  },
+  {
+    "id": 70,
+    "nombre": "BOX TECNOPOR - VERANO IV",
+    "presentacion": "tecnopor",
+    "precio_unitario": "700.00",
+    "cantidad": 200
+  },
+  {
+    "id": 71,
+    "nombre": "LONCHERA - PREMIUM I",
+    "presentacion": "lonchera",
+    "precio_unitario": "400.00",
+    "cantidad": 60
+  },
+  {
+    "id": 72,
+    "nombre": "LONCHERA - PREMIUM II",
+    "presentacion": "lonchera",
+    "precio_unitario": "580.00",
+    "cantidad": 90
+  },
+  {
+    "id": 73,
+    "nombre": "LONCHERA - PREMIUM III",
+    "presentacion": "lonchera",
+    "precio_unitario": "700.00",
+    "cantidad": 120
+  },
+  {
+    "id": 74,
+    "nombre": "LONCHERA - PREMIUM IV",
+    "presentacion": "lonchera",
+    "precio_unitario": "880.00",
+    "cantidad": 150
+  },
+  {
+    "id": 75,
+    "nombre": "BOX TECNOPOR - PREMIUM IV",
+    "presentacion": "tecnopor",
+    "precio_unitario": "880.00",
+    "cantidad": 150
+  },
+  {
+    "id": 76,
+    "nombre": "BOX TECNOPOR - PREMIUM I",
+    "presentacion": "tecnopor",
+    "precio_unitario": "350.00",
+    "cantidad": 60
+  },
+  {
+    "id": 77,
+    "nombre": "BOX TECNOPOR - PREMIUM II",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "cantidad": 90
+  },
+  {
+    "id": 78,
+    "nombre": "BOX TECNOPOR - PREMIUM III",
+    "presentacion": "tecnopor",
+    "precio_unitario": "650.00",
+    "cantidad": 120
+  },
+  {
+    "id": 79,
+    "nombre": "BOX TECNOPOR - VACILÓN",
+    "presentacion": "tecnopor",
+    "precio_unitario": "230.00",
+    "cantidad": 90
+  },
+  {
+    "id": 80,
+    "nombre": "BOX TECNOPOR - EXTRA VACILÓN",
+    "presentacion": "tecnopor",
+    "precio_unitario": "280.00",
+    "cantidad": 120
+  },
+  {
+    "id": 81,
+    "nombre": "BOX TECNOPOR - FULL VACILÓN",
+    "presentacion": "tecnopor",
+    "precio_unitario": "320.00",
+    "cantidad": 150
+  },
+  {
+    "id": 82,
+    "nombre": "BOX TECNOPOR - 100 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "200.00",
+    "cantidad": 100
+  },
+  {
+    "id": 83,
+    "nombre": "BOX TECNOPOR - 150 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "270.00",
+    "cantidad": 150
+  },
+  {
+    "id": 84,
+    "nombre": "BOX TECNOPOR - 200 MINIS",
+    "presentacion": "tecnopor",
+    "precio_unitario": "350.00",
+    "cantidad": 200
+  },
+  {
+    "id": 85,
+    "nombre": "BOX TECNOPOR - VERANO I",
+    "presentacion": "tecnopor",
+    "precio_unitario": "250.00",
+    "cantidad": 60
+  },
+  {
+    "id": 86,
+    "nombre": "BOX TECNOPOR - VERANO II",
+    "presentacion": "tecnopor",
+    "precio_unitario": "370.00",
+    "cantidad": 100
+  },
+  {
+    "id": 87,
+    "nombre": "BOX TECNOPOR - VERANO III",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "cantidad": 150
+  }
+]

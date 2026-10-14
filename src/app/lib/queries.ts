@@ -29,23 +29,23 @@ export const claves = {
   asignaciones: ["asignaciones"] as const,
 };
 
-type Opciones = { forzar?: boolean };
+type Opciones = { forzar?: boolean; incluirCotizaciones?: boolean };
 
 // Todas las fichas de la marca con paquetes, carritos, inflables, personal, abonos y recursos,
 // en una sola petición (antes: una petición por ficha).
-export function obtenerFichasConDetalle<T = any>(brand: string, { forzar }: Opciones = {}) {
+export function obtenerFichasConDetalle<T = any>(brand: string, { forzar, incluirCotizaciones = false }: Opciones = {}) {
   return queryClient.fetchQuery({
-    queryKey: claves.fichasConDetalle(brand),
-    queryFn: () => apiRequest<T[]>(`/fichas?brand=${brand}&detalle=1`),
+    queryKey: [...claves.fichasConDetalle(brand), incluirCotizaciones],
+    queryFn: () => apiRequest<T[]>(`/fichas?brand=${brand}&detalle=1&incluir_cotizaciones=${incluirCotizaciones ? "1" : "0"}`),
     ...(forzar ? { staleTime: 0 } : {}),
   });
 }
 
 // Solo los datos de cada ficha (sin líneas); más liviano para listados y conteos
-export function obtenerFichasLista<T = any>(brand: string, { forzar }: Opciones = {}) {
+export function obtenerFichasLista<T = any>(brand: string, { forzar, incluirCotizaciones = false }: Opciones = {}) {
   return queryClient.fetchQuery({
-    queryKey: claves.fichasLista(brand),
-    queryFn: () => apiRequest<T[]>(`/fichas?brand=${brand}`),
+    queryKey: [...claves.fichasLista(brand), incluirCotizaciones],
+    queryFn: () => apiRequest<T[]>(`/fichas?brand=${brand}&incluir_cotizaciones=${incluirCotizaciones ? "1" : "0"}`),
     ...(forzar ? { staleTime: 0 } : {}),
   });
 }
@@ -93,7 +93,7 @@ export function invalidarClientes() {
 // Reemplaza una ficha (detalle completo devuelto por la API) dentro de la caché con detalle,
 // para no recargar todas por un cambio en una sola. Las demás vistas de fichas se invalidan.
 export function reemplazarFichaEnCache(brand: string, ficha: { id: number } & Record<string, unknown>) {
-  queryClient.setQueryData<any[]>(claves.fichasConDetalle(brand), (prev) => {
+  queryClient.setQueryData<any[]>([...claves.fichasConDetalle(brand), true], (prev) => {
     if (!prev) return prev;
     const existe = prev.some((f) => f.id === ficha.id);
     return existe ? prev.map((f) => (f.id === ficha.id ? ficha : f)) : [ficha, ...prev];
@@ -102,6 +102,6 @@ export function reemplazarFichaEnCache(brand: string, ficha: { id: number } & Re
 }
 
 export function quitarFichaDeCache(brand: string, fichaId: number) {
-  queryClient.setQueryData<any[]>(claves.fichasConDetalle(brand), (prev) => prev?.filter((f) => f.id !== fichaId));
+  queryClient.setQueryData<any[]>([...claves.fichasConDetalle(brand), true], (prev) => prev?.filter((f) => f.id !== fichaId));
   void queryClient.invalidateQueries({ queryKey: claves.fichasLista(brand) });
 }

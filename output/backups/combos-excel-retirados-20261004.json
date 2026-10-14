@@ -1,0 +1,348 @@
+{
+  "paquetes": [
+    {
+      "id": 88,
+      "nombre": "Bombones Pote",
+      "precio_unitario": "14.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 89,
+      "nombre": "Combo Alaska x 12 Uds.",
+      "precio_unitario": "22.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 90,
+      "nombre": "Combo Clásico x 6 Uds.",
+      "precio_unitario": "24.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 91,
+      "nombre": "Combo D'Onofrio x 15 Uds.",
+      "precio_unitario": "62.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 92,
+      "nombre": "Combo Frío Rico Paletas x 6 Uds.",
+      "precio_unitario": "27.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 93,
+      "nombre": "Combo Infantil x 12 Uds.",
+      "precio_unitario": "24.30",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 94,
+      "nombre": "Cubeta 2.2 L Chocochip",
+      "precio_unitario": "24.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 95,
+      "nombre": "Cubeta 2.2 L Tricolor",
+      "precio_unitario": "24.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 96,
+      "nombre": "Cubeta 5 L Chocochip",
+      "precio_unitario": "45.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 97,
+      "nombre": "Cubeta 5 L Chocolate",
+      "precio_unitario": "45.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 98,
+      "nombre": "Cubeta 5 L Fresa",
+      "precio_unitario": "45.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 99,
+      "nombre": "Cubeta 5 L Lúcuma",
+      "precio_unitario": "45.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 100,
+      "nombre": "Cubeta 5 L Tricolor",
+      "precio_unitario": "45.00",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 101,
+      "nombre": "Frío Rico Crocante de Café de Chanchamayo",
+      "precio_unitario": "25.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 102,
+      "nombre": "Frío Rico Crocante de Caramelo con sal de Maras",
+      "precio_unitario": "25.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    },
+    {
+      "id": 103,
+      "nombre": "Frío Rico Crocante de Fresa de Huaura",
+      "precio_unitario": "25.90",
+      "tipo": "delivery",
+      "brand": "donofrio",
+      "created_at": "2026-10-04T19:05:54.368Z",
+      "presentacion": "delivery",
+      "utilizado": false
+    }
+  ],
+  "items": [
+    {
+      "id": 510,
+      "paquete_id": 88,
+      "producto_sku": "BOMBONES_POTE",
+      "producto_nombre": "BOMBONES POTE",
+      "cantidad": 1
+    },
+    {
+      "id": 511,
+      "paquete_id": 89,
+      "producto_sku": "ALASKA_FRESA",
+      "producto_nombre": "ALASKA FRESA",
+      "cantidad": 6
+    },
+    {
+      "id": 512,
+      "paquete_id": 89,
+      "producto_sku": "ALASKA_MARACUYA",
+      "producto_nombre": "ALASKA MARACUYÁ",
+      "cantidad": 6
+    },
+    {
+      "id": 513,
+      "paquete_id": 90,
+      "producto_sku": "SIN_PARAR",
+      "producto_nombre": "SIN PARAR",
+      "cantidad": 2
+    },
+    {
+      "id": 514,
+      "paquete_id": 90,
+      "producto_sku": "DONOSANDWICH",
+      "producto_nombre": "DONOSANDWICH",
+      "cantidad": 2
+    },
+    {
+      "id": 515,
+      "paquete_id": 90,
+      "producto_sku": "BOMBONES",
+      "producto_nombre": "BOMBONES",
+      "cantidad": 2
+    },
+    {
+      "id": 516,
+      "paquete_id": 91,
+      "producto_sku": "BOMBONES",
+      "producto_nombre": "BOMBONES",
+      "cantidad": 3
+    },
+    {
+      "id": 517,
+      "paquete_id": 91,
+      "producto_sku": "FRIO_RICO_CONO_VAINILLA",
+      "producto_nombre": "FRÍO RICO CONO VAINILLA",
+      "cantidad": 3
+    },
+    {
+      "id": 518,
+      "paquete_id": 91,
+      "producto_sku": "DONOSANDWICH",
+      "producto_nombre": "DONOSANDWICH",
+      "cantidad": 3
+    },
+    {
+      "id": 519,
+      "paquete_id": 91,
+      "producto_sku": "COPA_DONOFRIO",
+      "producto_nombre": "COPA D'ONOFRIO",
+      "cantidad": 3
+    },
+    {
+      "id": 520,
+      "paquete_id": 91,
+      "producto_sku": "SIN_PARAR",
+      "producto_nombre": "SIN PARAR",
+      "cantidad": 3
+    },
+    {
+      "id": 521,
+      "paquete_id": 92,
+      "producto_sku": "FRIO_RICO_PALETA_FRESA",
+      "producto_nombre": "FRÍO RICO PALETA FRESA",
+      "cantidad": 2
+    },
+    {
+      "id": 522,
+      "paquete_id": 92,
+      "producto_sku": "FRIO_RICO_PALETA_MARACUYA",
+      "producto_nombre": "FRÍO RICO PALETA MARACUYÁ",
+      "cantidad": 2
+    },
+    {
+      "id": 523,
+      "paquete_id": 92,
+      "producto_sku": "FRIO_RICO_PALETA_VAINILLA",
+      "producto_nombre": "FRÍO RICO PALETA VAINILLA",
+      "cantidad": 2
+    },
+    {
+      "id": 524,
+      "paquete_id": 93,
+      "producto_sku": "ZOORPRESA_EMOTICARITA",
+      "producto_nombre": "ZOORPRESA / EMOTICARITA (A ELECCIÓN)",
+      "cantidad": 6
+    },
+    {
+      "id": 525,
+      "paquete_id": 93,
+      "producto_sku": "COPA_KBANA",
+      "producto_nombre": "K-BANA",
+      "cantidad": 6
+    },
+    {
+      "id": 526,
+      "paquete_id": 94,
+      "producto_sku": "CUBETA_2.2_CHOCOCHIP",
+      "producto_nombre": "CUBETA 2.2 L CHOCOCHIP",
+      "cantidad": 1
+    },
+    {
+      "id": 527,
+      "paquete_id": 95,
+      "producto_sku": "CUBETA_2.2_TRICOLOR",
+      "producto_nombre": "CUBETA 2.2 L TRICOLOR",
+      "cantidad": 1
+    },
+    {
+      "id": 528,
+      "paquete_id": 96,
+      "producto_sku": "CUBETA_5_CHOCOCHIP",
+      "producto_nombre": "CUBETA 5 L CHOCOCHIP",
+      "cantidad": 1
+    },
+    {
+      "id": 529,
+      "paquete_id": 97,
+      "producto_sku": "CUBETA_5_CHOCOLATE",
+      "producto_nombre": "CUBETA 5 L CHOCOLATE",
+      "cantidad": 1
+    },
+    {
+      "id": 530,
+      "paquete_id": 98,
+      "producto_sku": "CUBETA_5_FRESA",
+      "producto_nombre": "CUBETA 5 L FRESA",
+      "cantidad": 1
+    },
+    {
+      "id": 531,
+      "paquete_id": 99,
+      "producto_sku": "CUBETA_5_LÚCUMA",
+      "producto_nombre": "CUBETA 5 L LÚCUMA",
+      "cantidad": 1
+    },
+    {
+      "id": 532,
+      "paquete_id": 100,
+      "producto_sku": "CUBETA_5_TRICOLOR",
+      "producto_nombre": "CUBETA 5 L TRICOLOR",
+      "cantidad": 1
+    },
+    {
+      "id": 533,
+      "paquete_id": 101,
+      "producto_sku": "FRIO_RICO_CROCANTE_CAFÉ_DE_CHANCHAMAYO",
+      "producto_nombre": "FRÍO RICO CROCANTE DE CAFÉ DE CHANCHAMAYO",
+      "cantidad": 1
+    },
+    {
+      "id": 534,
+      "paquete_id": 102,
+      "producto_sku": "FRIO_RICO_CROCANTE_CARAMELO_CON_SAL_DE_MARAS",
+      "producto_nombre": "FRÍO RICO CROCANTE DE CARAMELO CON SAL DE MARAS",
+      "cantidad": 1
+    },
+    {
+      "id": 535,
+      "paquete_id": 103,
+      "producto_sku": "FRIO_RICO_CROCANTE_FRESA_DE_HUAURA",
+      "producto_nombre": "FRÍO RICO CROCANTE DE FRESA DE HUAURA",
+      "cantidad": 1
+    }
+  ]
+}

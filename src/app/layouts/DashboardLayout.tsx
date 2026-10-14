@@ -1,9 +1,10 @@
-import { Outlet, useNavigate, useLocation } from "react-router";
+import { Navigate, Outlet, useNavigate, useLocation } from "react-router";
 import { Box, Package, Users, Map, LogOut, FileText, Moon, Sun, BarChart3, Wind, ArrowLeftRight, Truck, Menu, Coffee, Receipt } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useBrand } from "../contexts/BrandContext";
 import { clearAuthSession, getAuthUser, isAdminRole, isAuthenticated, isDriverRole } from "../lib/auth";
+import { AvisoTI } from "../components/AvisoTI";
 
 export function DashboardLayout() {
   const navigate = useNavigate();
@@ -78,8 +79,12 @@ export function DashboardLayout() {
 
   const currentBrand = brand ? brandConfig[brand] : null;
 
+  if (!isAuthenticated()) return <Navigate to="/login" replace />;
+
   return (
-    <div className="h-full overflow-hidden bg-gray-50 dark:bg-gray-900 flex">
+    <div className="h-full flex flex-col">
+      <AvisoTI />
+    <div className="flex-1 min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900 flex">
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -205,6 +210,7 @@ export function DashboardLayout() {
         </div>
         <Outlet />
       </main>
+    </div>
     </div>
   );
 }

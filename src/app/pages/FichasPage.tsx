@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
+import { DateRangePicker } from "../components/DateRangePicker";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { Pagination } from "../components/Pagination";
 import { useProducts } from "../contexts/ProductsContext";
@@ -26,10 +27,15 @@ import { Modal } from "../components/ui/modal";
 import { EmptyState, ErrorBanner, LoadingState } from "../components/ui/feedback";
 import { Button } from "../components/ui/button";
 import { mensajeDeError, notify } from "../lib/notify";
-import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDetalle, obtenerTarifasEnvio, reemplazarFichaEnCache } from "../lib/queries";
+import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDetalle, obtenerTarifasEnvio, obtenerAsignaciones, reemplazarFichaEnCache } from "../lib/queries";
+import { Printer } from "lucide-react";
+import { buildFichasOperativasHtml, prepararFichaOperativa, type AsignacionOperativa } from "../lib/fichaOperativa";
 import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
 import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
-import { buildJuguetonContractHtml, type JuguetonContractItem } from "../lib/juguetonContract";
+import { buildEventContractHtml, type EventContractItem } from "../lib/eventContract";
+import { DetalleAjusteCotizacion } from "../components/DetalleAjusteCotizacion";
+import { nombrePresentacion } from "../lib/presentacionPedido";
+import { aplicarPreciosCotizados, actualizarTotalPorLineas, compararLineas, registrarLineas, redondearDinero, type LineaRegistrada, type TrazabilidadCotizacion } from "../lib/cotizacionTrazabilidad";
 import { PageHeader } from "../components/ui/page-header";
 import { AvisoDisponibilidad, sugerirCodigo, type OcupacionUnidad, type OtraUnidad } from "../components/AvisoDisponibilidad";
 import { campo, etiqueta } from "../lib/ui";
@@ -77,6 +83,10 @@ interface FichaRecurso extends LineaDescuento {
 type EstadoPago = "pagado" | "parcial" | "pendiente";
 
 interface Ficha {
+  es_cotizacion?: boolean;
+  presentacion?: string;
+  movilidad_confirmada?: boolean;
+  personalPrecios?: Record<number, number>;
   id: number;
   fecha_evento: string;
   fecha_reserva: string;
@@ -86,6 +96,7 @@ interface Ficha {
   tipo_evento?: string;
   titulo?: string;
   costo_envio?: number;
+  dias_movilidad?: number;
   descuento_movilidad?: number;
   direccion: string;
   referencia?: string;
@@ -108,6 +119,7 @@ interface Ficha {
   cliente_celular: string;
   contacto_nombre?: string;
   contacto_celular?: string;
+  cotizacion_trazabilidad?: TrazabilidadCotizacion | null;
   // Financial
   cotizacion: number;
   descuento: number;
@@ -120,6 +132,11 @@ interface Ficha {
 }
 
 interface FichaFormData {
+  ajusteMotivo: string;
+  es_cotizacion: boolean;
+  presentacion: string;
+  movilidad_confirmada: boolean;
+  personalPrecios: Record<number, number>;
   entregaEnRango: boolean;
   recojoEnRango: boolean;
   fecha_evento: string;
@@ -129,6 +146,7 @@ interface FichaFormData {
   tipoEvento: string;
   titulo: string;
   costo_envio: number;
+  dias_movilidad: number;
   descuento_movilidad: number;
   direccion: string;
   referencia: string;
@@ -163,6 +181,11 @@ interface FichaFormData {
 const FICHAS_PER_PAGE = 10;
 
 const getInitialFormData = (): FichaFormData => ({
+  ajusteMotivo: "",
+  es_cotizacion: false,
+  presentacion: "carrito",
+  movilidad_confirmada: false,
+  personalPrecios: {},
   entregaEnRango: true,
   recojoEnRango: true,
   fecha_evento: getLocalDateString(),
@@ -172,6 +195,7 @@ const getInitialFormData = (): FichaFormData => ({
   tipoEvento: "",
   titulo: "",
   costo_envio: 0,
+  dias_movilidad: 1,
   descuento_movilidad: 0,
   direccion: "",
   referencia: "",
@@ -202,6 +226,11 @@ const getInitialFormData = (): FichaFormData => ({
   abonoInicialMedio: "Transferencia",
   abonoInicialNumeroOperacion: "",
 });
+
+function actualizarMovilidad(prev: FichaFormData, patch: Partial<Pick<FichaFormData, "costo_envio" | "dias_movilidad" | "descuento_movilidad">>): FichaFormData {
+  const next = { ...prev, ...patch };
+  return next;
+}
 
 interface ExistingClient {
   id: string;
@@ -797,15 +826,20 @@ function AbonoModal({
 // Ficha tal como la devuelve la API (lista con detalle o GET /fichas/:id) → forma de la página
 function mapFichaApi(f: any): Ficha {
   return {
+    personalPrecios: Object.fromEntries((f.personal ?? []).map((p: any) => [Number(p.id), toMoneyNumber(p.precio_cotizado)])),
     id: f.id,
     fecha_evento: f.fecha_evento || f.fecha || "",
     fecha_reserva: f.fecha_reserva || f.fecha || "",
     fecha: f.fecha_evento || f.fecha || "",
     distrito: f.distrito || "",
+    es_cotizacion: f.es_cotizacion === true,
+    presentacion: f.presentacion || "carrito",
+    movilidad_confirmada: f.movilidad_confirmada === true,
     transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
     tipo_evento: f.tipo_evento || "",
     titulo: f.titulo || "",
     costo_envio: Number(f.costo_envio || 0),
+    dias_movilidad: Math.max(1, Math.trunc(Number(f.dias_movilidad) || 1)),
     descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
     direccion: f.direccion || "",
     referencia: f.referencia || "",
@@ -846,6 +880,7 @@ function mapFichaApi(f: any): Ficha {
     cliente_celular: f.cliente_celular || "",
     contacto_nombre: f.contacto_nombre || "",
     contacto_celular: f.contacto_celular || "",
+    cotizacion_trazabilidad: f.cotizacion_trazabilidad ?? null,
     cotizacion: toMoneyNumber(f.cotizacion),
     descuento: toMoneyNumber(f.descuento),
     brand: f.brand,
@@ -866,6 +901,8 @@ function mapFichaApi(f: any): Ficha {
 export function FichasPage() {
   const [fichas, setFichas] = useState<Ficha[]>([]);
   const [loading, setLoading] = useState(false);
+  const [imprimiendoFichas, setImprimiendoFichas] = useState(false);
+  const [fichasSeleccionadasIds, setFichasSeleccionadasIds] = useState<Set<number>>(() => new Set());
   const [error, setError] = useState("");
   const [deleteFichaId, setDeleteFichaId] = useState<number | null>(null);
   const [deleteFichaSubmitting, setDeleteFichaSubmitting] = useState(false);
@@ -895,7 +932,7 @@ export function FichasPage() {
   const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
   const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
   const [isUploadingAbonoInicialComprobante, setIsUploadingAbonoInicialComprobante] = useState(false);
-  const [formData, setFormData] = useState<FichaFormData>(getInitialFormData());
+  const [formData, setFormDataState] = useState<FichaFormData>(getInitialFormData());
   const [clients, setClients] = useState<ExistingClient[]>([]);
   const [showNewClientModal, setShowNewClientModal] = useState(false);
   const [isSavingNewClient, setIsSavingNewClient] = useState(false);
@@ -915,10 +952,15 @@ export function FichasPage() {
     recomendaciones: 0,
   });
   const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
   const createFichaLockRef = useRef(false);
   // Inflables que se marcaron solos por venir incluidos en un paquete
   const autoInflablesRef = useRef<number[]>([]);
   const dateRefreshLockRef = useRef(false);
+  const [cotizacionEditada, setCotizacionEditada] = useState(false);
+  const [registroCotizacion, setRegistroCotizacion] = useState<TrazabilidadCotizacion | null>(null);
+  const [preciosCotizados, setPreciosCotizados] = useState<LineaRegistrada[]>([]);
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
   const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
@@ -1004,11 +1046,11 @@ export function FichasPage() {
   const getDynamicPersonalEstado = (personalId: number, eventDate?: string): Ficha["personalIds"] extends any[] ? string : string => {
     if (!eventDate) {
       // Si no hay fecha, verificar si tiene ANY evento
-      const hasEvents = fichas.some((f) => f.personalIds?.includes(personalId));
+      const hasEvents = fichas.filter(f => !f.es_cotizacion).some((f) => f.personalIds?.includes(personalId));
       return hasEvents ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
     } else {
       // Verificar si tiene eventos en esa fecha específica
-      const hasEventsOnDate = fichas.some(
+      const hasEventsOnDate = fichas.filter(f => !f.es_cotizacion).some(
         (f) => f.personalIds?.includes(personalId) &&
         (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
       );
@@ -1018,12 +1060,13 @@ export function FichasPage() {
 
   // Obtener disponibilidad dinámica de un carrito según los eventos ya registrados
   const getDynamicCarritoEstado = (carritoId: number, eventDate?: string): string => {
+    if (formData.es_cotizacion) return "Disponible";
     const excludeId = editingFichaId;
     if (!eventDate) {
-      const busy = fichas.some((f) => f.id !== excludeId && f.carritoIds?.includes(carritoId));
+      const busy = fichas.filter(f => !f.es_cotizacion).some((f) => f.id !== excludeId && f.carritoIds?.includes(carritoId));
       return busy ? "Ocupado" : "Disponible";
     }
-    const busyOnDate = fichas.some(
+    const busyOnDate = fichas.filter(f => !f.es_cotizacion).some(
       (f) =>
         f.id !== excludeId &&
         f.carritoIds?.includes(carritoId) &&
@@ -1033,12 +1076,13 @@ export function FichasPage() {
   };
 
   const getDynamicInflableEstado = (inflableId: number, eventDate?: string): string => {
+    if (formData.es_cotizacion) return "Disponible";
     const excludeId = editingFichaId;
     if (!eventDate) {
-      const busy = fichas.some((f) => f.id !== excludeId && f.inflableIds?.includes(inflableId));
+      const busy = fichas.filter(f => !f.es_cotizacion).some((f) => f.id !== excludeId && f.inflableIds?.includes(inflableId));
       return busy ? "Ocupado" : "Disponible";
     }
-    const busyOnDate = fichas.some(
+    const busyOnDate = fichas.filter(f => !f.es_cotizacion).some(
       (f) =>
         f.id !== excludeId &&
         f.inflableIds?.includes(inflableId) &&
@@ -1050,7 +1094,7 @@ export function FichasPage() {
   // Fechas en que un carrito ya está asignado (para el calendario)
   const getFechasOcupadasCarrito = (carritoId: number): Date[] => {
     return fichas
-      .filter((f) => f.id !== editingFichaId && f.carritoIds?.includes(carritoId))
+      .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && f.carritoIds?.includes(carritoId))
       .map((f) => {
         const raw = (f.fecha_evento || f.fecha || "").split("T")[0];
         const d = new Date(`${raw}T00:00:00`);
@@ -1067,30 +1111,35 @@ export function FichasPage() {
   // ── Líneas de cotización (con descuento por ítem) ───────────────
   // Se usa tanto en el formulario (panel de Precios) como al generar proforma y contrato,
   // para que lo cotizado y lo impreso siempre coincidan.
-  const construirLineas = (origen: OrigenLineas): LineaCotizacion[] =>
-    construirLineasCotizacion(origen, {
+  const construirLineas = (origen: OrigenLineas, guardadas: LineaRegistrada[] = []): LineaCotizacion[] =>
+    aplicarPreciosCotizados(construirLineasCotizacion(origen, {
       paquetes: contextPaquetes,
       productos: productsDeLaMarca,
       carritos,
       inflables,
       recursos,
-    });
+    }), guardadas);
 
-  const origenDesdeFormulario = (): OrigenLineas => ({
+  const origenDesdeFormulario = (form = formData): OrigenLineas => ({
+    personal: form.transporte === "delivery" ? [] : form.personalIds.filter(id => id > 0).map(id => ({
+      id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: form.personalPrecios[id] ?? personales.find(p => p.id === id)?.precio ?? 0,
+    })),
     brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
-    paquetes: formData.paquetes,
-    productosSueltos: formData.productosSueltos,
-    carritoIds: formData.carritoIds,
-    carritosDescuentos: formData.carritosDescuentos,
-    inflableIds: formData.inflableIds,
-    inflablesDescuentos: formData.inflablesDescuentos,
-    recursos: formData.recursos.map((r) => ({ ...r })),
-    costoEnvio: formData.costo_envio,
-    descuentoMovilidad: formData.descuento_movilidad,
-    distrito: formData.distrito,
+    paquetes: form.paquetes,
+    productosSueltos: form.productosSueltos,
+    carritoIds: form.transporte === "delivery" ? [] : form.carritoIds,
+    carritosDescuentos: form.carritosDescuentos,
+    inflableIds: form.inflableIds,
+    inflablesDescuentos: form.inflablesDescuentos,
+    recursos: form.transporte === "delivery" ? [] : form.recursos.map((r) => ({ ...r })),
+    costoEnvio: form.costo_envio,
+    diasMovilidad: form.dias_movilidad,
+    descuentoMovilidad: form.descuento_movilidad,
+    distrito: form.distrito,
   });
 
   const origenDesdeFicha = (ficha: Ficha): OrigenLineas => ({
+    personal: (ficha.personalIds ?? []).map(id => ({ id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: ficha.personalPrecios?.[id] ?? 0 })),
     brand: ficha.brand,
     paquetes: ficha.paquetes,
     productosSueltos: ficha.productosSueltos,
@@ -1107,20 +1156,34 @@ export function FichasPage() {
       descuentoValor: r.descuentoValor,
     })),
     costoEnvio: toMoneyNumber(ficha.costo_envio),
+    diasMovilidad: ficha.dias_movilidad ?? 1,
     descuentoMovilidad: toMoneyNumber(ficha.descuento_movilidad),
     distrito: ficha.distrito,
   });
 
+  // Al cambiar ítems, recalcula el total. Solo conserva ajustes manuales documentados.
+  // Abrir una ficha usa setFormDataState para mantener intacto su total histórico.
+  const setFormData: React.Dispatch<React.SetStateAction<FichaFormData>> = (action) => {
+    setFormDataState(prev => {
+      const next = typeof action === "function" ? action(prev) : action;
+      if (next.cotizacion !== prev.cotizacion) return next;
+      const anteriores = construirLineas(origenDesdeFormulario(prev), preciosCotizados);
+      const siguientes = construirLineas(origenDesdeFormulario(next), preciosCotizados);
+      if (!compararLineas(registrarLineas(anteriores), registrarLineas(siguientes)).length) return next;
+      const conservarAjuste = cotizacionEditada || Boolean(next.ajusteMotivo.trim());
+      return { ...next, cotizacion: cotizacionMode === "auto"
+        ? redondearDinero(siguientes.reduce((sum, l) => sum + l.total, 0))
+        : actualizarTotalPorLineas(prev.cotizacion, anteriores, siguientes, conservarAjuste) };
+    });
+  };
+
   const lineasFormulario = useMemo(
-    () => construirLineas(origenDesdeFormulario()),
+    () => construirLineas(origenDesdeFormulario(), preciosCotizados),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [brand, carritos, contextPaquetes, formData, inflables, productsDeLaMarca, recursos]
+    [brand, carritos, contextPaquetes, formData, inflables, productsDeLaMarca, recursos, preciosCotizados]
   );
 
   const actualizarDescuentoLinea = (ref: LineaCotizacion["ref"], patch: Partial<LineaDescuento>) => {
-    // Al tocar un descuento el usuario está usando el cálculo, así que el total
-    // vuelve a seguir al desglose (al editar una ficha se abre en modo manual).
-    setCotizacionMode("auto");
     setFormData((prev) => {
       switch (ref.tipo) {
         case "paquete":
@@ -1149,7 +1212,7 @@ export function FichasPage() {
           // La movilidad guarda su descuento como porcentaje en la ficha
           return patch.descuentoValor === undefined
             ? prev
-            : { ...prev, descuento_movilidad: Math.min(100, Math.max(0, patch.descuentoValor)) };
+            : actualizarMovilidad(prev, { descuento_movilidad: Math.min(100, Math.max(0, patch.descuentoValor)) });
         default:
           return prev;
       }
@@ -1160,7 +1223,7 @@ export function FichasPage() {
     const subtotalBruto = lineasFormulario.reduce((sum, l) => sum + l.subtotal, 0);
     const descuentos = lineasFormulario.reduce((sum, l) => sum + l.descuentoMonto, 0);
     // Suma de las líneas ya con su descuento: es lo que se guarda en `cotizacion`.
-    const totalLineas = Math.max(0, subtotalBruto - descuentos);
+    const totalLineas = Math.max(0, redondearDinero(subtotalBruto - descuentos));
 
     // El total a cobrar parte de la cotización guardada (que puede estar ajustada a mano)
     // y recién ahí se aplica el descuento global, igual que hace getTotal() y el backend.
@@ -1196,7 +1259,7 @@ export function FichasPage() {
     setLoading(true);
     setError("");
     try {
-      const details = await obtenerFichasConDetalle(brand, { forzar });
+      const details = await obtenerFichasConDetalle(brand, { incluirCotizaciones: true, forzar });
       const mapped: Ficha[] = details.map(mapFichaApi);
 
       setFichas(mapped);
@@ -1247,15 +1310,22 @@ export function FichasPage() {
       return;
     }
     // La tarifa del distrito sale de la lista ya cargada (misma fila que /tarifas-envio/distrito/:d)
+    let cancelled = false;
     obtenerTarifasEnvio<TarifaEnvio>()
       .then((tarifas) => {
+        if (cancelled) return;
         const buscado = formData.distrito.trim().toLowerCase();
         const tarifa = (tarifas || []).find((t) => (t.distrito || "").trim().toLowerCase() === buscado);
         if (!tarifa) throw new Error("Distrito sin tarifa");
         setTarifaCache(tarifa);
-        setFormData((prev) => ({ ...prev, costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
+        // Al editar se conserva la movilidad guardada, incluso si se ajustó a mano.
+        const fichaOriginal = fichas.find((f) => f.id === editingFichaId);
+        if (!fichaOriginal || fichaOriginal.distrito !== formData.distrito) {
+          setFormData((prev) => actualizarMovilidad(prev, { costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
+        }
       })
-      .catch(() => setTarifaCache(null));
+      .catch(() => { if (!cancelled) setTarifaCache(null); });
+    return () => { cancelled = true; };
   }, [formData.distrito, showAddModal]);
   // Inflables que ya vienen incluidos (S/ 0) en los paquetes elegidos: cuántos cupos hay, cuántos se
   // usaron y qué tipos entran, para marcarlos en la lista y que no parezca que se cobran aparte.
@@ -1289,8 +1359,9 @@ export function FichasPage() {
   }, [formData.paquetes, formData.inflableIds, contextPaquetes, inflables]);
 
   // Catálogo de paquetes filtrado por la marca activa
+  const movilidadPorConfirmar = formData.transporte === "delivery" && ["mala", "santa rosa"].includes(formData.distrito.trim().toLowerCase());
   const paquetesDisponibles = contextPaquetes
-    .filter(p => p.brand === brand)
+    .filter(p => p.brand === brand && (brand !== "donofrio" || (p.presentacion || "carrito") === formData.presentacion || (formData.presentacion === "solo_helados" && (p.presentacion || "carrito") === "carrito") || formData.paquetes.some(linea => linea.paqueteId === p.id)))
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
 
   const distritos = distritosOptions.length > 0
@@ -1305,7 +1376,12 @@ export function FichasPage() {
     const matchesDistrito = selectedDistrito === "Todos" || ficha.distrito === selectedDistrito;
     const matchesEstado = estadoFilter === "Todos" || getEstadoPago(ficha) === estadoFilter;
     const matchesBrand = ficha.brand === brand; // Solo mostrar fichas de la marca actual
-    return matchesSearch && matchesDistrito && matchesEstado && matchesBrand;
+    const matchesRange = (fecha: string, range: DateRange | undefined) =>
+      (!range?.from || fecha >= getLocalDateString(range.from)) &&
+      (!range?.to || fecha <= getLocalDateString(range.to));
+    const matchesFecha = matchesRange((ficha.fecha_evento || ficha.fecha || "").slice(0, 10), dateRange);
+    const matchesFechaContacto = matchesRange((ficha.fecha_reserva || ficha.fecha || "").slice(0, 10), contactDateRange);
+    return matchesSearch && matchesDistrito && matchesEstado && matchesBrand && matchesFecha && matchesFechaContacto;
   }).sort((a, b) => {
     if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
     if (sortBy === "created_asc") return (a.created_at || "").localeCompare(b.created_at || "");
@@ -1321,19 +1397,48 @@ export function FichasPage() {
   const fichasStartIndex = (currentPage - 1) * FICHAS_PER_PAGE;
   const paginatedFichas = filteredFichas.slice(fichasStartIndex, fichasStartIndex + FICHAS_PER_PAGE);
 
+  const fichasSeleccionadas = fichas.filter(ficha => !ficha.es_cotizacion && ficha.brand === brand && fichasSeleccionadasIds.has(ficha.id));
+  const seleccionadasEnFiltro = filteredFichas.filter(ficha => !ficha.es_cotizacion && fichasSeleccionadasIds.has(ficha.id)).length;
+  const imprimiblesEnFiltro = filteredFichas.filter(ficha => !ficha.es_cotizacion);
+  const todasSeleccionadasEnFiltro = imprimiblesEnFiltro.length > 0 && seleccionadasEnFiltro === imprimiblesEnFiltro.length;
+  const seleccionadasFueraDelFiltro = fichasSeleccionadas.length - seleccionadasEnFiltro;
+  const cambiarSeleccionFicha = (id: number, seleccionada: boolean) => {
+    setFichasSeleccionadasIds(prev => {
+      const siguiente = new Set(prev);
+      if (seleccionada) siguiente.add(id);
+      else siguiente.delete(id);
+      return siguiente;
+    });
+  };
+  const cambiarSeleccionFiltro = (seleccionado: boolean) => {
+    setFichasSeleccionadasIds(prev => {
+      const siguiente = new Set(prev);
+      filteredFichas.filter(ficha => !ficha.es_cotizacion).forEach(ficha => {
+        if (seleccionado) siguiente.add(ficha.id);
+        else siguiente.delete(ficha.id);
+      });
+      return siguiente;
+    });
+  };
+
+  useEffect(() => {
+    setFichasSeleccionadasIds(new Set());
+  }, [brand]);
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedDistrito, estadoFilter, brand, sortBy]);
+  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand, sortBy]);
 
   // Financial stats
   const stats = useMemo(() => {
-    const ventaTotal = fichas.reduce((s, f) => s + f.cotizacion, 0);
-    const descuentos = fichas.reduce((s, f) => s + getDescuentoMonto(f), 0);
-    const totalAbonado = fichas.reduce((s, f) => s + getTotalAbonado(f), 0);
-    const saldoPendiente = fichas.reduce((s, f) => s + Math.max(0, getSaldo(f)), 0);
-    const pagadas = fichas.filter(f => getEstadoPago(f) === "pagado").length;
-    const parciales = fichas.filter(f => getEstadoPago(f) === "parcial").length;
-    const pendientes = fichas.filter(f => getEstadoPago(f) === "pendiente").length;
+    const confirmadas = fichas.filter(f => !f.es_cotizacion);
+    const ventaTotal = confirmadas.reduce((s, f) => s + f.cotizacion, 0);
+    const descuentos = confirmadas.reduce((s, f) => s + getDescuentoMonto(f), 0);
+    const totalAbonado = confirmadas.reduce((s, f) => s + getTotalAbonado(f), 0);
+    const saldoPendiente = confirmadas.reduce((s, f) => s + Math.max(0, getSaldo(f)), 0);
+    const pagadas = confirmadas.filter(f => getEstadoPago(f) === "pagado").length;
+    const parciales = confirmadas.filter(f => getEstadoPago(f) === "parcial").length;
+    const pendientes = confirmadas.filter(f => getEstadoPago(f) === "pendiente").length;
     return { ventaTotal, descuentos, totalAbonado, saldoPendiente, pagadas, parciales, pendientes };
   }, [fichas]);
 
@@ -1386,10 +1491,45 @@ export function FichasPage() {
 
   const getFichaTitulo = (ficha: Ficha) => ficha.titulo || `Ficha #${String(ficha.id).padStart(7, "0")}`;
 
+  const handleImprimirFichas = async (seleccion: Ficha[]) => {
+    seleccion = seleccion.filter(f => !f.es_cotizacion);
+    if (!seleccion.length || imprimiendoFichas || isLoadingData) return;
+    const ventana = window.open("", "_blank");
+    if (!ventana) {
+      notify.error("Permite las ventanas emergentes para abrir las fichas de impresión.");
+      return;
+    }
+    ventana.document.write("<title>Preparando fichas</title><p>Preparando fichas y consultando choferes asignados...</p>");
+    ventana.document.close();
+    setImprimiendoFichas(true);
+    try {
+      const asignaciones = await obtenerAsignaciones<AsignacionOperativa>({ forzar: true });
+      if (ventana.closed) return;
+      const operativas = seleccion.map(ficha => prepararFichaOperativa(ficha, {
+        paquetes: contextPaquetes, carritos, inflables, personal: personales,
+      }, asignaciones));
+      ventana.document.open();
+      ventana.document.write(buildFichasOperativasHtml(operativas));
+      ventana.document.close();
+      ventana.focus();
+    } catch (err) {
+      ventana.close();
+      notify.error(mensajeDeError(err, "No se pudieron preparar las fichas para imprimir."));
+    } finally {
+      setImprimiendoFichas(false);
+    }
+  };
+
   const handleGenerarProforma = (ficha: Ficha) => {
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
-    const lineasFicha = construirLineas(origenDesdeFicha(ficha));
+    const lineasFicha = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas);
+    const diferencia = redondearDinero(ficha.cotizacion - lineasFicha.reduce((sum, l) => sum + l.total, 0));
+    if (Math.abs(diferencia) >= 0.01 && !(ficha.cotizacion_trazabilidad?.actual.origen === "manual" && ficha.cotizacion_trazabilidad.actual.motivo.trim())) {
+      handleOpenEditModal(ficha);
+      setFormError("El total guardado no coincide con los ítems. Pulsa «Usar sugerido» y guarda, o indica un motivo real para conservar el ajuste antes de generar la proforma.");
+      return;
+    }
     const valorVenta = ficha.aplica_igv ? total / (1 + IGV_RATE) : total;
     const igvMonto = total - valorVenta;
     // Valor de lista y descuento se calculan contra el total real para que la resta
@@ -1453,6 +1593,7 @@ export function FichasPage() {
         Inflable: "Inflables",
         Recurso: "Recurso",
         Movilidad: "Transporte",
+        Personal: "Personal",
       };
 
       const filasJugueton = lineasFicha.map((linea) => ({
@@ -1715,7 +1856,7 @@ export function FichasPage() {
           </div>
           <main class="sheet">
             <section class="top">
-              <img class="logo" src="/images/jugueton.png" alt="Jugueton" />
+              <img class="logo" src="${new URL("/images/jugueton.png", window.location.origin).href}" alt="Jugueton" />
               <div class="title-block">
                 <h1>COTIZACIÓN</h1>
                 <div class="docno">${numeroCotizacion}</div>
@@ -1730,7 +1871,8 @@ export function FichasPage() {
               <div><strong>Cliente:</strong> ${escapeHtml(ficha.cliente_nombre)}</div>
               <div><strong>Correo:</strong> ${escapeHtml(ficha.contacto_nombre || "-")}</div>
               <div><strong>Teléfono:</strong> ${escapeHtml(ficha.cliente_celular)}</div>
-              <div><strong>Dirección del evento:</strong> ${escapeHtml(ficha.direccion)} - ${escapeHtml(ficha.distrito)}</div>
+              <div><strong>Dirección del evento:</strong> ${escapeHtml(ficha.direccion || "Por confirmar")} - ${escapeHtml(ficha.distrito)}</div>
+              ${ficha.presentacion && ficha.presentacion !== "carrito" ? `<div><strong>Presentación:</strong> ${escapeHtml(nombrePresentacion(ficha.presentacion))}</div>` : ""}
               <div><strong>Fecha del evento:</strong> ${escapeHtml(fechaEventoTexto)}</div>
             </section>
 
@@ -1841,6 +1983,16 @@ export function FichasPage() {
         total: linea.total,
         destacado: linea.grupo === "Paquete" || linea.grupo === "Movilidad",
       })),
+      ...(Math.abs(ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0)) >= 0.01
+        ? [{
+            cantidad: 1,
+            descripcion: ficha.cotizacion_trazabilidad?.actual.origen === "manual" ? `Ajuste del total: ${ficha.cotizacion_trazabilidad.actual.motivo}` : "Diferencia respecto al desglose",
+            contenidoStr: undefined,
+            pu: ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0),
+            total: ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0),
+            destacado: false,
+          }]
+        : []),
       ...(ficha.comentarios
         ? [{
             cantidad: 1,
@@ -1859,8 +2011,8 @@ export function FichasPage() {
           <tr class="${row.destacado ? "row-highlight" : ""}">
             <td class="cell-right">${row.cantidad}</td>
             <td>${escapeHtml(row.descripcion)}</td>
-            <td class="cell-right">${row.pu > 0 ? formatMoney(row.pu) : ""}</td>
-            <td class="cell-right">${row.total > 0 ? formatMoney(row.total) : ""}</td>
+            <td class="cell-right">${row.pu !== 0 ? formatMoney(row.pu) : ""}</td>
+            <td class="cell-right">${row.total !== 0 ? formatMoney(row.total) : ""}</td>
           </tr>
         `;
         const cs = (row as { contenidoStr?: string }).contenidoStr;
@@ -2072,7 +2224,7 @@ export function FichasPage() {
             <div class="bar-top"></div>
 
             <header class="header">
-              <img class="logo" src="/images/donofrio.jpg" alt="D'Onofrio" />
+              <img class="logo" src="${new URL("/images/donofrio.jpg", window.location.origin).href}" alt="D'Onofrio" />
               <div class="company">
                 <div>DISTRIBUCIONES Y CONCESIONES AP EIRL</div>
                 <div>RUC: 20556840149</div>
@@ -2092,6 +2244,7 @@ export function FichasPage() {
               <div class="quote-box">
                 <div class="row"><span>COTIZACIÓN:</span><span>${numeroFicha}</span></div>
                 <div class="row"><span>DISTRITO:</span><span>${escapeHtml(ficha.distrito)}</span></div>
+                ${ficha.presentacion && ficha.presentacion !== "carrito" ? `<div class="row"><span>PRESENTACIÓN:</span><span>${escapeHtml(nombrePresentacion(ficha.presentacion))}</span></div>` : ""}
                 <div class="row"><span>FECHA:</span><span>${fechaEmision}</span></div>
               </div>
             </section>
@@ -2184,8 +2337,11 @@ export function FichasPage() {
   };
 
   const handleGenerarContrato = (ficha: Ficha) => {
-    if (ficha.brand !== "jugueton") return;
-
+    if (ficha.es_cotizacion) { notify.aviso("Confirma la ficha antes de generar su contrato."); return; }
+    if (isLoadingData) {
+      notify.aviso("Espera a que termine de cargar el catálogo para generar el contrato completo.");
+      return;
+    }
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
     const abonado = getTotalAbonado(ficha);
@@ -2197,73 +2353,45 @@ export function FichasPage() {
       Inflable: "Inflable ",
       Recurso: "",
       Movilidad: "",
+      Personal: "",
     };
 
-    const items: JuguetonContractItem[] = construirLineas(origenDesdeFicha(ficha)).map((linea) => ({
+    const items: EventContractItem[] = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas).map((linea) => ({
       descripcion: etiquetaContrato[linea.grupo]
         + linea.descripcion
         + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
         + (linea.descuentoMonto > 0 ? " (dscto. " + formatMoney(linea.descuentoMonto) + ")" : ""),
+      detalle: linea.detalle,
       cantidad: linea.cantidad,
-      monto: linea.total > 0 ? linea.total : undefined,
+      monto: linea.incluidoEnPaquete ? undefined : linea.total,
     }));
 
-    if (ficha.aplica_igv) {
-      const valorVentaContrato = total / (1 + IGV_RATE);
-      items.push({ descripcion: "Valor venta", cantidad: 1, monto: valorVentaContrato });
-      items.push({ descripcion: "IGV (18%)", cantidad: 1, monto: total - valorVentaContrato });
-    }
-
-    const formatContractTime = (time?: string) => {
-      if (!time) return "No especificado";
-      const [hoursText, minutesText = "0"] = time.split(":");
-      const hours = Number(hoursText);
-      const minutes = Number(minutesText);
-      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
-      const suffix = hours >= 12 ? "pm" : "am";
-      const hour12 = hours % 12 || 12;
-      return String(hour12).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + " " + suffix;
-    };
-
-    const getDurationText = () => {
-      if (!ficha.hora_entrega || !ficha.hora_recojo) return "según el horario acordado";
-      const toMinutes = (time: string) => {
-        const [hours, minutes] = time.split(":").map(Number);
-        return hours * 60 + minutes;
-      };
-      const start = toMinutes(ficha.hora_entrega);
-      let end = toMinutes(ficha.hora_recojo);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return "según el horario acordado";
-      if (end < start) end += 24 * 60;
-      const duration = end - start;
-      const hours = Math.floor(duration / 60);
-      const minutes = duration % 60;
-      return (hours > 0 ? hours + " hora" + (hours === 1 ? "" : "s") : "")
-        + (hours > 0 && minutes > 0 ? " y " : "")
-        + (minutes > 0 ? minutes + " minutos" : "");
-    };
-
-    const popup = window.open("", "contrato-jugueton-" + ficha.id, "width=1000,height=800");
+    const popup = window.open("", "contrato-" + ficha.brand + "-" + ficha.id, "width=1000,height=800");
     if (!popup) {
       notify.aviso("El navegador bloqueó la ventana del contrato. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.");
       return;
     }
 
     const direccionEvento = [ficha.direccion, ficha.distrito].filter(Boolean).join(", ") || "dirección por confirmar";
-    const horarioEvento = formatContractTime(ficha.hora_entrega) + " - " + formatContractTime(ficha.hora_recojo);
-    const html = buildJuguetonContractHtml({
-      numero: String(ficha.id).padStart(6, "0"),
-      fechaEmision: new Date().toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" }),
-      clienteNombre: ficha.cliente_nombre,
+    const operativa = prepararFichaOperativa(ficha, { paquetes: contextPaquetes, carritos, inflables, personal: personales }, []);
+    const html = buildEventContractHtml({
+      brand: ficha.brand,
+      logoUrl: new URL(ficha.brand === "donofrio" ? "/images/eventos_ap.png" : "/images/jugueton.png", window.location.origin).href,
+      bannerUrl: new URL("/images/contrato-donofrio-banner.png", window.location.origin).href,
+      footerUrl: new URL("/images/contrato-donofrio-footer.png", window.location.origin).href,
+      numero: String(ficha.id).padStart(5, "0"),
+      clienteNombre: cliente?.razon_social || ficha.cliente_nombre,
       clienteDocumento: cliente?.dni_ruc || "",
       clienteEmail: cliente?.email || "",
       clienteTelefono: ficha.cliente_celular || cliente?.telefono || "",
-      tipoEvento: ficha.tipo_evento || "Evento",
       fechaEvento: formatDate(ficha.fecha_evento || ficha.fecha),
       direccionEvento,
-      horarioEvento,
-      duracionEvento: getDurationText(),
-      incluyePersonal: (ficha.personalIds ?? []).length > 0,
+      horarioEntrega: operativa.entrega,
+      horarioInicio: operativa.inicio,
+      horarioRecojo: operativa.recojo,
+      delivery: ficha.transporte === "delivery",
+      movilidad: (ficha.costo_envio ?? 0) > 0 ? `Sí${(ficha.dias_movilidad ?? 1) > 1 ? ` (${ficha.dias_movilidad} fechas)` : ""}` : "Sin cargo registrado",
+      personal: operativa.personal,
       items,
       total,
       abonado,
@@ -2281,33 +2409,37 @@ export function FichasPage() {
   };
 
   const handleRemovePersonalRow = (idx: number) => {
-    setFormData((prev) => ({ ...prev, personalIds: prev.personalIds.filter((_, i) => i !== idx) }));
+    setFormData((prev) => actualizarPersonalFicha(prev, prev.personalIds.filter((_, i) => i !== idx)));
+  };
+
+  const actualizarPersonalFicha = (prev: FichaFormData, ids: number[]): FichaFormData => {
+    return { ...prev, personalIds: ids };
   };
 
   const handlePersonalChange = (idx: number, personalId: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      personalIds: prev.personalIds.map((value, i) => (i === idx ? personalId : value)),
-    }));
+    setFormData((prev) => actualizarPersonalFicha(prev, prev.personalIds.map((value, i) => (i === idx ? personalId : value))));
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     if (name === "cotizacion") {
+      setCotizacionEditada(true);
       setCotizacionMode("manual");
       setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
     } else if (name === "descuento") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), descuentoMaxPct);
       setFormData((prev) => ({ ...prev, descuento: clamped }));
     } else if (name === "transporte" && tarifaCache) {
+      setFormData(prev => ({ ...prev, movilidad_confirmada: false }));
       const newTransporte = value as FichaFormData["transporte"];
-      setFormData((prev) => ({
-        ...prev,
-        transporte: newTransporte,
-        costo_envio: getCostoFromTarifa(tarifaCache, newTransporte),
-      }));
+      setFormData((prev) => ({ ...actualizarMovilidad(prev, { costo_envio: getCostoFromTarifa(tarifaCache, newTransporte) }), transporte: newTransporte, presentacion: newTransporte !== "delivery" && prev.presentacion === "solo_helados" ? "carrito" : prev.presentacion }));
+    } else if (name === "transporte") {
+      setFormData(prev => ({ ...prev, transporte: value as FichaFormData["transporte"], presentacion: value !== "delivery" && prev.presentacion === "solo_helados" ? "carrito" : prev.presentacion }));
     } else if (name === "costo_envio") {
-      setFormData((prev) => ({ ...prev, costo_envio: Number(value) || 0 }));
+      setFormData(prev => ({ ...prev, movilidad_confirmada: false }));
+      setFormData((prev) => actualizarMovilidad(prev, { costo_envio: Math.max(0, Number(value) || 0) }));
+    } else if (name === "dias_movilidad") {
+      setFormData((prev) => actualizarMovilidad(prev, { dias_movilidad: Math.max(1, Math.trunc(Number(value) || 1)) }));
     } else if (name === "hora_entrega") {
       setFormData((prev) => ({
         ...prev,
@@ -2322,11 +2454,11 @@ export function FichasPage() {
       }));
     } else if (name === "descuento_movilidad") {
       const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
-      setFormData((prev) => ({ ...prev, descuento_movilidad: clamped }));
+      setFormData((prev) => actualizarMovilidad(prev, { descuento_movilidad: clamped }));
     } else if (name === "abonoInicialMonto") {
       setFormData((prev) => ({ ...prev, abonoInicialMonto: Number(value) || 0 }));
     } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
+      setFormData((prev) => ({ ...prev, [name]: value, ...(name === "distrito" || name === "transporte" ? { movilidad_confirmada: false } : {}) }));
     }
 
     if (name === "fecha_evento" && !dateRefreshLockRef.current) {
@@ -2549,8 +2681,18 @@ export function FichasPage() {
   };
 
   const useSuggestedCotizacion = () => {
+    setCotizacionEditada(false);
     setCotizacionMode("auto");
     setFormData((prev) => ({ ...prev, cotizacion: cotizacionSugerida }));
+  };
+
+  const actualizarPreciosCatalogo = () => {
+    const nuevas = construirLineas(origenDesdeFormulario());
+    const conservarAjuste = cotizacionEditada || Boolean(formData.ajusteMotivo.trim());
+    const cotizacion = actualizarTotalPorLineas(formData.cotizacion, lineasFormulario, nuevas, conservarAjuste);
+    setPreciosCotizados([]);
+    setFormDataState(prev => ({ ...prev, cotizacion }));
+    if (!conservarAjuste) setCotizacionMode("auto");
   };
 
   const handleRemoveRecursoRow = (idx: number) => {
@@ -2562,7 +2704,7 @@ export function FichasPage() {
       ...prev,
       recursos: prev.recursos.map((recurso, i) => (i === idx ? { ...recurso, recursoId } : recurso)),
     }));
-    if (recursoId > 0 && formData.transporte !== "delivery") {
+    if (!formData.es_cotizacion && recursoId > 0 && formData.transporte !== "delivery") {
       const disponible = stockDisponibleRecurso(recursoId);
       const pedido = Number(formData.recursos[idx]?.cantidad || 1);
       if (disponible !== null && pedido > disponible) setAvisoDisp({ tipo: "recurso", recursoId, pedido });
@@ -2681,8 +2823,16 @@ export function FichasPage() {
   };
 
   const handleOpenEditModal = (ficha: Ficha) => {
+    setRegistroCotizacion(ficha.cotizacion_trazabilidad ?? null);
+    setPreciosCotizados(ficha.cotizacion_trazabilidad?.actual.lineas ?? registrarLineas(construirLineas(origenDesdeFicha(ficha))));
+    setCotizacionEditada(false);
     autoInflablesRef.current = [];
-    setFormData({
+    setFormDataState({
+      ajusteMotivo: ficha.cotizacion_trazabilidad?.actual.motivo ?? "",
+      personalPrecios: ficha.personalPrecios ?? {},
+      es_cotizacion: ficha.es_cotizacion === true,
+      presentacion: ficha.presentacion || "carrito",
+      movilidad_confirmada: ficha.movilidad_confirmada === true,
       entregaEnRango: Boolean(ficha.hora_entrega_fin),
       recojoEnRango: Boolean(ficha.hora_recojo_fin),
       fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
@@ -2692,6 +2842,7 @@ export function FichasPage() {
       tipoEvento: ficha.tipo_evento || "",
       titulo: ficha.titulo || "",
       costo_envio: ficha.costo_envio || 0,
+      dias_movilidad: ficha.dias_movilidad ?? 1,
       descuento_movilidad: ficha.descuento_movilidad || 0,
       direccion: ficha.direccion || "",
       referencia: ficha.referencia || "",
@@ -2844,14 +2995,22 @@ export function FichasPage() {
       return;
     }
     if (createFichaLockRef.current || isSaving) return;
-    if (!formData.tipoEvento) {
+    if (!formData.es_cotizacion && !formData.tipoEvento) {
       setTipoEventoMissing(true);
       setFormError("Elige el tipo de evento antes de guardar.");
       return;
     }
     setTipoEventoMissing(false);
+    if (cotizacionEditada && Math.abs(resumenFormulario.ajusteManual) >= 0.01 && !formData.ajusteMotivo.trim()) {
+      setFormError("Indica el motivo o concepto del ajuste de Cotización Total.");
+      return;
+    }
+    if (movilidadPorConfirmar && !formData.movilidad_confirmada) {
+      setFormError("No hay tarifa delivery definida para este distrito. Ingresa y confirma la movilidad antes de guardar.");
+      return;
+    }
     // Sin stock suficiente el servidor rechaza la ficha: se avisa antes y con el nombre del recurso
-    if (formData.transporte !== "delivery") {
+    if (!formData.es_cotizacion && formData.transporte !== "delivery") {
       const pedidos = new Map<number, number>();
       formData.recursos.filter((r) => r.recursoId > 0).forEach((r) => pedidos.set(r.recursoId, (pedidos.get(r.recursoId) ?? 0) + Number(r.cantidad || 0)));
       for (const [recursoId, cantidad] of pedidos) {
@@ -2870,7 +3029,7 @@ export function FichasPage() {
 
     const montoAbonoInicial = toMoneyNumber(formData.abonoInicialMonto);
     const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100));
-    if (formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
+    if (!formData.es_cotizacion && formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
       setFormError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
       return;
     }
@@ -2882,6 +3041,9 @@ export function FichasPage() {
     const inflableIdsPayload = formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [];
 
     const payload = {
+      es_cotizacion: formData.es_cotizacion,
+      presentacion: formData.presentacion,
+      movilidad_confirmada: formData.movilidad_confirmada,
       fecha: formData.fecha_evento,
       fecha_evento: formData.fecha_evento,
       fecha_reserva: formData.fecha_reserva,
@@ -2902,8 +3064,17 @@ export function FichasPage() {
       contacto_nombre: formData.contacto_nombre,
       contacto_celular: formData.contacto_celular,
       cotizacion: Number(formData.cotizacion),
+      cotizacion_registro: {
+        origen: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "calculado"
+          : cotizacionEditada || formData.ajusteMotivo.trim() ? "manual"
+            : "sin_registro",
+        motivo: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "" : formData.ajusteMotivo.trim(),
+        base: redondearDinero(resumenFormulario.totalLineas),
+        lineas: registrarLineas(lineasFormulario),
+      },
       descuento: toMoneyNumber(formData.descuento),
       costo_envio: toMoneyNumber(formData.costo_envio),
+      dias_movilidad: formData.dias_movilidad,
       descuento_movilidad: toMoneyNumber(formData.descuento_movilidad),
       aplica_igv: formData.aplicaIgv,
       brand,
@@ -2948,7 +3119,7 @@ export function FichasPage() {
         });
         const fichaId = createdFicha?.id ?? createdFicha?.ficha?.id;
 
-        if (formData.registrarAbonoInicial) {
+        if (!formData.es_cotizacion && formData.registrarAbonoInicial) {
           try {
             if (!fichaId) throw new Error("");
             await apiRequest(`/fichas/${fichaId}/abonos`, {
@@ -3092,7 +3263,7 @@ export function FichasPage() {
           const fecha = (formData.fecha_evento || "").split("T")[0];
           if (!fecha) return [];
           return fichas
-            .filter((f) => f.id !== editingFichaId && (esInflable ? f.inflableIds : f.carritoIds)?.includes(id)
+            .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && (esInflable ? f.inflableIds : f.carritoIds)?.includes(id)
               && (f.fecha_evento || f.fecha || "").split("T")[0] === fecha)
             .map((f) => ({ fichaId: f.id, titulo: getFichaTitulo(f), cliente: f.cliente_nombre, fecha: f.fecha_evento || f.fecha }));
         };
@@ -3236,7 +3407,7 @@ export function FichasPage() {
         <StatCard label="Por Cobrar" value={formatMoney(stats.saldoPendiente)} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        <StatCard label="Eventos" value={fichas.length} icon={<Calendar className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
+        <StatCard label="Eventos" value={fichas.filter(f => !f.es_cotizacion).length} icon={<Calendar className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
         <StatCard label="Pagadas" value={stats.pagadas} tone="green" icon={<CheckCircle2 className="text-green-500" />} loading={loading && !fichas.length} />
         <StatCard label="Parciales" value={stats.parciales} tone="orange" icon={<CircleDashed className="text-brand-orange" />} loading={loading && !fichas.length} />
         <StatCard label="Pendientes" value={stats.pendientes} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
@@ -3244,6 +3415,16 @@ export function FichasPage() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DateRangePicker label="Fecha de contacto del cliente" selectedRange={contactDateRange}
+            onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
+          <DateRangePicker label="Fecha del evento" selectedRange={dateRange}
+            onRangeChange={(range) => {
+              setDateRange(range);
+              if (range?.from && (sortBy === "created_desc" || sortBy === "created_asc")) setSortBy("evento_asc");
+            }}
+            onClear={() => setDateRange(undefined)} />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"><CreditCard className="w-4 h-4" /> Crédito</span>
           <div role="group" aria-label="Filtrar por estado de crédito" className="flex flex-wrap gap-2">
@@ -3281,11 +3462,38 @@ export function FichasPage() {
               <option value="evento_asc">Evento: fecha ascendente</option>
               <option value="evento_desc">Evento: fecha descendente</option>
             </select>
-            <button onClick={() => { autoInflablesRef.current = []; setShowAddModal(true); setFormData(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
+            <button onClick={() => { autoInflablesRef.current = []; setRegistroCotizacion(null); setPreciosCotizados([]); setCotizacionEditada(false); setShowAddModal(true); setFormDataState(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
               className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+            <input type="checkbox" checked={todasSeleccionadasEnFiltro}
+              ref={input => { if (input) input.indeterminate = seleccionadasEnFiltro > 0 && !todasSeleccionadasEnFiltro; }}
+              onChange={e => cambiarSeleccionFiltro(e.target.checked)} disabled={!filteredFichas.length}
+              className="h-4 w-4 accent-brand-orange" />
+            Seleccionar fichas confirmadas del filtro ({imprimiblesEnFiltro.length})
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+            {fichasSeleccionadas.length} seleccionada(s). La selección se conserva entre páginas y filtros.
+            {seleccionadasFueraDelFiltro > 0 && ` ${seleccionadasFueraDelFiltro} fuera del filtro actual; también se imprimirán.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {fichasSeleccionadas.length > 0 && (
+            <Button variant="ghost" onClick={() => setFichasSeleccionadasIds(new Set())}>Limpiar selección</Button>
+          )}
+          <Button variant="navy" disabled={!fichasSeleccionadas.length || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas(fichasSeleccionadas)}>
+            <Printer /> {imprimiendoFichas ? "Preparando..." : `Imprimir seleccionadas (${fichasSeleccionadas.length})`}
+          </Button>
+          <Button variant="subtle" disabled={!imprimiblesEnFiltro.length || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas(imprimiblesEnFiltro)}>
+            <Printer /> Imprimir filtro ({imprimiblesEnFiltro.length})
+          </Button>
         </div>
       </div>
 
@@ -3300,12 +3508,19 @@ export function FichasPage() {
           const brandMeta = getBrandMeta(ficha.brand);
 
           return (
-            <div key={ficha.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-shadow">
+            <div key={ficha.id} className={`bg-white dark:bg-gray-800 rounded-xl border p-6 hover:shadow-lg transition-shadow ${fichasSeleccionadasIds.has(ficha.id) ? "border-brand-orange ring-1 ring-brand-orange" : "border-gray-200 dark:border-gray-700"}`}>
+              <label className="flex items-center gap-2 mb-3 text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-fit">
+                <input type="checkbox" checked={fichasSeleccionadasIds.has(ficha.id)} disabled={ficha.es_cotizacion}
+                  onChange={e => cambiarSeleccionFicha(ficha.id, e.target.checked)}
+                  className="h-4 w-4 accent-brand-orange" />
+                Seleccionar ficha #{String(ficha.id).padStart(4, "0")}
+              </label>
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <TransporteBadge transporte={ficha.transporte} tipoEvento={ficha.tipo_evento} />
+                    {ficha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
                     <EstadoPagoBadge estado={estado} />
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
@@ -3324,6 +3539,11 @@ export function FichasPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => handleImprimirFichas([ficha])} disabled={ficha.es_cotizacion || imprimiendoFichas || isLoadingData}
+                    className="p-2 text-gray-400 hover:text-brand-navy hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-40"
+                    title="Imprimir ficha operativa" aria-label="Imprimir ficha operativa">
+                    <Printer className="w-5 h-5" />
+                  </button>
                   <button
                     onClick={() => handleGenerarProforma(ficha)}
                     className="p-2 text-gray-400 hover:text-brand-navy hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
@@ -3331,17 +3551,16 @@ export function FichasPage() {
                   >
                     <FileText className="w-5 h-5" />
                   </button>
-                  {ficha.brand === "jugueton" && (
-                    <button
+                  <button
                       onClick={() => handleGenerarContrato(ficha)}
+                      disabled={ficha.es_cotizacion || isLoadingData}
                       className="p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
                       title="Generar contrato"
                     >
                       <FileSignature className="w-5 h-5" />
                     </button>
-                  )}
                   {canEditFicha(ficha) && (
-                    <button onClick={() => { setAbonoTargetFicha(ficha); setEditingAbono(null); setShowAbonoModal(true); }}
+                    <button disabled={ficha.es_cotizacion} onClick={() => { setAbonoTargetFicha(ficha); setEditingAbono(null); setShowAbonoModal(true); }}
                       className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
                       title="Registrar abono">
                       <CreditCard className="w-5 h-5" />
@@ -3385,7 +3604,7 @@ export function FichasPage() {
                 <div className="flex items-start gap-2">
                   <MapPin className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm text-gray-900 dark:text-white truncate">{ficha.direccion}</p>
+                    <p className="text-sm text-gray-900 dark:text-white truncate">{ficha.direccion || "Dirección por confirmar"}</p>
                     <p className="text-xs text-gray-600 dark:text-gray-400">{ficha.distrito}</p>
                   </div>
                 </div>
@@ -3527,6 +3746,7 @@ export function FichasPage() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
+                  {selectedFicha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
               </div>
@@ -3566,7 +3786,7 @@ export function FichasPage() {
                   <h4 className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Resumen Financiero</h4>
                   {canEditFicha(selectedFicha) && (
                     <button
-                      onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
+                      disabled={selectedFicha.es_cotizacion} onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
                       className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Registrar Abono
                     </button>
@@ -3771,10 +3991,10 @@ export function FichasPage() {
               <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
                 <p className="text-gray-900 dark:text-white">{selectedFicha.tipo_evento || "-"}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Modalidad: {labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${formatMoney(selectedFicha.costo_envio)}` : ""}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Modalidad: {labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${selectedFicha.dias_movilidad ?? 1} día(s) × ${formatMoney(selectedFicha.costo_envio)} = ${formatMoney(selectedFicha.costo_envio * (selectedFicha.dias_movilidad ?? 1))}` : ""}</p>
                 {(selectedFicha.descuento_movilidad ?? 0) > 0 && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Descuento movilidad: {selectedFicha.descuento_movilidad}% — Total movilidad: {formatMoney(Math.max(0, toMoneyNumber(selectedFicha.costo_envio) * (1 - toMoneyNumber(selectedFicha.descuento_movilidad) / 100)))}
+                    Descuento movilidad: {selectedFicha.descuento_movilidad}% — Total movilidad: {formatMoney(Math.max(0, toMoneyNumber(selectedFicha.costo_envio) * (selectedFicha.dias_movilidad ?? 1) * (1 - toMoneyNumber(selectedFicha.descuento_movilidad) / 100)))}
                   </p>
                 )}
               </div>
@@ -3836,14 +4056,15 @@ export function FichasPage() {
 
             {/* Acciones: barra compacta fija al pie del detalle (el ✕ de arriba cierra) */}
             <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 mt-6 px-4 sm:px-6 py-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-100 dark:border-gray-700 rounded-b-xl flex flex-wrap items-center gap-2">
+              <Button variant="subtle" className="max-sm:grow" disabled={selectedFicha.es_cotizacion || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas([selectedFicha])}>
+                <Printer /> Ficha operativa
+              </Button>
               <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarProforma(selectedFicha)} title="Generar proforma">
                 <FileText /> Proforma
               </Button>
-              {selectedFicha.brand === "jugueton" && (
-                <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarContrato(selectedFicha)} title="Generar contrato">
+              <Button variant="subtle" className="max-sm:grow" disabled={selectedFicha.es_cotizacion || isLoadingData} onClick={() => handleGenerarContrato(selectedFicha)} title="Generar contrato">
                   <FileSignature /> Contrato
                 </Button>
-              )}
               {canEditFicha(selectedFicha) && (
                 <div className="flex flex-wrap items-center gap-2 max-sm:w-full sm:ml-auto [&>*:not(:first-child)]:max-sm:grow">
                   <Button variant="ghost" onClick={() => handleDeleteFicha(selectedFicha)} title="Eliminar ficha"
@@ -3853,7 +4074,7 @@ export function FichasPage() {
                   <Button variant="subtle" onClick={() => handleOpenEditModal(selectedFicha)}>
                     <Edit /> Editar
                   </Button>
-                  <Button variant="brand" onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}>
+                  <Button variant="brand" disabled={selectedFicha.es_cotizacion} onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}>
                     <CreditCard /> Registrar abono
                   </Button>
                 </div>
@@ -3890,18 +4111,29 @@ export function FichasPage() {
           onClose={handleCloseModal}
           size="xl"
           busy={isSaving}
-          title={editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento"}
+          title={formData.es_cotizacion ? (editingFichaId !== null ? "Editar Proforma" : "Nueva Proforma") : (editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento")}
           error={formError || undefined}
           footer={
             <>
               <Button type="button" variant="subtle" size="lg" onClick={handleCloseModal} disabled={isSaving}>Cancelar</Button>
               <Button type="submit" form="ficha-form" variant="brand" size="lg" loading={isSaving} disabled={isUploadingAbonoInicialComprobante}>
-                {isSaving ? "Guardando..." : isUploadingAbonoInicialComprobante ? "Subiendo comprobante..." : editingFichaId !== null ? "Guardar Cambios" : "Guardar Ficha"}
+                {isSaving ? "Guardando..." : isUploadingAbonoInicialComprobante ? "Subiendo comprobante..." : editingFichaId !== null ? "Guardar Cambios" : formData.es_cotizacion ? "Guardar Proforma" : "Guardar Ficha"}
               </Button>
             </>
           }
         >
             <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className={etiqueta}>Documento</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[{ value: false, label: "Ficha confirmada" }, { value: true, label: "Cotización / proforma" }].map(opcion => (
+                    <button key={opcion.label} type="button" aria-pressed={formData.es_cotizacion === opcion.value}
+                      onClick={() => setFormData(prev => ({ ...prev, es_cotizacion: opcion.value, registrarAbonoInicial: false }))}
+                      className={`rounded-lg border p-3 text-sm ${formData.es_cotizacion === opcion.value ? "border-brand-orange bg-brand-orange/10 text-brand-orange" : "border-gray-200 dark:border-gray-600"}`}>{opcion.label}</button>
+                  ))}
+                </div>
+                {formData.es_cotizacion && <p className="mt-2 text-xs text-gray-500">Puedes enviar la proforma con el distrito y completar dirección, horarios y contacto después. Para confirmar, edítala y elige «Ficha confirmada». No reserva equipos, recursos ni personal hasta confirmarse.</p>}
+              </div>
               {/* Título — encabezado principal de la ficha */}
               <div>
                 <label className={etiqueta}>Título de la Ficha</label>
@@ -3910,7 +4142,7 @@ export function FichasPage() {
 
               {/* Tipo de Evento — va primero para condicionar el resto del form */}
               <div>
-                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Tipo de Evento *</h4>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Tipo de Evento{!formData.es_cotizacion && " *"}</h4>
                 <SearchableSelect
                   options={TIPOS_EVENTO}
                   value={formData.tipoEvento}
@@ -3973,6 +4205,12 @@ export function FichasPage() {
                 </div>
               </div>
 
+              {brand === "donofrio" && <div>
+                <label className={etiqueta}>Presentación del pedido</label>
+                <select value={formData.presentacion} onChange={e => setFormData(prev => ({ ...prev, presentacion: e.target.value }))} className={inputClass}>
+                  <option value="carrito">Carrito</option><option value="lonchera">Lonchera</option>{formData.transporte === "delivery" && <option value="solo_helados">Solo helados</option>}<option value="tecnopor">Tecnopor</option>
+                </select>
+              </div>}
               {/* Paquetes */}
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-brand-orange" /> Paquetes del Evento</h4>
@@ -4244,7 +4482,7 @@ export function FichasPage() {
                               <select value={personalId} onChange={(e) => handlePersonalChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
                                 <option value={0}>Seleccionar personal...</option>
                                 {availablePersonales.map((personal) => (
-                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.rol} · {getDynamicPersonalEstado(personal.id, formData.fecha_evento)}</option>
+                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.tipo_reparto || personal.rol} · {formatMoney(formData.personalPrecios[personal.id] ?? personal.precio ?? 0)} · {getDynamicPersonalEstado(personal.id, formData.fecha_evento)}</option>
                                 ))}
                               </select>
                               <div className="flex items-center justify-between gap-2 md:justify-end">
@@ -4296,7 +4534,7 @@ export function FichasPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div><label className={etiqueta}>Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
-                  <div><label className={etiqueta}>Celular del Cliente *</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required placeholder="Ej: 999 888 777" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Celular del Cliente{!formData.es_cotizacion && " *"}</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required={!formData.es_cotizacion} placeholder="Ej: 999 888 777" className={inputClass} /></div>
                   <div><label className={etiqueta}>Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
                   <div><label className={etiqueta}>Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
                 </div>
@@ -4312,7 +4550,7 @@ export function FichasPage() {
                       {distritos.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
-                  <div><label className={etiqueta}>Dirección *</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Dirección{!formData.es_cotizacion && " *"}</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required={!formData.es_cotizacion} placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
                   <div className="md:col-span-2"><label className={etiqueta}>Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
                 </div>
               </div>
@@ -4323,50 +4561,50 @@ export function FichasPage() {
                 {brand === "jugueton" ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className={etiqueta}>Hora de Entrega *</label>
-                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                      <label className={etiqueta}>Hora de Entrega{!formData.es_cotizacion && " *"}</label>
+                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                     </div>
                     <div>
-                      <label className={etiqueta}>Hora de Inicio *</label>
-                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
+                      <label className={etiqueta}>Hora de Inicio{!formData.es_cotizacion && " *"}</label>
+                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
-                        <label className={etiqueta}>Hora de Recojo *</label>
-                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                        <label className={etiqueta}>Hora de Recojo{!formData.es_cotizacion && " *"}</label>
+                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className={etiqueta}>Hora de Entrega *</label>
+                      <label className={etiqueta}>Hora de Entrega{!formData.es_cotizacion && " *"}</label>
                       <HorarioSelector label="entrega" enRango={formData.entregaEnRango}
                         onChange={(enRango) => setFormData(prev => ({ ...prev, entregaEnRango: enRango, hora_entrega_fin: enRango && prev.hora_entrega ? (prev.hora_entrega_fin || addHoraMasUnaHora(prev.hora_entrega)) : "" }))} />
                       <div className={`grid gap-2 ${formData.entregaEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                         <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.entregaEnRango ? "Desde" : "Hora exacta"}</span>
-                          <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required className={inputClass} />
+                          <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                         </div>
                         {formData.entregaEnRango && <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                          <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required className={inputClass} />
+                          <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                         </div>}
                       </div>
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
-                        <label className={etiqueta}>Hora de Recojo *</label>
+                        <label className={etiqueta}>Hora de Recojo{!formData.es_cotizacion && " *"}</label>
                         <HorarioSelector label="recojo" enRango={formData.recojoEnRango}
                           onChange={(enRango) => setFormData(prev => ({ ...prev, recojoEnRango: enRango, hora_recojo_fin: enRango && prev.hora_recojo ? (prev.hora_recojo_fin || addHoraMasUnaHora(prev.hora_recojo)) : "" }))} />
                         <div className={`grid gap-2 ${formData.recojoEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                           <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.recojoEnRango ? "Desde" : "Hora exacta"}</span>
-                            <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required className={inputClass} />
+                            <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                           </div>
                           {formData.recojoEnRango && <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                            <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required className={inputClass} />
+                            <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                           </div>}
                         </div>
                       </div>
@@ -4385,7 +4623,7 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
                 <div className="mb-4 max-w-xs">
-                  <label className={etiqueta}>Costo de Envío (S/)</label>
+                  <label className={etiqueta}>Movilidad por día (S/)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
                     <input
@@ -4399,9 +4637,19 @@ export function FichasPage() {
                       className={`${inputClass} pl-9`}
                     />
                   </div>
+                  {movilidadPorConfirmar && <div role="alert" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                    La movilidad delivery a {formData.distrito} no tiene tarifa definida. Ingresa el precio acordado.
+                    <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={formData.movilidad_confirmada} onChange={e => { setFormError(""); setFormData(prev => ({ ...prev, movilidad_confirmada: e.target.checked })); }} /> Confirmo la movilidad de {formatMoney(formData.costo_envio)} por día.</label>
+                  </div>}
                   {tarifaCache && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
                   )}
+                  <label htmlFor="dias-movilidad" className={`${etiqueta} mt-3`}>Días de movilidad</label>
+                  <input id="dias-movilidad" type="number" name="dias_movilidad" min={1} step={1} required
+                    value={formData.dias_movilidad} onChange={handleInputChange} className={inputClass} />
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                    {formData.dias_movilidad} {formData.dias_movilidad === 1 ? "día" : "días"} × {formatMoney(formData.costo_envio)} = {formatMoney(formData.costo_envio * formData.dias_movilidad)} antes de descuentos.
+                  </p>
                 </div>
 
                 {/* Desglose con descuento por ítem */}
@@ -4485,7 +4733,7 @@ export function FichasPage() {
                       )}
                       {Math.abs(resumenFormulario.ajusteManual) >= 0.01 && (
                         <tr>
-                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Ajuste manual de la cotización</td>
+                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">{cotizacionEditada || registroCotizacion?.actual.origen === "manual" ? "Ajuste del total" : "Diferencia respecto al desglose"}</td>
                           <td className="py-1.5 px-3 text-right text-amber-600 dark:text-amber-400">
                             {resumenFormulario.ajusteManual > 0 ? "+ " : "− "}{formatMoney(Math.abs(resumenFormulario.ajusteManual))}
                           </td>
@@ -4517,6 +4765,10 @@ export function FichasPage() {
                   </table>
                 </div>
 
+                <DetalleAjusteCotizacion total={toMoneyNumber(formData.cotizacion)} base={resumenFormulario.totalLineas}
+                  registro={registroCotizacion} lineas={registrarLineas(lineasFormulario)} motivo={formData.ajusteMotivo}
+                  editado={cotizacionEditada} onMotivoChange={value => setFormData(prev => ({ ...prev, ajusteMotivo: value }))} />
+
                 <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <input
                     type="checkbox"
@@ -4527,8 +4779,12 @@ export function FichasPage() {
                   Desglosar IGV (18%) en la proforma y el contrato
                 </label>
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  {preciosCotizados.length > 0 && <>
+                    <span>Precios conservados de la cotización.</span>
+                    <button type="button" onClick={actualizarPreciosCatalogo} className="rounded-full border border-gray-300 px-2.5 py-1 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">Actualizar precios del catálogo</button>
+                  </>}
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
-                    Modo: {cotizacionMode === "auto" ? "Autocalculado" : "Editable manual"}
+                    Modo: {cotizacionMode === "auto" ? "Autocalculado" : cotizacionEditada ? "Edición manual del total" : "Total guardado"}
                   </span>
                   <span className="rounded-full bg-brand-orange/10 px-2.5 py-1 text-brand-orange dark:bg-brand-orange/20">
                     Sugerido: {formatMoney(cotizacionSugerida)}
@@ -4587,7 +4843,7 @@ export function FichasPage() {
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Paquetes, productos, carritos, inflables, recursos y transporte se suman automáticamente.</div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
                 </div>
-                {editingFichaId === null && (
+                {editingFichaId === null && !formData.es_cotizacion && (
                   <div className="mt-5 rounded-lg border border-green-200 bg-green-50/60 p-4 dark:border-green-900/60 dark:bg-green-900/10">
                     <label className="flex cursor-pointer items-center gap-3 text-sm text-gray-800 dark:text-gray-200">
                       <input

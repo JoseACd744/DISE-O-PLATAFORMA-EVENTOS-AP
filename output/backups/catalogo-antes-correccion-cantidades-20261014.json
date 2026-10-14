@@ -1,0 +1,2441 @@
+[
+  {
+    "id": 24,
+    "nombre": "50 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "180.00",
+    "contenido": [
+      {
+        "id": 150,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 151,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 152,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 153,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "nombre": "100 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "250.00",
+    "contenido": [
+      {
+        "id": 154,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 155,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 156,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 157,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 20
+      },
+      {
+        "id": 158,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "nombre": "150 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 159,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 40
+      },
+      {
+        "id": 160,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 161,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 162,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      },
+      {
+        "id": 163,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 27,
+    "nombre": "200 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "380.00",
+    "contenido": [
+      {
+        "id": 164,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 50
+      },
+      {
+        "id": 165,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 166,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 40
+      },
+      {
+        "id": 167,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      },
+      {
+        "id": 168,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "nombre": "250 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "450.00",
+    "contenido": [
+      {
+        "id": 169,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 60
+      },
+      {
+        "id": 170,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 171,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 50
+      },
+      {
+        "id": 172,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 40
+      },
+      {
+        "id": 173,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 50
+      }
+    ]
+  },
+  {
+    "id": 29,
+    "nombre": "300 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "530.00",
+    "contenido": [
+      {
+        "id": 174,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 70
+      },
+      {
+        "id": 175,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 60
+      },
+      {
+        "id": 176,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 60
+      },
+      {
+        "id": 177,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 50
+      },
+      {
+        "id": 178,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 60
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "nombre": "400 MINIS",
+    "tipo": "minis",
+    "presentacion": "carrito",
+    "precio_unitario": "690.00",
+    "contenido": [
+      {
+        "id": 179,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 90
+      },
+      {
+        "id": 180,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 80
+      },
+      {
+        "id": 181,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 80
+      },
+      {
+        "id": 182,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 70
+      },
+      {
+        "id": 183,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 80
+      }
+    ]
+  },
+  {
+    "id": 31,
+    "nombre": "MINI VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "carrito",
+    "precio_unitario": "199.00",
+    "contenido": [
+      {
+        "id": 279,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 280,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 281,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 282,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 10
+      },
+      {
+        "id": 283,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "nombre": "VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "carrito",
+    "precio_unitario": "250.00",
+    "contenido": [
+      {
+        "id": 284,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 285,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 286,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 287,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 288,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 33,
+    "nombre": "EXTRA VACILON",
+    "tipo": "vacilon",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 196,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 197,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 198,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 199,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 200,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 201,
+        "sku": "ZOORPREZA",
+        "nombre": "ZOORPREZA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 34,
+    "nombre": "FULL VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "carrito",
+    "precio_unitario": "350.00",
+    "contenido": [
+      {
+        "id": 202,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 203,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 204,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 205,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 206,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 207,
+        "sku": "ZOORPREZA",
+        "nombre": "ZOORPREZA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 35,
+    "nombre": "VERANO I",
+    "tipo": "verano",
+    "presentacion": "carrito",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 208,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 20
+      },
+      {
+        "id": 209,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 1
+      },
+      {
+        "id": 210,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 20
+      },
+      {
+        "id": 211,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 10
+      },
+      {
+        "id": 212,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 36,
+    "nombre": "VERANO II",
+    "tipo": "verano",
+    "presentacion": "carrito",
+    "precio_unitario": "400.00",
+    "contenido": [
+      {
+        "id": 213,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      },
+      {
+        "id": 214,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 20
+      },
+      {
+        "id": 215,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 30
+      },
+      {
+        "id": 216,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 10
+      },
+      {
+        "id": 217,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 37,
+    "nombre": "VERANO III",
+    "tipo": "verano",
+    "presentacion": "carrito",
+    "precio_unitario": "550.00",
+    "contenido": [
+      {
+        "id": 218,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 50
+      },
+      {
+        "id": 219,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 20
+      },
+      {
+        "id": 220,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 50
+      },
+      {
+        "id": 221,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 15
+      },
+      {
+        "id": 222,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 15
+      }
+    ]
+  },
+  {
+    "id": 38,
+    "nombre": "VERANO IV",
+    "tipo": "verano",
+    "presentacion": "carrito",
+    "precio_unitario": "700.00",
+    "contenido": [
+      {
+        "id": 223,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 60
+      },
+      {
+        "id": 224,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 40
+      },
+      {
+        "id": 225,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 60
+      },
+      {
+        "id": 226,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 20
+      },
+      {
+        "id": 227,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 39,
+    "nombre": "PREMIUM I",
+    "tipo": "premium",
+    "presentacion": "carrito",
+    "precio_unitario": "400.00",
+    "contenido": [
+      {
+        "id": 228,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 10
+      },
+      {
+        "id": 229,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 230,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 231,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 232,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 1
+      },
+      {
+        "id": 233,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 1
+      },
+      {
+        "id": 234,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 10
+      },
+      {
+        "id": 235,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 40,
+    "nombre": "PREMIUM II",
+    "tipo": "premium",
+    "presentacion": "carrito",
+    "precio_unitario": "580.00",
+    "contenido": [
+      {
+        "id": 236,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 10
+      },
+      {
+        "id": 237,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 238,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 239,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 240,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 241,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 242,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 243,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 41,
+    "nombre": "PREMIUM III",
+    "tipo": "premium",
+    "presentacion": "carrito",
+    "precio_unitario": "700.00",
+    "contenido": [
+      {
+        "id": 244,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 20
+      },
+      {
+        "id": 245,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 246,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 247,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 248,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 249,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 250,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 251,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 42,
+    "nombre": "PREMIUM IV",
+    "tipo": "premium",
+    "presentacion": "carrito",
+    "precio_unitario": "880.00",
+    "contenido": [
+      {
+        "id": 252,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 20
+      },
+      {
+        "id": 253,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 20
+      },
+      {
+        "id": 254,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 255,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 256,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 257,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 20
+      },
+      {
+        "id": 258,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 20
+      },
+      {
+        "id": 259,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 43,
+    "nombre": "50 MINIS-BOX LONCHERAS",
+    "tipo": "box-loncheras",
+    "presentacion": "lonchera",
+    "precio_unitario": "130.00",
+    "contenido": [
+      {
+        "id": 260,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 261,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 262,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 263,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 44,
+    "nombre": "100 MINIS-BOX LONCHERAS",
+    "tipo": "box-loncheras",
+    "presentacion": "lonchera",
+    "precio_unitario": "200.00",
+    "contenido": [
+      {
+        "id": 264,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 265,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 266,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 267,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 20
+      },
+      {
+        "id": 268,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 45,
+    "nombre": "MINI VACILÓN-BOX LONCHERAS",
+    "tipo": "box-loncheras",
+    "presentacion": "lonchera",
+    "precio_unitario": "150.00",
+    "contenido": [
+      {
+        "id": 289,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 290,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 291,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 292,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 10
+      },
+      {
+        "id": 293,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 46,
+    "nombre": "VACILÓN-BOX LONCHERAS",
+    "tipo": "box-loncheras",
+    "presentacion": "lonchera",
+    "precio_unitario": "200.00",
+    "contenido": [
+      {
+        "id": 294,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 295,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 296,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 297,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 298,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 54,
+    "nombre": "BOX TECNOPOR - 50 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "180.00",
+    "contenido": [
+      {
+        "id": 316,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 317,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 318,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 319,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 55,
+    "nombre": "LONCHERA - 150 MINIS",
+    "tipo": "minis",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 320,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 40
+      },
+      {
+        "id": 321,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 322,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 323,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      },
+      {
+        "id": 324,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 56,
+    "nombre": "LONCHERA - 200 MINIS",
+    "tipo": "minis",
+    "presentacion": "lonchera",
+    "precio_unitario": "380.00",
+    "contenido": [
+      {
+        "id": 325,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 50
+      },
+      {
+        "id": 326,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 327,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 40
+      },
+      {
+        "id": 328,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      },
+      {
+        "id": 329,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 57,
+    "nombre": "LONCHERA - 250 MINIS",
+    "tipo": "minis",
+    "presentacion": "lonchera",
+    "precio_unitario": "450.00",
+    "contenido": [
+      {
+        "id": 330,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 60
+      },
+      {
+        "id": 331,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 332,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 50
+      },
+      {
+        "id": 333,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 40
+      },
+      {
+        "id": 334,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 50
+      }
+    ]
+  },
+  {
+    "id": 58,
+    "nombre": "BOX TECNOPOR - 250 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "450.00",
+    "contenido": [
+      {
+        "id": 335,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 60
+      },
+      {
+        "id": 336,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 337,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 50
+      },
+      {
+        "id": 338,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 40
+      },
+      {
+        "id": 339,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 50
+      }
+    ]
+  },
+  {
+    "id": 59,
+    "nombre": "LONCHERA - 300 MINIS",
+    "tipo": "minis",
+    "presentacion": "lonchera",
+    "precio_unitario": "530.00",
+    "contenido": [
+      {
+        "id": 340,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 70
+      },
+      {
+        "id": 341,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 60
+      },
+      {
+        "id": 342,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 60
+      },
+      {
+        "id": 343,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 50
+      },
+      {
+        "id": 344,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 60
+      }
+    ]
+  },
+  {
+    "id": 60,
+    "nombre": "BOX TECNOPOR - 300 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "contenido": [
+      {
+        "id": 345,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 70
+      },
+      {
+        "id": 346,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 60
+      },
+      {
+        "id": 347,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 60
+      },
+      {
+        "id": 348,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 50
+      },
+      {
+        "id": 349,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 60
+      }
+    ]
+  },
+  {
+    "id": 61,
+    "nombre": "LONCHERA - 400 MINIS",
+    "tipo": "minis",
+    "presentacion": "lonchera",
+    "precio_unitario": "690.00",
+    "contenido": [
+      {
+        "id": 350,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 90
+      },
+      {
+        "id": 351,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 80
+      },
+      {
+        "id": 352,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 80
+      },
+      {
+        "id": 353,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 70
+      },
+      {
+        "id": 354,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 80
+      }
+    ]
+  },
+  {
+    "id": 62,
+    "nombre": "BOX TECNOPOR - 400 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "690.00",
+    "contenido": [
+      {
+        "id": 355,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 90
+      },
+      {
+        "id": 356,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 80
+      },
+      {
+        "id": 357,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 80
+      },
+      {
+        "id": 358,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 70
+      },
+      {
+        "id": 359,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 80
+      }
+    ]
+  },
+  {
+    "id": 63,
+    "nombre": "BOX TECNOPOR - MINI VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "tecnopor",
+    "precio_unitario": "199.00",
+    "contenido": [
+      {
+        "id": 360,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 15
+      },
+      {
+        "id": 361,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 15
+      },
+      {
+        "id": 362,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 363,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 10
+      },
+      {
+        "id": 364,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 64,
+    "nombre": "LONCHERA - EXTRA VACILON",
+    "tipo": "vacilon",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 365,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 366,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 367,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 368,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 369,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 370,
+        "sku": "ZOORPREZA",
+        "nombre": "ZOORPREZA",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 65,
+    "nombre": "LONCHERA - FULL VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "lonchera",
+    "precio_unitario": "350.00",
+    "contenido": [
+      {
+        "id": 371,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 372,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 373,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 374,
+        "sku": "TURBO",
+        "nombre": "TURBO",
+        "cantidad": 20
+      },
+      {
+        "id": 375,
+        "sku": "K_BANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 376,
+        "sku": "ZOORPREZA",
+        "nombre": "ZOORPREZA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 66,
+    "nombre": "LONCHERA - VERANO I",
+    "tipo": "verano",
+    "presentacion": "lonchera",
+    "precio_unitario": "300.00",
+    "contenido": [
+      {
+        "id": 377,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 20
+      },
+      {
+        "id": 378,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 1
+      },
+      {
+        "id": 379,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 20
+      },
+      {
+        "id": 380,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 10
+      },
+      {
+        "id": 381,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 67,
+    "nombre": "LONCHERA - VERANO II",
+    "tipo": "verano",
+    "presentacion": "lonchera",
+    "precio_unitario": "400.00",
+    "contenido": [
+      {
+        "id": 382,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      },
+      {
+        "id": 383,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 20
+      },
+      {
+        "id": 384,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 30
+      },
+      {
+        "id": 385,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 10
+      },
+      {
+        "id": 386,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "nombre": "LONCHERA - VERANO III",
+    "tipo": "verano",
+    "presentacion": "lonchera",
+    "precio_unitario": "550.00",
+    "contenido": [
+      {
+        "id": 387,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 50
+      },
+      {
+        "id": 388,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 20
+      },
+      {
+        "id": 389,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 50
+      },
+      {
+        "id": 390,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 15
+      },
+      {
+        "id": 391,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 15
+      }
+    ]
+  },
+  {
+    "id": 69,
+    "nombre": "LONCHERA - VERANO IV",
+    "tipo": "verano",
+    "presentacion": "lonchera",
+    "precio_unitario": "700.00",
+    "contenido": [
+      {
+        "id": 392,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 60
+      },
+      {
+        "id": 393,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 40
+      },
+      {
+        "id": 394,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 60
+      },
+      {
+        "id": 395,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 20
+      },
+      {
+        "id": 396,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 70,
+    "nombre": "BOX TECNOPOR - VERANO IV",
+    "tipo": "verano",
+    "presentacion": "tecnopor",
+    "precio_unitario": "700.00",
+    "contenido": [
+      {
+        "id": 397,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 60
+      },
+      {
+        "id": 398,
+        "sku": "ALASKA_MOUSSE",
+        "nombre": "ALASKA MOUSSE",
+        "cantidad": 40
+      },
+      {
+        "id": 399,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 60
+      },
+      {
+        "id": 400,
+        "sku": "SUBLIME_CLASICO",
+        "nombre": "SUBLIME CLASICO",
+        "cantidad": 20
+      },
+      {
+        "id": 401,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DUO",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 71,
+    "nombre": "LONCHERA - PREMIUM I",
+    "tipo": "premium",
+    "presentacion": "lonchera",
+    "precio_unitario": "400.00",
+    "contenido": [
+      {
+        "id": 402,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 10
+      },
+      {
+        "id": 403,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 404,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 405,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 406,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 1
+      },
+      {
+        "id": 407,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 1
+      },
+      {
+        "id": 408,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 10
+      },
+      {
+        "id": 409,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 72,
+    "nombre": "LONCHERA - PREMIUM II",
+    "tipo": "premium",
+    "presentacion": "lonchera",
+    "precio_unitario": "580.00",
+    "contenido": [
+      {
+        "id": 410,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 10
+      },
+      {
+        "id": 411,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 412,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 413,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 414,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 415,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 416,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 417,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 73,
+    "nombre": "LONCHERA - PREMIUM III",
+    "tipo": "premium",
+    "presentacion": "lonchera",
+    "precio_unitario": "700.00",
+    "contenido": [
+      {
+        "id": 418,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 20
+      },
+      {
+        "id": 419,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 420,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 421,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 422,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 423,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 424,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 425,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 74,
+    "nombre": "LONCHERA - PREMIUM IV",
+    "tipo": "premium",
+    "presentacion": "lonchera",
+    "precio_unitario": "880.00",
+    "contenido": [
+      {
+        "id": 426,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 20
+      },
+      {
+        "id": 427,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 20
+      },
+      {
+        "id": 428,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 429,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 430,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 431,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 20
+      },
+      {
+        "id": 432,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 20
+      },
+      {
+        "id": 433,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 75,
+    "nombre": "BOX TECNOPOR - PREMIUM IV",
+    "tipo": "premium",
+    "presentacion": "tecnopor",
+    "precio_unitario": "880.00",
+    "contenido": [
+      {
+        "id": 434,
+        "sku": "BOM_BOM",
+        "nombre": "BOM BOM",
+        "cantidad": 20
+      },
+      {
+        "id": 435,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 20
+      },
+      {
+        "id": 436,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 437,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 438,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 439,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 20
+      },
+      {
+        "id": 440,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 20
+      },
+      {
+        "id": 441,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 76,
+    "nombre": "BOX TECNOPOR - PREMIUM I",
+    "tipo": "premium",
+    "presentacion": "tecnopor",
+    "precio_unitario": "350.00",
+    "contenido": [
+      {
+        "id": 442,
+        "sku": "BOMBONES",
+        "nombre": "BOMBONES",
+        "cantidad": 10
+      },
+      {
+        "id": 443,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 444,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 445,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 446,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 10
+      },
+      {
+        "id": 447,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 77,
+    "nombre": "BOX TECNOPOR - PREMIUM II",
+    "tipo": "premium",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "contenido": [
+      {
+        "id": 448,
+        "sku": "BOMBONES",
+        "nombre": "BOMBONES",
+        "cantidad": 10
+      },
+      {
+        "id": 449,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 450,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 451,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 452,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 453,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 454,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 455,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 78,
+    "nombre": "BOX TECNOPOR - PREMIUM III",
+    "tipo": "premium",
+    "presentacion": "tecnopor",
+    "precio_unitario": "650.00",
+    "contenido": [
+      {
+        "id": 456,
+        "sku": "BOMBONES",
+        "nombre": "BOMBONES",
+        "cantidad": 20
+      },
+      {
+        "id": 457,
+        "sku": "SIN_PARAR",
+        "nombre": "SIN PARAR",
+        "cantidad": 10
+      },
+      {
+        "id": 458,
+        "sku": "DONOSANDWICH",
+        "nombre": "DONOSANDWICH",
+        "cantidad": 10
+      },
+      {
+        "id": 459,
+        "sku": "KIT_KAT",
+        "nombre": "KIT KAT",
+        "cantidad": 10
+      },
+      {
+        "id": 460,
+        "sku": "COPA_DONOFRIO",
+        "nombre": "COPA DONOFRIO",
+        "cantidad": 10
+      },
+      {
+        "id": 461,
+        "sku": "FRIO_RICO_PALETA",
+        "nombre": "FRIO RICO PALETA",
+        "cantidad": 15
+      },
+      {
+        "id": 462,
+        "sku": "FRIO_RICO_CONO",
+        "nombre": "FRIO RICO CONO",
+        "cantidad": 15
+      },
+      {
+        "id": 463,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 79,
+    "nombre": "BOX TECNOPOR - VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "tecnopor",
+    "precio_unitario": "230.00",
+    "contenido": [
+      {
+        "id": 464,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 465,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 466,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 10
+      },
+      {
+        "id": 467,
+        "sku": "COPA_KBANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 468,
+        "sku": "TURBO_MAX",
+        "nombre": "TURBO MAX",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 80,
+    "nombre": "BOX TECNOPOR - EXTRA VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "tecnopor",
+    "precio_unitario": "280.00",
+    "contenido": [
+      {
+        "id": 469,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 470,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 471,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 472,
+        "sku": "COPA_KBANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 473,
+        "sku": "ZOORPRESA",
+        "nombre": "ZOORPRESA",
+        "cantidad": 10
+      },
+      {
+        "id": 474,
+        "sku": "TURBO_MAX",
+        "nombre": "TURBO MAX",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 81,
+    "nombre": "BOX TECNOPOR - FULL VACILÓN",
+    "tipo": "vacilon",
+    "presentacion": "tecnopor",
+    "precio_unitario": "320.00",
+    "contenido": [
+      {
+        "id": 475,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 30
+      },
+      {
+        "id": 476,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 477,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 478,
+        "sku": "ZOORPRESA",
+        "nombre": "ZOORPRESA",
+        "cantidad": 20
+      },
+      {
+        "id": 479,
+        "sku": "COPA_KBANA",
+        "nombre": "K-BANA",
+        "cantidad": 20
+      },
+      {
+        "id": 480,
+        "sku": "TURBO_MAX",
+        "nombre": "TURBO MAX",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 82,
+    "nombre": "BOX TECNOPOR - 100 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "200.00",
+    "contenido": [
+      {
+        "id": 481,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 20
+      },
+      {
+        "id": 482,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 20
+      },
+      {
+        "id": 483,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 20
+      },
+      {
+        "id": 484,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      },
+      {
+        "id": 485,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 20
+      }
+    ]
+  },
+  {
+    "id": 83,
+    "nombre": "BOX TECNOPOR - 150 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "270.00",
+    "contenido": [
+      {
+        "id": 486,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 40
+      },
+      {
+        "id": 487,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 30
+      },
+      {
+        "id": 488,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 30
+      },
+      {
+        "id": 489,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 20
+      },
+      {
+        "id": 490,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 84,
+    "nombre": "BOX TECNOPOR - 200 MINIS",
+    "tipo": "minis",
+    "presentacion": "tecnopor",
+    "precio_unitario": "350.00",
+    "contenido": [
+      {
+        "id": 491,
+        "sku": "MINI_DONOSANDWICH",
+        "nombre": "MINI DONOSANDWICH",
+        "cantidad": 50
+      },
+      {
+        "id": 492,
+        "sku": "MINI_SUBLIME",
+        "nombre": "MINI SUBLIME",
+        "cantidad": 50
+      },
+      {
+        "id": 493,
+        "sku": "MINI_JET",
+        "nombre": "MINI JET",
+        "cantidad": 40
+      },
+      {
+        "id": 494,
+        "sku": "TRIKA",
+        "nombre": "TRIKA",
+        "cantidad": 30
+      },
+      {
+        "id": 495,
+        "sku": "BB_CHICHA",
+        "nombre": "BB CHICHA",
+        "cantidad": 30
+      }
+    ]
+  },
+  {
+    "id": 85,
+    "nombre": "BOX TECNOPOR - VERANO I",
+    "tipo": "verano",
+    "presentacion": "tecnopor",
+    "precio_unitario": "250.00",
+    "contenido": [
+      {
+        "id": 496,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 20
+      },
+      {
+        "id": 497,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 20
+      },
+      {
+        "id": 498,
+        "sku": "SUBLIME",
+        "nombre": "SUBLIME CLÁSICO",
+        "cantidad": 10
+      },
+      {
+        "id": 499,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DÚO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 86,
+    "nombre": "BOX TECNOPOR - VERANO II",
+    "tipo": "verano",
+    "presentacion": "tecnopor",
+    "precio_unitario": "370.00",
+    "contenido": [
+      {
+        "id": 500,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 30
+      },
+      {
+        "id": 501,
+        "sku": "ALASKA_MOUSE",
+        "nombre": "ALASKA MOUSE",
+        "cantidad": 20
+      },
+      {
+        "id": 502,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 30
+      },
+      {
+        "id": 503,
+        "sku": "SUBLIME",
+        "nombre": "SUBLIME CLÁSICO",
+        "cantidad": 10
+      },
+      {
+        "id": 504,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DÚO",
+        "cantidad": 10
+      }
+    ]
+  },
+  {
+    "id": 87,
+    "nombre": "BOX TECNOPOR - VERANO III",
+    "tipo": "verano",
+    "presentacion": "tecnopor",
+    "precio_unitario": "530.00",
+    "contenido": [
+      {
+        "id": 505,
+        "sku": "ALASKA_FRUTAS",
+        "nombre": "ALASKA FRUTAS",
+        "cantidad": 50
+      },
+      {
+        "id": 506,
+        "sku": "ALASKA_MOUSE",
+        "nombre": "ALASKA MOUSE",
+        "cantidad": 20
+      },
+      {
+        "id": 507,
+        "sku": "JET",
+        "nombre": "JET",
+        "cantidad": 50
+      },
+      {
+        "id": 508,
+        "sku": "SUBLIME",
+        "nombre": "SUBLIME CLÁSICO",
+        "cantidad": 15
+      },
+      {
+        "id": 509,
+        "sku": "SUBLIME_DUO",
+        "nombre": "SUBLIME DÚO",
+        "cantidad": 15
+      }
+    ]
+  }
+]

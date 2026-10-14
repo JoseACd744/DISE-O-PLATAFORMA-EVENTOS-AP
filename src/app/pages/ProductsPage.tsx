@@ -219,6 +219,7 @@ export function ProductsPage() {
     nombre: "",
     brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
     tipo: "",
+    presentacion: "carrito",
     precioUnitario: 0,
     precioEditadoManualmente: false,
     contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }] as PaqueteItem[],
@@ -255,6 +256,8 @@ export function ProductsPage() {
 
   // Personal modal
   const emptyPersonalForm = {
+    tipo_reparto: "" as NonNullable<Personal["tipo_reparto"]>,
+    precio: 0,
     nombre_completo: "",
     dni: "",
     fecha_nacimiento: "",
@@ -321,6 +324,8 @@ export function ProductsPage() {
   };
 
   const validatePersonalForm = (form: typeof personalForm): string => {
+    if (form.tipo_reparto.trim().length > 100) return "El tipo de personal debe tener como máximo 100 caracteres.";
+    if (!Number.isFinite(form.precio) || form.precio < 0) return "El precio debe ser mayor o igual a cero.";
     if (form.nombre_completo.trim().length < 3) return "El nombre completo debe tener al menos 3 caracteres.";
     if (!/^\d{8}$/.test(form.dni)) return "El DNI debe ser exactamente 8 dígitos numéricos.";
 
@@ -346,6 +351,8 @@ export function ProductsPage() {
 
     setEditingPersonal(p);
     setPersonalForm({
+      tipo_reparto: p.tipo_reparto ?? "",
+      precio: p.precio ?? 0,
       nombre_completo: p.nombre_completo,
       dni: p.dni,
       fecha_nacimiento: p.fecha_nacimiento,
@@ -370,6 +377,8 @@ export function ProductsPage() {
     setPersonalFormError("");
     try {
       const payload = {
+        tipo_reparto: personalForm.tipo_reparto.trim(),
+        precio: personalForm.precio,
         nombre_completo: personalForm.nombre_completo.trim(),
         dni: personalForm.dni.trim(),
         fecha_nacimiento: personalForm.fecha_nacimiento,
@@ -921,6 +930,7 @@ export function ProductsPage() {
       nombre: "",
       brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
       tipo: "",
+    presentacion: "carrito",
       precioUnitario: 0,
       precioEditadoManualmente: false,
       contenidoItems: [{ productoSku: "", productoNombre: "", cantidad: 0 }],
@@ -934,6 +944,7 @@ export function ProductsPage() {
       nombre: paq.nombre,
       brand: paq.brand,
       tipo: paq.tipo,
+      presentacion: paq.presentacion || "carrito",
       precioUnitario: paq.precioUnitario,
       precioEditadoManualmente: true,
       contenidoItems: paq.contenido.length > 0
@@ -967,6 +978,7 @@ export function ProductsPage() {
         nombre: newPaquete.nombre.trim(),
         brand: newPaquete.brand,
         tipo: newPaquete.tipo,
+        presentacion: newPaquete.presentacion,
         precioUnitario: Number((newPaquete.precioUnitario || precioTotalCalculado).toFixed(2)),
         contenido: contenidoValido,
         inflablesIncluidos: inflablesIncluidosValidos,
@@ -2757,6 +2769,26 @@ export function ProductsPage() {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="personal-reparto" className={etiqueta}>Tipo de personal</label>
+                  <input id="personal-reparto" list="tipos-personal" value={personalForm.tipo_reparto} maxLength={100}
+                    placeholder="Ej: Personal de reparto, Apoyo en evento" className={campo}
+                    onChange={(e) => setPersonalForm(prev => ({ ...prev, tipo_reparto: e.target.value }))} />
+                  <datalist id="tipos-personal">
+                    {[...new Set(personales.map(p => p.tipo_reparto?.trim()).filter((tipo): tipo is string => Boolean(tipo)))].sort().map(tipo => (
+                      <option key={tipo} value={tipo} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Escribe un tipo nuevo o selecciona uno existente. Se guarda al guardar el personal.</p>
+                </div>
+                <div>
+                  <label htmlFor="personal-precio" className={etiqueta}>Precio del servicio (S/)</label>
+                  <input id="personal-precio" type="number" min={0} step={0.01} required value={personalForm.precio}
+                    onChange={(e) => setPersonalForm(prev => ({ ...prev, precio: Number(e.target.value) }))} className={campo} />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">El precio es editable y se suma una vez al asignar este personal a una ficha.</p>
 
               {personalFormError && (
                 <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{personalFormError}</p>
@@ -2991,6 +3023,12 @@ export function ProductsPage() {
                   <p className="mt-1 text-xs text-red-500">El nombre del paquete es obligatorio.</p>
                 )}
               </div>
+              {newPaquete.brand === "donofrio" && <div>
+                <label className={etiqueta}>Presentación</label>
+                <select value={newPaquete.presentacion} onChange={e => setNewPaquete(prev => ({ ...prev, presentacion: e.target.value }))} className={campo}>
+                  <option value="carrito">Carrito</option><option value="lonchera">Lonchera</option><option value="tecnopor">Box tecnopor</option>
+                </select>
+              </div>}
               <div>
                 <label className={etiqueta}>Tipo de paquete *</label>
                 <select

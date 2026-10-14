@@ -15,7 +15,7 @@ export interface LineaDescuento {
 
 export const SIN_DESCUENTO: LineaDescuento = { descuentoTipo: "porcentaje", descuentoValor: 0 };
 
-export type GrupoLinea = "Paquete" | "Producto" | "Carrito" | "Inflable" | "Recurso" | "Movilidad";
+export type GrupoLinea = "Paquete" | "Producto" | "Carrito" | "Inflable" | "Recurso" | "Movilidad" | "Personal";
 
 export interface LineaCotizacion extends LineaDescuento {
   key: string;
@@ -29,7 +29,7 @@ export interface LineaCotizacion extends LineaDescuento {
   total: number;
   editable: boolean;
   incluidoEnPaquete?: boolean;
-  ref: { tipo: "paquete" | "producto" | "carrito" | "inflable" | "recurso" | "movilidad"; index?: number; id?: number };
+  ref: { tipo: "paquete" | "producto" | "carrito" | "inflable" | "recurso" | "movilidad" | "personal"; index?: number; id?: number };
 }
 
 export interface OrigenPaquete extends LineaDescuento {
@@ -44,6 +44,7 @@ export interface OrigenProducto extends LineaDescuento {
 }
 
 export interface OrigenLineas {
+  personal?: Array<{ id: number; nombre: string; precio: number; tipo?: string }>;
   brand: "donofrio" | "jugueton";
   paquetes: OrigenPaquete[];
   productosSueltos: OrigenProducto[];
@@ -53,6 +54,7 @@ export interface OrigenLineas {
   inflablesDescuentos: Record<number, LineaDescuento>;
   recursos: Array<{ recursoId: number; cantidad: number; nombre?: string; precio?: number } & LineaDescuento>;
   costoEnvio: number;
+  diasMovilidad?: number;
   descuentoMovilidad: number;
   distrito: string;
 }
@@ -140,9 +142,10 @@ export function construirLineasCotizacion(origen: OrigenLineas, catalogos: Catal
   const lineas: LineaCotizacion[] = [];
 
   const push = (base: Omit<LineaCotizacion, "subtotal" | "descuentoMonto" | "total">) => {
-    const subtotal = base.precioUnitario * base.cantidad;
-    const descuentoMonto = base.editable ? getDescuentoLinea(subtotal, base) : 0;
-    lineas.push({ ...base, subtotal, descuentoMonto, total: Math.max(0, subtotal - descuentoMonto) });
+    const dinero = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const subtotal = dinero(base.precioUnitario * base.cantidad);
+    const descuentoMonto = dinero(base.editable ? getDescuentoLinea(subtotal, base) : 0);
+    lineas.push({ ...base, subtotal, descuentoMonto, total: Math.max(0, dinero(subtotal - descuentoMonto)) });
   };
 
   origen.paquetes.forEach((paquete, index) => {
@@ -238,12 +241,13 @@ export function construirLineasCotizacion(origen: OrigenLineas, catalogos: Catal
   });
 
   const costoEnvio = toMoneyNumber(origen.costoEnvio);
+  const diasMovilidad = Math.max(1, Math.trunc(toMoneyNumber(origen.diasMovilidad) || 1));
   if (costoEnvio > 0) {
     push({
       key: "movilidad",
       grupo: "Movilidad",
       descripcion: `Movilidad a ${origen.distrito || "destino"}`,
-      cantidad: 1,
+      cantidad: diasMovilidad,
       precioUnitario: costoEnvio,
       descuentoTipo: "porcentaje",
       descuentoValor: toMoneyNumber(origen.descuentoMovilidad),
@@ -252,12 +256,18 @@ export function construirLineasCotizacion(origen: OrigenLineas, catalogos: Catal
     });
   }
 
+  (origen.personal ?? []).forEach((persona) => {
+    if (persona.precio <= 0) return;
+    push({ key: `personal-${persona.id}`, grupo: "Personal", descripcion: `${persona.tipo || "Personal"}: ${persona.nombre}`,
+      cantidad: 1, precioUnitario: persona.precio, ...SIN_DESCUENTO, editable: false, ref: { tipo: "personal", id: persona.id } });
+  });
   return lineas;
 }
 
 // Construye el origen de las líneas a partir del detalle crudo de `GET /fichas/:id`.
 export function origenDesdeDetalleApi(f: any): OrigenLineas {
   return {
+    personal: (f?.personal ?? []).map((p: any) => ({ id: p.id, nombre: p.nombre_completo || p.nombre || "", tipo: p.tipo_reparto || "", precio: toMoneyNumber(p.precio_cotizado) })),
     brand: f?.brand === "jugueton" ? "jugueton" : "donofrio",
     paquetes: (f?.paquetes ?? []).map((p: any) => ({
       paqueteId: Number(p.paquete_id) || 0,
@@ -282,6 +292,7 @@ export function origenDesdeDetalleApi(f: any): OrigenLineas {
       ...mapDescuentoApi(r),
     })),
     costoEnvio: toMoneyNumber(f?.costo_envio),
+    diasMovilidad: Math.max(1, Math.trunc(toMoneyNumber(f?.dias_movilidad) || 1)),
     descuentoMovilidad: toMoneyNumber(f?.descuento_movilidad),
     distrito: f?.distrito || "",
   };

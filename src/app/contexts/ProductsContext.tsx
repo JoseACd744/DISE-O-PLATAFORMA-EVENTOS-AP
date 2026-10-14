@@ -65,6 +65,7 @@ export interface PaqueteInflableIncluido {
 }
 
 export interface Paquete {
+  presentacion?: string;
   id: number;
   nombre: string;
   contenido: PaqueteItem[];
@@ -75,6 +76,7 @@ export interface Paquete {
 }
 
 export interface PaqueteInput {
+  presentacion?: string;
   nombre: string;
   contenido: PaqueteItem[];
   inflablesIncluidos: PaqueteInflableIncluido[];
@@ -126,6 +128,8 @@ export interface InflableImage {
 }
 
 export interface Personal {
+  tipo_reparto?: string;
+  precio?: number;
   id: number;
   nombre_completo: string;
   dni: string;
@@ -440,6 +444,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         nombre: paquete.nombre,
         precio_unitario: paquete.precioUnitario,
         tipo: paquete.tipo,
+        presentacion: paquete.presentacion,
         brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
         inflables_incluidos: paquete.inflablesIncluidos.map(mapInflableIncluidoToApi),
@@ -457,6 +462,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         nombre: paquete.nombre,
         precio_unitario: paquete.precioUnitario,
         tipo: paquete.tipo,
+        presentacion: paquete.presentacion,
         brand: paquete.brand,
         contenido: paquete.contenido.map(mapPaqueteItemToApi),
         inflables_incluidos: paquete.inflablesIncluidos.map(mapInflableIncluidoToApi),
@@ -601,6 +607,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
           fecha_nacimiento: personal.fecha_nacimiento,
           numero_telefono: personal.numero_telefono,
           rol: personal.rol,
+          tipo_reparto: personal.tipo_reparto || null,
+          precio: personal.precio ?? 0,
           estado: personal.estado,
           ...(personal.licencia ? { licencia: personal.licencia } : {}),
           ...(personal.foto_url ? { foto_url: personal.foto_url } : {}),
@@ -627,6 +635,8 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
           ...(data.fecha_nacimiento !== undefined ? { fecha_nacimiento: data.fecha_nacimiento } : {}),
           ...(data.numero_telefono !== undefined ? { numero_telefono: data.numero_telefono } : {}),
           ...(data.rol !== undefined ? { rol: data.rol } : {}),
+          ...(data.tipo_reparto !== undefined ? { tipo_reparto: data.tipo_reparto || null } : {}),
+          ...(data.precio !== undefined ? { precio: data.precio } : {}),
           ...(data.estado !== undefined ? { estado: data.estado } : {}),
           ...(data.licencia !== undefined ? { licencia: data.licencia } : {}),
           ...(data.foto_url !== undefined ? { foto_url: data.foto_url } : {}),

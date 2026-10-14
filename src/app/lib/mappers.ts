@@ -35,6 +35,7 @@ type ApiRecurso = {
 };
 
 type ApiPaquete = {
+  presentacion?: string;
   id: number;
   nombre: string;
   precio_unitario: number;
@@ -76,6 +77,8 @@ type ApiInflable = {
 };
 
 type ApiPersonal = {
+  tipo_reparto?: string | null;
+  precio?: number | string | null;
   id: number;
   // New fields
   nombre_completo?: string | null;
@@ -146,6 +149,7 @@ export function mapApiPaquetes(apiPaquetes: ApiPaquete[]): Paquete[] {
     nombre: paquete.nombre,
     precioUnitario: Number(paquete.precio_unitario || 0),
     tipo: paquete.tipo || "",
+    presentacion: paquete.presentacion || "carrito",
     brand: paquete.brand,
     contenido: (paquete.contenido || []).map((item) => ({
       productoSku: item.producto_sku,
@@ -190,6 +194,8 @@ export function mapApiInflables(apiInflables: ApiInflable[]): Inflable[] {
 
 export function mapApiPersonal(apiPersonal: ApiPersonal[]): Personal[] {
   return apiPersonal.map((persona) => ({
+    tipo_reparto: persona.tipo_reparto === "opcion_1" ? "Personal de reparto - Opción 1" : persona.tipo_reparto === "opcion_2" ? "Personal de reparto - Opción 2" : persona.tipo_reparto ?? "",
+    precio: Number(persona.precio) || 0,
     id: persona.id,
     nombre_completo: persona.nombre_completo || persona.nombre || "",
     dni: persona.dni || "",

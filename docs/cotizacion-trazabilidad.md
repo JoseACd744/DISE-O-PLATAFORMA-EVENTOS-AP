@@ -1,0 +1,17 @@
+# Origen de los ajustes de cotización
+
+Antes, «Ajuste manual» era simplemente el total guardado menos el desglose calculado con el catálogo actual. No era un movimiento registrado ni permitía atribuirlo a un usuario o concepto. La ficha 254 conserva S/ 805,00 sin historial previo; el ejemplo mostrado suma S/ 427,50 después del descuento del carrito, con una diferencia de S/ 377,50. No se modifica ni se inventa el origen de ese importe histórico.
+
+El formulario muestra la ecuación, distingue diferencias sin documentar de ajustes explicados y permite revisar el último desglose guardado frente a los precios, cantidades y descuentos actuales. Al modificar «Cotización Total» con una diferencia respecto al desglose, exige el motivo o concepto. Los cambios de ítems recalculan el total; solo se conservan diferencias expresamente editadas o con motivo registrado. «Usar sugerido» vuelve al desglose sin esa diferencia. Los importes de cada línea se redondean a céntimos.
+
+La comparación de las dos proformas entregadas el 13/10/2026 demuestra el caso: 200 helados y dos carritos suman S/ 805,00; 100 helados y un carrito suman S/ 427,50. La versión actualizada mantenía S/ 805,00 creando S/ 377,50 de ajuste. La prueba del formulario real ahora reproduce esa edición y obtiene S/ 427,50 sin ajuste artificial. Las diferencias antiguas sin motivo requieren revisar/guardar el sugerido o registrar un concepto antes de generar una proforma.
+
+Los precios unitarios del desglose guardado se usan al editar y generar proformas/contratos. Las cantidades y descuentos se siguen recalculando. «Actualizar precios del catálogo» permite adoptar explícitamente los nuevos precios. La prueba visual cambia un precio de catálogo a S/ 99,00 y comprueba que la proforma guardada conserva S/ 2,50. No se modifica la ficha real 254 ni se requiere una migración adicional para esta corrección.
+
+El backend guarda `cotizacion_trazabilidad` en la misma transacción que la ficha: desglose, base, total, diferencia, motivo, descuento global, total anterior, usuario autenticado y fecha del servidor. Valida la coherencia aritmética del desglose recibido; el desglose describe lo mostrado por el cliente y no sustituye la validación de disponibilidad. No confía en usuarios, fechas ni historiales enviados por el navegador. Guardar sin cambios no duplica registros. Una edición financiera desde un cliente anterior queda sin origen documentado, conservando los motivos anteriores solo en el historial.
+
+La migración `043_cotizacion_trazabilidad.sql` se aplicó y registró el 13/10/2026 en la base configurada. Solo añade la columna nullable: se verificaron 165 fichas y la misma suma de cotizaciones antes y después. No se aplicaron otras migraciones ni se desplegaron servicios.
+
+Verificación: TypeScript y compilación de ambos proyectos, PostgreSQL aislado con las rutas reales y pruebas de cálculos; formulario real en Edge con API simulada, caso 805−427,50, movilidad por cuatro días, motivo obligatorio y reapertura del registro. Capturas en `output/qa/cotizacion-origen-anterior.png` y `output/qa/cotizacion-ajuste-registrado.png`. El servidor temporal y Edge se cerraron al finalizar. Respaldo del backend: `output/backups/fichas-antes-trazabilidad-20261013.ts`.
+
+El usuario despliega el frontend y el backend compilados. Los ajustes antiguos seguirán apareciendo sin origen hasta que exista información real para explicarlos; guardar un motivo ahora no demuestra quién fijó el importe original.
