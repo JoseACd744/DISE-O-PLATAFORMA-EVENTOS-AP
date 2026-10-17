@@ -98,6 +98,7 @@ export interface Carrito {
 }
 
 export interface Inflable {
+  alquileresBase?: number;
   id: number;
   tipoId: number;
   tipoNombre: string;
@@ -524,6 +525,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({
         tipo_id: inflable.tipoId,
+        alquileres_base: inflable.alquileresBase ?? 0,
         codigo: inflable.codigo,
         estado: inflable.estado,
       }),

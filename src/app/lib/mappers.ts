@@ -65,6 +65,7 @@ type ApiCarrito = {
 };
 
 type ApiInflable = {
+  alquileres_base?: number;
   id: number;
   tipo_id: number;
   tipo_nombre: string;
@@ -179,6 +180,7 @@ export function mapApiCarritos(apiCarritos: ApiCarrito[]): Carrito[] {
 
 export function mapApiInflables(apiInflables: ApiInflable[]): Inflable[] {
   return apiInflables.map((inflable) => ({
+    alquileresBase: Number(inflable.alquileres_base || 0),
     id: inflable.id,
     tipoId: inflable.tipo_id ?? 0,
     tipoNombre: inflable.tipo_nombre || "",

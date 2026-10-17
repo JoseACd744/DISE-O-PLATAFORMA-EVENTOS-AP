@@ -1,0 +1,19 @@
+{
+  "migracion": "045_bases_reportes.sql",
+  "before": {
+    "fichas": 185,
+    "cotizaciones": "98951.51",
+    "clientes": 336,
+    "bases_clientes": "37",
+    "inflables": 24
+  },
+  "after": {
+    "fichas": 185,
+    "cotizaciones": "98951.51",
+    "clientes": 336,
+    "bases_clientes": "37",
+    "inflables": 24
+  },
+  "meses_guardados": 0,
+  "bases_inflables": 0
+}

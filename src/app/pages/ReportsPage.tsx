@@ -15,6 +15,8 @@ import { isAdminUser } from "../lib/auth";
 import { CuotaGauge, colorDeAvance } from "../components/CuotaGauge";
 import { PageHeader } from "../components/ui/page-header";
 import { Button } from "../components/ui/button";
+import { VentasHistoricasEditor } from "../components/VentasHistoricasEditor";
+import { mesesCompletos, sumarHistorico, rankingInflables, rankingProductosIndividuales, type VentaHistorica } from "../lib/reportesHistoricos";
 import { campoCompacto } from "../lib/ui";
 
 // ── Utilidades de fecha y formato ─────────────────────────────────
@@ -240,7 +242,7 @@ export function ReportsPage() {
   const { brand } = useBrand();
   const {
     paquetes: catalogoPaquetes, allProducts: catalogoProductos, carritos: catalogoCarritos,
-    inflables: catalogoInflables, recursos: catalogoRecursos,
+    inflables: catalogoInflables, recursos: catalogoRecursos, reloadData,
   } = useProducts();
 
   const hoy = getLocalDateString();
@@ -252,6 +254,8 @@ export function ReportsPage() {
 
   // Datos: todas las fichas con detalle, clientes y asignaciones (desde la caché compartida)
   const [fichas, setFichas] = useState<any[]>([]);
+  const [historicos, setHistoricos] = useState<VentaHistorica[]>([]);
+  const [acumuladoInflables, setAcumuladoInflables] = useState(true);
   const [clientes, setClientes] = useState<any[]>([]);
   const [asignaciones, setAsignaciones] = useState<any[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -262,21 +266,26 @@ export function ReportsPage() {
     if (!brand) return;
     let cancelled = false;
     setCargando(true);
+    if (brand === "jugueton") void reloadData("inflables");
+    setHistoricos([]);
+    setFichas([]);
     setErrorCarga("");
     setSinAsignaciones(false);
     Promise.all([
       obtenerFichasConDetalle(brand),
       obtenerClientes(brand),
+      apiRequest<VentaHistorica[]>(`/ventas-historicas?brand=${brand}`),
       // Sin asignaciones el informe igual se muestra; solo falta saber quién lleva cada ficha
       obtenerAsignaciones().catch(() => {
         if (!cancelled) setSinAsignaciones(true);
         return [];
       }),
     ])
-      .then(([f, c, a]) => {
+      .then(([f, c, h, a]) => {
         if (cancelled) return;
         setFichas(f);
         setClientes(c);
+        setHistoricos(h);
         setAsignaciones(a);
       })
       .catch((err) => {
@@ -299,8 +308,9 @@ export function ReportsPage() {
     fichas.forEach((f) => {
       [fechaVentaDe(f), fechaEventoDe(f), ...(f.abonos || []).map((a: any) => dia(a.fecha))].forEach((d) => { if (d) set.add(d.slice(0, 7)); });
     });
+    historicos.forEach(h=>set.add(h.mes));
     return Array.from(set).sort((a, b) => b.localeCompare(a));
-  }, [fichas, hoy]);
+  }, [fichas, historicos, hoy]);
 
   const catalogos = useMemo(() => ({
     paquetes: catalogoPaquetes, productos: catalogoProductos, carritos: catalogoCarritos, inflables: catalogoInflables, recursos: catalogoRecursos,
@@ -330,8 +340,11 @@ export function ReportsPage() {
     const actual = fichas.filter((f) => enRango(fechaVentaDe(f), desde, hasta));
     const previo = fichas.filter((f) => enRango(fechaVentaDe(f), prevDesde, prevHasta));
     const total = (lista: any[]) => lista.reduce((s, f) => s + toMoneyNumber(f.total), 0);
-    const vendido = total(actual);
-    const vendidoPrev = total(previo);
+    const baseHistorica = sumarHistorico(historicos,desde,hasta);
+    const vendidoSistema = total(actual);
+    const vendido = vendidoSistema + baseHistorica;
+    const vendidoPrevSistema = total(previo);
+    const vendidoPrev = vendidoPrevSistema + sumarHistorico(historicos,prevDesde,prevHasta);
 
     // Descuentos otorgados: los de cada ítem más el global, con la misma fórmula de la cotización
     let descuentos = 0;
@@ -346,7 +359,7 @@ export function ReportsPage() {
     const porMes = diasEntre(desde, hasta) > 62;
     const serie: { etiqueta: string; valor: number; clave: string }[] = [];
     if (porMes) {
-      agrupar(actual, (f) => fechaVentaDe(f).slice(0, 7), (f) => toMoneyNumber(f.total))
+      agrupar([...actual.map(f=>({mes:fechaVentaDe(f).slice(0,7),monto:toMoneyNumber(f.total)})),...mesesCompletos(historicos,desde,hasta)], (f) => f.mes, (f) => Number(f.monto))
         .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta))
         .forEach((m) => serie.push({ clave: m.etiqueta, etiqueta: nombreMes(m.etiqueta).slice(0, 3) + " " + m.etiqueta.slice(2, 4), valor: m.valor }));
     } else {
@@ -357,16 +370,16 @@ export function ReportsPage() {
     }
 
     return {
-      vendido, vendidoPrev,
+      vendido, vendidoPrev, baseHistorica, vendidoSistema,
       cantidad: actual.length, cantidadPrev: previo.length,
-      ticket: actual.length ? vendido / actual.length : 0,
-      ticketPrev: previo.length ? vendidoPrev / previo.length : 0,
+      ticket: actual.length ? vendidoSistema / actual.length : 0,
+      ticketPrev: previo.length ? vendidoPrevSistema / previo.length : 0,
       descuentos, fichasConDescuento,
-      proporcionDescuentos: vendido + descuentos > 0 ? (descuentos / (vendido + descuentos)) * 100 : 0,
+      proporcionDescuentos: vendidoSistema + descuentos > 0 ? (descuentos / (vendidoSistema + descuentos)) * 100 : 0,
       serie, porMes,
-      porTipoEvento: topConOtros(agrupar(actual, (f) => (f.tipo_evento || "Sin tipo").toString(), (f) => toMoneyNumber(f.total))),
+      porTipoEvento: topConOtros([...agrupar(actual, (f) => (f.tipo_evento || "Sin tipo").toString(), (f) => toMoneyNumber(f.total)), ...(baseHistorica>0?[{etiqueta:"Histórico sin detalle",valor:baseHistorica}]:[])]),
     };
-  }, [fichas, periodo, catalogos, modo]);
+  }, [fichas, periodo, catalogos, modo, historicos]);
 
   // ── Cobranza (por fecha de pago) ──
   const cobranza = useMemo(() => {
@@ -437,10 +450,14 @@ export function ReportsPage() {
       porDiaSemana, porHora,
       distritos: topConOtros(agrupar(actual, (f) => f.distrito || "Sin distrito", () => 1)),
       paquetes, inflables, carritos,
+      productos: topConOtros(rankingProductosIndividuales(actual)),
       helados, unidadesHelado: helados.reduce((s, h) => s + h.total, 0),
       fichasPeriodo: actual,
     };
   }, [fichas, periodo, catalogoCarritos, catalogoPaquetes]);
+
+  const usarAcumulado = brand === "jugueton" && acumuladoInflables;
+  const inflablesAcumulados = useMemo(()=>rankingInflables(catalogoInflables,fichas),[catalogoInflables,fichas]);
 
   // ── Clientes (altas y recurrencia en el período) ──
   const clientesPeriodo = useMemo(() => {
@@ -493,8 +510,8 @@ export function ReportsPage() {
 
   // Lo vendido en el mes de la cuota (el mes completo, aunque el período sea un día o un rango)
   const ventasMesCuota = useMemo(
-    () => fichas.filter((f) => fechaVentaDe(f).slice(0, 7) === mesCuota).reduce((s, f) => s + toMoneyNumber(f.total), 0),
-    [fichas, mesCuota]
+    () => fichas.filter((f) => fechaVentaDe(f).slice(0, 7) === mesCuota).reduce((s, f) => s + toMoneyNumber(f.total), 0) + Number(historicos.find(h=>h.mes===mesCuota)?.monto||0),
+    [fichas, mesCuota, historicos]
   );
   const avanceCuota = cuota.monto ? (ventasMesCuota / cuota.monto) * 100 : 0;
 
@@ -558,10 +575,11 @@ export function ReportsPage() {
           className="mb-4"
           title="Reportes"
           subtitle="Resumen del día y análisis de ventas, cobranza y operación"
-          actions={
+          actions={<>
+            {esAdmin && brand && <VentasHistoricasEditor key={brand} brand={brand} rows={historicos} ventasSistema={mes=>fichas.filter(f=>fechaVentaDe(f).slice(0,7)===mes).reduce((sum,f)=>sum+toMoneyNumber(f.total),0)} onUpdated={row=>setHistoricos(prev=>[row,...prev.filter(h=>h.mes!==row.mes)].sort((a,b)=>b.mes.localeCompare(a.mes)))} />}
             <Button variant="brand" onClick={exportCSV} disabled={operacion.fichasPeriodo.length === 0} className="w-full sm:w-auto">
               <Download className="w-4 h-4" /> Exportar CSV
-            </Button>
+            </Button></>
           }
         />
         {errorCarga && (
@@ -710,15 +728,15 @@ export function ReportsPage() {
             )}
           </div>
           <div className="grid grid-cols-2 lg:col-span-2 gap-4">
-            <Tile label="Vendido" valor={soles(ventas.vendido)} delta={variacion(ventas.vendido, ventas.vendidoPrev)} comparacion={cmp} />
+            <Tile label="Vendido" detalle={`Sistema: ${soles(ventas.vendidoSistema)} · histórico mensual: ${soles(ventas.baseHistorica)}`} valor={soles(ventas.vendido)} delta={variacion(ventas.vendido, ventas.vendidoPrev)} comparacion={cmp} />
             <Tile label="Fichas vendidas" valor={entero(ventas.cantidad)} delta={variacion(ventas.cantidad, ventas.cantidadPrev)} comparacion={cmp} />
-            <Tile label="Ticket promedio" valor={soles(ventas.ticket)} delta={variacion(ventas.ticket, ventas.ticketPrev)} comparacion={cmp} />
+            <Tile label="Ticket promedio de fichas" valor={soles(ventas.ticket)} delta={variacion(ventas.ticket, ventas.ticketPrev)} comparacion={cmp} />
             <Tile label="Descuentos otorgados" valor={soles(ventas.descuentos)}
               detalle={`${plural(ventas.fichasConDescuento, "ficha", "fichas")} · ${ventas.proporcionDescuentos.toLocaleString("es-PE", { maximumFractionDigits: 1 })}% del valor de lista`} />
           </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <ChartCard className="lg:col-span-2" titulo={ventas.porMes ? "Ventas por mes" : "Ventas por día"} descripcion={etiquetaPeriodo}
+          <ChartCard className="lg:col-span-2" titulo={ventas.porMes ? "Ventas por mes" : "Ventas por día"} descripcion={`${etiquetaPeriodo}${ventas.baseHistorica>0 && !ventas.porMes ? ` · Histórico mensual ${soles(ventas.baseHistorica)} incluido en el total, sin distribución diaria.` : ""} · Los históricos se suman solo en meses completos.`}
             filas={ventas.serie.filter((s) => s.valor > 0)} vacio="No hubo ventas en el período"
             columnas={[{ titulo: ventas.porMes ? "Mes" : "Día", valor: (f) => (ventas.porMes ? nombreMes(f.clave) : f.clave.split("-").reverse().join("/")) }, { titulo: "Vendido", valor: (f) => soles(f.valor), derecha: true }]}>
             <BarrasVerticales data={ventas.serie} formato={soles} nombre="Vendido" />
@@ -803,19 +821,18 @@ export function ReportsPage() {
             columnas={[{ titulo: "Paquete", valor: (f) => f.etiqueta }, { titulo: "Cantidad", valor: (f) => entero(f.valor), derecha: true }]}>
             <BarrasHorizontales data={operacion.paquetes} formato={entero} nombre="Cantidad" />
           </ChartCard>
-          {/* Las tarjetas de inflables y carritos solo aparecen si hubo alguno en el período */}
-          {operacion.inflables.length > 0 && (
-            <ChartCard titulo="Inflables más pedidos" filas={operacion.inflables} vacio="Sin inflables en el período"
-              columnas={[{ titulo: "Inflable", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
-              <BarrasHorizontales data={operacion.inflables} formato={entero} nombre="Eventos" />
+          {(brand === "jugueton" || operacion.inflables.length > 0) && <div className="space-y-2">
+            {brand === "jugueton" && <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={acumuladoInflables} onChange={e=>setAcumuladoInflables(e.target.checked)}/> Incluir alquileres anteriores (acumulado)</label>}
+            <ChartCard titulo={usarAcumulado?"Inflables más usados · acumulado":"Inflables más pedidos"} descripcion={usarAcumulado?"Base anterior + fichas registradas de todo el historial; no depende del período seleccionado.":etiquetaPeriodo} filas={usarAcumulado?inflablesAcumulados:operacion.inflables} vacio="Sin alquileres de inflables"
+              columnas={usarAcumulado?[{titulo:"Inflable",valor:f=>f.etiqueta},{titulo:"Base anterior",valor:f=>entero(f.base),derecha:true},{titulo:"En fichas",valor:f=>entero(f.sistema),derecha:true},{titulo:"Total",valor:f=>entero(f.valor),derecha:true}]:[{titulo:"Inflable",valor:f=>f.etiqueta},{titulo:"Eventos",valor:f=>entero(f.valor),derecha:true}]}>
+              <BarrasHorizontales data={usarAcumulado?inflablesAcumulados:operacion.inflables} formato={entero} nombre={usarAcumulado?"Alquileres acumulados":"Eventos"}/>
             </ChartCard>
-          )}
-          {operacion.carritos.length > 0 && (
-            <ChartCard titulo="Carritos más pedidos" filas={operacion.carritos} vacio="Sin carritos en el período"
-              columnas={[{ titulo: "Carrito", valor: (f) => f.etiqueta }, { titulo: "Eventos", valor: (f) => entero(f.valor), derecha: true }]}>
-              <BarrasHorizontales data={operacion.carritos} formato={entero} nombre="Eventos" />
-            </ChartCard>
-          )}
+          </div>}
+          {brand === "jugueton" ? <ChartCard titulo="Productos individuales más vendidos" descripcion="Unidades de productos sueltos en las fichas del período; excluye contenido de paquetes." filas={operacion.productos} vacio="Sin productos individuales en el período" columnas={[{titulo:"Producto",valor:f=>f.etiqueta},{titulo:"Cantidad",valor:f=>entero(f.valor),derecha:true}]}>
+            <BarrasHorizontales data={operacion.productos} formato={entero} nombre="Unidades"/>
+          </ChartCard> : operacion.carritos.length>0 && <ChartCard titulo="Carritos más pedidos" filas={operacion.carritos} vacio="Sin carritos en el período" columnas={[{titulo:"Carrito",valor:f=>f.etiqueta},{titulo:"Eventos",valor:f=>entero(f.valor),derecha:true}]}>
+            <BarrasHorizontales data={operacion.carritos} formato={entero} nombre="Eventos"/>
+          </ChartCard>}
         </div>
         {brand === "donofrio" && (
           <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">

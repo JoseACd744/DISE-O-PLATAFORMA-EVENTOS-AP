@@ -2,7 +2,7 @@
   "name": "eventos-proformas-regression",
   "private": true,
   "scripts": {
-    "test": "node test-catalogo.cjs && node test-cantidades.cjs && node test-routes.cjs && node test-ajuste.cjs"
+    "test": "node test-catalogo.cjs && node test-cantidades.cjs && node test-routes.cjs && node test-ajuste.cjs && node test-bases.cjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8"

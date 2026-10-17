@@ -35,6 +35,7 @@ import { useBrand } from "../contexts/BrandContext";
 import { getLocalDateString } from "../lib/date";
 import { apiRequest, apiUpload, API_BASE_URL } from "../lib/api";
 import { obtenerFichasConDetalle } from "../lib/queries";
+import { BasesInflablesEditor } from "../components/BasesInflablesEditor";
 import { Modal } from "../components/ui/modal";
 import { ErrorBanner } from "../components/ui/feedback";
 import { StatCard } from "../components/ui/stat-card";
@@ -229,7 +230,7 @@ export function InflablesPage() {
   const [newReserva, setNewReserva] = useState({ inflableId: 0, clienteNombre: "", fecha: "", cantidad: 1, evento: "", notas: "" });
   const [newInflable, setNewInflable] = useState({ nombre: "", descripcion: "", precioAlquiler: 0, dimensiones: "", edadMinima: "" });
   const [showNewUnidad, setShowNewUnidad] = useState(false);
-  const [newUnidad, setNewUnidad] = useState({ tipoId: 0, codigo: "", estado: "disponible" as "disponible" | "en-uso" | "mantenimiento", fechaAdquisicion: "" });
+  const [newUnidad, setNewUnidad] = useState({ tipoId: 0, codigo: "", estado: "disponible" as "disponible" | "en-uso" | "mantenimiento", fechaAdquisicion: "", alquileresBase: 0 });
   const [unidadSubmitting, setUnidadSubmitting] = useState(false);
   const [inflableImagen, setInflableImagen] = useState({ url: "", path: "", name: "" });
   const [isUploadingImagen, setIsUploadingImagen] = useState(false);
@@ -770,11 +771,12 @@ export function InflablesPage() {
           codigo: newUnidad.codigo.trim(),
           estado: newUnidad.estado,
           fecha_adquisicion: newUnidad.fechaAdquisicion || null,
+          alquileres_base: newUnidad.alquileresBase,
         }),
       });
       setShowNewUnidad(false);
       notify.ok(`Unidad ${newUnidad.codigo.trim()} creada`);
-      setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible", fechaAdquisicion: "" });
+      setNewUnidad({ tipoId: 0, codigo: "", estado: "disponible", fechaAdquisicion: "", alquileresBase: 0 });
       await loadData();
     } catch (err) {
       setFormError(mensajeDeError(err, "No se pudo crear la unidad."));
@@ -969,9 +971,10 @@ export function InflablesPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 hidden lg:block">Reservas desde <span className="text-brand-orange">Fichas de Eventos</span></p>
                 {canManage && (
                   <>
-                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "" }); (setFormError(""), setShowNewUnidad(true)); }} className="border border-brand-navy text-brand-navy dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+                    <button onClick={() => { setNewUnidad({ tipoId: selectedType?.id ?? 0, codigo: "", estado: "disponible", fechaAdquisicion: "", alquileresBase: 0 }); (setFormError(""), setShowNewUnidad(true)); }} className="border border-brand-navy text-brand-navy dark:text-blue-400 px-5 py-3 rounded-lg hover:bg-brand-navy/10 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nueva Unidad
                     </button>
+                    <BasesInflablesEditor onSaved={loadData} />
                     <button onClick={() => (setFormError(""), setShowNewInflable(true))} className="bg-brand-navy text-white px-5 py-3 rounded-lg hover:bg-brand-navy/90 transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
                       <Plus className="w-4 h-4" /> Nuevo Tipo
                     </button>
@@ -1611,6 +1614,7 @@ export function InflablesPage() {
               <label className={etiqueta}>Código *</label>
               <input type="text" value={newUnidad.codigo} onChange={e => setNewUnidad({ ...newUnidad, codigo: e.target.value })} placeholder="Ej: CAST-001" className={inputClass} />
             </div>
+            <label className={etiqueta}>Alquileres anteriores<input aria-label="Alquileres anteriores de la nueva unidad" type="number" min={0} step={1} value={newUnidad.alquileresBase} onChange={e=>setNewUnidad({...newUnidad,alquileresBase:Number(e.target.value)})} className={inputClass}/><span className="mt-1 block text-xs text-gray-500">Base anterior al sistema; no incluyas las fichas ya registradas.</span></label>
             <div>
               <label className={etiqueta}>Estado</label>
               <select value={newUnidad.estado} onChange={e => setNewUnidad({ ...newUnidad, estado: e.target.value as typeof newUnidad.estado })} className={inputClass}>
