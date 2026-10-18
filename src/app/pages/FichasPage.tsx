@@ -38,6 +38,7 @@ import { nombrePresentacion } from "../lib/presentacionPedido";
 import { aplicarPreciosCotizados, actualizarTotalPorLineas, compararLineas, registrarLineas, redondearDinero, type LineaRegistrada, type TrazabilidadCotizacion } from "../lib/cotizacionTrazabilidad";
 import { PageHeader } from "../components/ui/page-header";
 import { AvisoDisponibilidad, sugerirCodigo, type OcupacionUnidad, type OtraUnidad } from "../components/AvisoDisponibilidad";
+import { ComprobantesFicha } from "../components/ComprobantesFicha";
 import { campo, etiqueta } from "../lib/ui";
 
 // ── Financial types ──────────────────────────────────────────────
@@ -977,6 +978,7 @@ export function FichasPage() {
   const [descuentoCapDraft, setDescuentoCapDraft] = useState("");
 
   const isAdmin = isAdminUser();
+  const [fichaFiscal, setFichaFiscal] = useState<Ficha | null>(null);
   const isVendedor = isVendedorUser();
   const currentUserId = getAuthUser()?.id;
   const canEditFicha = (ficha: Ficha) => !isVendedor || ficha.created_by === currentUserId;
@@ -3570,6 +3572,8 @@ export function FichasPage() {
                     className="p-2 text-gray-400 hover:text-brand-orange hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Eye className="w-5 h-5" />
                   </button>
+                  {!ficha.es_cotizacion && <button onClick={() => setFichaFiscal(ficha)} aria-label="Comprobantes electrónicos" title="Comprobantes electrónicos"
+                    className="p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"><Receipt className="w-5 h-5" /></button>}
                   {canEditFicha(ficha) && (
                     <button
                       onClick={() => handleDeleteFicha(ficha)}
@@ -4062,6 +4066,7 @@ export function FichasPage() {
               <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarProforma(selectedFicha)} title="Generar proforma">
                 <FileText /> Proforma
               </Button>
+              {!selectedFicha.es_cotizacion && <Button variant="subtle" className="max-sm:grow" onClick={() => setFichaFiscal(selectedFicha)}><Receipt /> Comprobantes</Button>}
               <Button variant="subtle" className="max-sm:grow" disabled={selectedFicha.es_cotizacion || isLoadingData} onClick={() => handleGenerarContrato(selectedFicha)} title="Generar contrato">
                   <FileSignature /> Contrato
                 </Button>
@@ -4083,6 +4088,8 @@ export function FichasPage() {
           </div>
         </div>
       )}
+
+      {fichaFiscal && <ComprobantesFicha key={`${fichaFiscal.brand}-${fichaFiscal.id}`} fichaId={fichaFiscal.id} brand={fichaFiscal.brand} clienteNombre={fichaFiscal.cliente_nombre} onClose={() => setFichaFiscal(null)} />}
 
       {previewComprobanteUrl && (
         <div

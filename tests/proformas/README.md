@@ -1,5 +1,15 @@
 # Pruebas de proformas y catálogo
 
+El flujo nuevo de comprobantes tiene una prueba visual adicional (después de compilar el frontend con API local):
+
+```powershell
+$env:VITE_API_BASE_URL='http://127.0.0.1:3001/api'
+npm run build
+node tests/proformas/test-ui-fiscal.cjs
+```
+
+Usa Edge y una API totalmente simulada, bloquea conexiones externas y cierra navegador/servidor al terminar. Comprueba emisor elegible, revisión, confirmación, recuperación idempotente, historial, descargas, enlace privado y escritorio/móvil. Las pruebas fiscales de servidor se ejecutan en el backend con `npm run test:fiscal`; no leen `.env` ni contactan SUNAT.
+
 Estas pruebas usan PostgreSQL en memoria. No leen `.env`, no abren conexiones a la base real y no ejecutan el servidor.
 
 Desde la raíz del frontend:
