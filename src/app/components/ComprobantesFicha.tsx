@@ -12,12 +12,20 @@ import { campo, etiqueta } from "../lib/ui";
 import { ApiError, apiRequest } from "../lib/api";
 import { isAdminUser } from "../lib/auth";
 import {
+  FiscalOperacionForm,
+  esNotaFiscal,
+  operacionInicial,
+  operacionesPermitidas,
+} from "./FiscalOperacionForm";
+import { FiscalRecoveryPanel } from "./FiscalRecoveryPanel";
+import {
   consultarFiscal,
   descargarFiscal,
   dineroFiscal,
   emitirFiscal,
   estadoFiscal,
   nombreTipoFiscal,
+  nombreOperacionFiscal,
   obtenerDatosFiscales,
   previsualizarFiscal,
   type ComprobanteFiscal,
@@ -25,6 +33,8 @@ import {
   type ReceptorFiscal,
   type SolicitudFiscal,
   type VistaFiscal,
+  type BorradorOperacionFiscal,
+  type TipoFiscal,
 } from "../lib/fiscal";
 
 const vacio: ReceptorFiscal = {
@@ -66,7 +76,9 @@ export function ComprobantesFicha({
 }) {
   const [datos, setDatos] = useState<DatosFiscales | null>(null);
   const [receptor, setReceptor] = useState<ReceptorFiscal>(vacio);
-  const [tipo, setTipo] = useState<"01" | "03">("01");
+  const [tipo, setTipo] = useState<TipoFiscal>("01");
+  const [operacion, setOperacion] =
+    useState<BorradorOperacionFiscal>(operacionInicial);
   const [emisorId, setEmisorId] = useState("");
   const [formaPago, setFormaPago] = useState<"Contado" | "Credito">("Contado");
   const [afectacion, setAfectacion] = useState<"10" | "20" | "30">("10");
@@ -161,7 +173,54 @@ export function ComprobantesFicha({
     cuotas: formaPago === "Credito" ? cuotas : [],
     afectacion,
     version: datos!.defaults.version,
+    operacion: operacion.operacion,
+    ...(operacion.operacion === "anticipo"
+      ? { abono_ids: operacion.abono_ids }
+      : {}),
+    ...(esNotaFiscal(operacion.operacion)
+      ? {
+          documento_origen_id: operacion.documento_origen_id,
+          motivo_codigo: operacion.motivo_codigo,
+          motivo: operacion.motivo,
+          ...(operacion.operacion === "nota_debito" ||
+          !["01", "06"].includes(operacion.motivo_codigo)
+            ? { monto: operacion.monto }
+            : {}),
+        }
+      : {}),
   });
+  const seleccionarOperacion = (value: BorradorOperacionFiscal) =>
+    cambiar(() => {
+      setOperacion(value);
+      const nota = esNotaFiscal(value.operacion);
+      const origen = nota
+        ? datos?.comprobantes.find(
+            (d) => String(d.id) === value.documento_origen_id,
+          )
+        : ["saldo", "anticipo"].includes(value.operacion)
+          ? datos?.comprobantes.find(
+              (d) =>
+                (d.operacion || d.snapshot?.operacion) === "anticipo" &&
+                ["accepted", "observed"].includes(d.estado) &&
+                !d.fiscal_closed,
+            )
+          : undefined;
+      if (nota) {
+        setTipo(value.operacion === "nota_credito" ? "07" : "08");
+        setFormaPago("Contado");
+        setCuotas([]);
+      } else {
+        setTipo(origen?.tipo === "03" ? "03" : "01");
+        if (value.operacion === "anticipo") {
+          setFormaPago("Contado");
+          setCuotas([]);
+        }
+      }
+      if (origen?.snapshot) {
+        setEmisorId(origen.snapshot.emisor.id || emisorId);
+        setReceptor({ ...vacio, ...origen.snapshot.receptor });
+      }
+    });
   const revisar = async () => {
     if (lock.current || !datos) return;
     lock.current = true;
@@ -263,15 +322,52 @@ export function ComprobantesFicha({
       setBusy(false);
     }
   };
+  const accionFiscal = async (
+    action: () => Promise<unknown>,
+    success: string,
+  ) => {
+    if (lock.current || incierto) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setAviso("");
+    try {
+      await action();
+      setVista(null);
+      setAcepta(false);
+      key.current = crypto.randomUUID();
+      setAviso(success);
+      await cargar();
+    } catch (e) {
+      setError(errorTexto(e));
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
   const enPruebas = datos?.config.environment !== "production";
   const emisor = datos?.config.emitters?.find((e) => e.id === emisorId);
   const configurado =
     datos?.config.enabled === true && (emisor?.enabled ?? true);
   const emisoresDisponibles = datos?.config.enabled === true;
-  const hayActivo = datos?.comprobantes.some(
-    (d) => !["rechazado", "anulado", "rejected"].includes(d.estado),
+  const esNota = esNotaFiscal(operacion.operacion);
+  const origen = datos?.comprobantes.find(
+    (d) => String(d.id) === operacion.documento_origen_id,
   );
-  const puedeEmitir = admin && configurado && !hayActivo;
+  const identidadFija =
+    esNota ||
+    (["saldo", "anticipo"].includes(operacion.operacion) &&
+      !!datos?.comprobantes.some(
+        (d) =>
+          (d.operacion || d.snapshot?.operacion) === "anticipo" &&
+          ["accepted", "observed"].includes(d.estado) &&
+          !d.fiscal_closed,
+      ));
+  const permitida = datos
+    ? operacionesPermitidas(datos)[operacion.operacion]
+    : false;
+  const puedeEmitir =
+    admin && configurado && permitida && (!esNota || !!origen);
 
   return (
     <Modal
@@ -348,6 +444,49 @@ export function ComprobantesFicha({
                 {aviso}
               </p>
             )}
+            {!!datos.alerts?.length && (
+              <section aria-label="Avisos fiscales" className="space-y-2">
+                {datos.alerts.map((a, i) => (
+                  <p
+                    key={`${a.code}-${i}`}
+                    className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+                  >
+                    <AlertCircle className="mr-2 inline size-4" />
+                    {a.message}
+                  </p>
+                ))}
+              </section>
+            )}
+            {datos.defaults.ledger && (
+              <section
+                aria-label="Saldo fiscal de la ficha"
+                className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4 text-sm dark:bg-gray-700"
+              >
+                <div>
+                  <p className="text-gray-500">Anticipos aceptados</p>
+                  <p className="font-semibold">
+                    {dineroFiscal(datos.defaults.ledger.anticipado)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Neto documentado</p>
+                  <p className="font-semibold">
+                    {dineroFiscal(datos.defaults.ledger.facturado)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Saldo por documentar</p>
+                  <p className="font-semibold">
+                    {dineroFiscal(datos.defaults.ledger.saldo)}
+                  </p>
+                </div>
+                {datos.defaults.ledger.pendiente && (
+                  <p className="text-amber-700 dark:text-amber-300">
+                    Hay documentos pendientes de resolución.
+                  </p>
+                )}
+              </section>
+            )}
             <section aria-label="Historial de comprobantes">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -380,7 +519,10 @@ export function ComprobantesFicha({
                             {doc.numero}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {dineroFiscal(doc.total ?? doc.snapshot?.total)} ·{" "}
+                            {nombreOperacionFiscal(
+                              doc.operacion || doc.snapshot?.operacion,
+                            )}{" "}
+                            · {dineroFiscal(doc.total ?? doc.snapshot?.total)} ·{" "}
                             {doc.environment === "production"
                               ? "Producción"
                               : "Pruebas"}
@@ -465,23 +607,30 @@ export function ComprobantesFicha({
                 </div>
               )}
             </section>
+            {admin && (
+              <FiscalRecoveryPanel
+                datos={datos}
+                brand={brand}
+                busy={busy || incierto}
+                onAction={accionFiscal}
+              />
+            )}
             {!admin && (
               <p className="text-sm text-gray-500">
                 Un administrador debe revisar y emitir el comprobante.
               </p>
             )}
-            {hayActivo && (
-              <p className="flex gap-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-700">
-                <AlertCircle className="size-5 shrink-0" />
-                La operación ya tiene un comprobante registrado. Revisa su
-                estado antes de cualquier corrección.
-              </p>
-            )}
-            {admin && emisoresDisponibles && !hayActivo && (
+            {admin && emisoresDisponibles && (
               <section aria-label="Nuevo comprobante" className="space-y-4">
                 <h3 className="flex items-center gap-2 font-semibold">
                   <FileCheck2 className="size-5" /> Nuevo comprobante
                 </h3>
+                <FiscalOperacionForm
+                  datos={datos}
+                  value={operacion}
+                  onChange={seleccionarOperacion}
+                  disabled={busy || incierto}
+                />
                 <fieldset disabled={busy || incierto} className="space-y-4">
                   {!!datos.config.emitters?.length && (
                     <label className={etiqueta}>
@@ -489,6 +638,7 @@ export function ComprobantesFicha({
                       <select
                         className={campo}
                         value={emisorId}
+                        disabled={identidadFija}
                         onChange={(e) =>
                           cambiar(() => setEmisorId(e.target.value))
                         }
@@ -508,6 +658,7 @@ export function ComprobantesFicha({
                       <select
                         className={campo}
                         value={tipo}
+                        disabled={esNota || identidadFija}
                         onChange={(e) =>
                           cambiar(() => {
                             setTipo(e.target.value as "01" | "03");
@@ -525,12 +676,19 @@ export function ComprobantesFicha({
                       >
                         <option value="01">Factura</option>
                         <option value="03">Boleta de venta</option>
+                        {esNota && (
+                          <option value={tipo}>{nombreTipoFiscal(tipo)}</option>
+                        )}
                       </select>
                     </label>
                     <div>
                       <p className={etiqueta}>Serie</p>
                       <p className="py-3 text-sm">
-                        {emisor?.series?.[tipo] ||
+                        {(esNota && origen
+                          ? emisor?.note_series?.[tipo as "07" | "08"]?.[
+                              origen.tipo as "01" | "03"
+                            ]
+                          : emisor?.series?.[tipo]) ||
                           datos.config.series?.[tipo] ||
                           "Por configurar"}
                       </p>
@@ -550,7 +708,7 @@ export function ComprobantesFicha({
                             })),
                           )
                         }
-                        disabled={tipo === "01"}
+                        disabled={tipo === "01" || identidadFija}
                       >
                         <option value="6">RUC</option>
                         <option value="1">DNI</option>
@@ -562,6 +720,7 @@ export function ComprobantesFicha({
                       <input
                         className={campo}
                         value={receptor.numero_documento}
+                        disabled={identidadFija}
                         maxLength={15}
                         onChange={(e) =>
                           cambiar(() =>
@@ -580,6 +739,7 @@ export function ComprobantesFicha({
                     <input
                       className={campo}
                       value={receptor.razon_social}
+                      disabled={identidadFija}
                       maxLength={250}
                       onChange={(e) =>
                         cambiar(() =>
@@ -597,6 +757,7 @@ export function ComprobantesFicha({
                       <input
                         className={campo}
                         value={receptor.direccion}
+                        disabled={identidadFija}
                         maxLength={300}
                         onChange={(e) =>
                           cambiar(() =>
@@ -614,6 +775,7 @@ export function ComprobantesFicha({
                         className={campo}
                         type="email"
                         value={receptor.email}
+                        disabled={identidadFija}
                         maxLength={250}
                         onChange={(e) =>
                           cambiar(() =>
@@ -632,6 +794,7 @@ export function ComprobantesFicha({
                       <select
                         className={campo}
                         value={afectacion}
+                        disabled={esNota}
                         onChange={(e) =>
                           cambiar(() =>
                             setAfectacion(e.target.value as "10" | "20" | "30"),
@@ -652,6 +815,7 @@ export function ComprobantesFicha({
                       <select
                         className={campo}
                         value={formaPago}
+                        disabled={esNota || operacion.operacion === "anticipo"}
                         onChange={(e) =>
                           cambiar(() =>
                             setFormaPago(
@@ -673,9 +837,9 @@ export function ComprobantesFicha({
                     emisor.
                   </p>
                   <p className="text-xs text-gray-500">
-                    Emisión de la operación completa. Anticipos separados,
-                    detracciones y correcciones mediante notas requieren su
-                    configuración fiscal antes de emitir.
+                    Los abonos y documentos aceptados se concilian en el
+                    servidor. Las detracciones y los regímenes especiales
+                    requieren configuración tributaria específica.
                   </p>
                   {formaPago === "Credito" && (
                     <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-600">
@@ -782,6 +946,20 @@ export function ComprobantesFicha({
                       {vista.snapshot.receptor.razon_social} ·{" "}
                       {vista.snapshot.receptor.numero_documento}
                     </p>
+                    {vista.snapshot.referencia && (
+                      <div className="space-y-1 text-sm">
+                        <p>
+                          Modifica:{" "}
+                          {nombreTipoFiscal(vista.snapshot.referencia.tipo)}{" "}
+                          {vista.snapshot.referencia.serie}-
+                          {vista.snapshot.referencia.numero}
+                        </p>
+                        <p>
+                          Motivo {vista.snapshot.referencia.motivo_codigo}:{" "}
+                          {vista.snapshot.referencia.motivo}
+                        </p>
+                      </div>
+                    )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -824,6 +1002,22 @@ export function ComprobantesFicha({
                         <dt>Total</dt>
                         <dd>{dineroFiscal(vista.snapshot.total)}</dd>
                       </div>
+                      {!!vista.snapshot.total_anticipos && (
+                        <>
+                          <div className="flex justify-between gap-4">
+                            <dt>Operación completa</dt>
+                            <dd>
+                              {dineroFiscal(vista.snapshot.total_operacion)}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <dt>Anticipos aplicados</dt>
+                            <dd>
+                              {dineroFiscal(vista.snapshot.total_anticipos)}
+                            </dd>
+                          </div>
+                        </>
+                      )}
                     </dl>
                     <label className="flex items-start gap-3 text-sm">
                       <input

@@ -8,7 +8,7 @@ npm run build
 node tests/proformas/test-ui-fiscal.cjs
 ```
 
-Usa Edge y una API totalmente simulada, bloquea conexiones externas y cierra navegador/servidor al terminar. Comprueba emisor elegible, revisión, confirmación, recuperación idempotente, historial, descargas, enlace privado y escritorio/móvil. Las pruebas fiscales de servidor se ejecutan en el backend con `npm run test:fiscal`; no leen `.env` ni contactan SUNAT.
+Usa Edge y una API totalmente simulada, bloquea conexiones externas y cierra navegador/servidor al terminar. Comprueba emisor elegible, revisión, confirmación, recuperación idempotente, historial, descargas, enlace privado y escritorio/móvil. Incluye anticipos por abono, liquidación, nota de crédito, resumen con ticket y rechazo visible de una CDR no confiable. Las pruebas fiscales de servidor se ejecutan en el backend con `npm run test:fiscal` y `npm run test:fiscal:postgres`; no leen `.env` ni contactan SUNAT.
 
 Estas pruebas usan PostgreSQL en memoria. No leen `.env`, no abren conexiones a la base real y no ejecutan el servidor.
 

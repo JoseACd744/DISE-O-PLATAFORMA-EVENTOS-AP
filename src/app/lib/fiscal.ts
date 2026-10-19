@@ -1,7 +1,17 @@
 import { API_BASE_URL, apiRequest, ApiError } from "./api";
 import { getAuthToken } from "./auth";
 
-export type TipoFiscal = "01" | "03";
+export type TipoFiscal = "01" | "03" | "07" | "08";
+export type OperacionFiscal =
+  "total" | "anticipo" | "saldo" | "nota_credito" | "nota_debito";
+export interface BorradorOperacionFiscal {
+  operacion: OperacionFiscal;
+  abono_ids: number[];
+  documento_origen_id: string;
+  motivo_codigo: string;
+  motivo: string;
+  monto: number;
+}
 export interface ReceptorFiscal {
   tipo_documento: string;
   numero_documento: string;
@@ -23,6 +33,12 @@ export interface SolicitudFiscal {
   cuotas: CuotaFiscal[];
   afectacion: "10" | "20" | "30";
   version: string;
+  operacion?: OperacionFiscal;
+  abono_ids?: number[];
+  documento_origen_id?: string;
+  motivo_codigo?: string;
+  motivo?: string;
+  monto?: number;
 }
 export interface SnapshotFiscal {
   emisor: {
@@ -49,6 +65,26 @@ export interface SnapshotFiscal {
   igv: number;
   total: number;
   afectacion: string;
+  operacion?: OperacionFiscal;
+  total_operacion?: number;
+  total_anticipos?: number;
+  anticipos_aplicados?: {
+    id?: string;
+    tipo: string;
+    serie: string;
+    numero: number;
+    total: number;
+    base: number;
+    igv: number;
+  }[];
+  referencia?: {
+    documento_id?: string;
+    tipo: string;
+    serie: string;
+    numero: number;
+    motivo_codigo: string;
+    motivo: string;
+  };
 }
 export interface ComprobanteFiscal {
   id: string;
@@ -63,6 +99,14 @@ export interface ComprobanteFiscal {
   codigo?: string;
   mensaje?: string;
   archivos?: string[];
+  operacion?: OperacionFiscal;
+  documento_origen_id?: string;
+  abono_ids?: number[];
+  otorgado_at?: string | null;
+  can_void?: boolean;
+  fiscal_closed?: boolean;
+  saldo_corregible?: number;
+  can_summary?: boolean;
 }
 export interface DatosFiscales {
   config: {
@@ -76,6 +120,9 @@ export interface DatosFiscales {
       series: Record<TipoFiscal, string>;
       enabled: boolean;
       reason?: string;
+      note_series?: Partial<
+        Record<"07" | "08", Partial<Record<"01" | "03", string>>>
+      >;
     }[];
     series?: Record<TipoFiscal, string>;
     reason?: string;
@@ -91,8 +138,35 @@ export interface DatosFiscales {
     total: number;
     abonado: number;
     version: string;
+    abonos?: {
+      id: number;
+      fecha: string;
+      monto: number;
+      monto_disponible?: number;
+      disponible: boolean;
+    }[];
+    ledger?: {
+      anticipos: ComprobanteFiscal[];
+      facturado: number;
+      anticipado: number;
+      saldo: number;
+      pendiente?: boolean;
+    };
+    operations?: Partial<Record<OperacionFiscal, boolean>>;
   };
   comprobantes: ComprobanteFiscal[];
+  resumenes?: ResumenFiscal[];
+  alerts?: { code: string; message: string; severity: "warning" | "error" }[];
+}
+export interface ResumenFiscal {
+  id: string;
+  tipo: "RC" | "RA";
+  estado: string;
+  identificador: string;
+  ticket?: string;
+  mensaje?: string;
+  documento_ids?: string[];
+  created_at: string;
 }
 export interface VistaFiscal {
   snapshot: SnapshotFiscal;
@@ -100,7 +174,20 @@ export interface VistaFiscal {
 }
 
 export const nombreTipoFiscal = (tipo: string) =>
-  tipo === "01" ? "Factura" : "Boleta";
+  ({
+    "01": "Factura",
+    "03": "Boleta",
+    "07": "Nota de crédito",
+    "08": "Nota de débito",
+  })[tipo] || tipo;
+export const nombreOperacionFiscal = (operacion?: string) =>
+  ({
+    total: "Operación completa",
+    anticipo: "Anticipo",
+    saldo: "Liquidación con anticipos",
+    nota_credito: "Nota de crédito",
+    nota_debito: "Nota de débito",
+  })[operacion || "total"] || operacion;
 export const dineroFiscal = (monto: unknown) =>
   new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(
     Number(monto) || 0,
@@ -123,6 +210,9 @@ export const ESTADOS_FISCALES: Record<string, string> = {
   unknown: "Respuesta por confirmar",
   retry: "Pendiente de consulta",
   blocked: "Requiere revisión contable",
+  voided: "Baja aceptada",
+  processing: "SUNAT está procesando",
+  awaiting_cdr: "Esperando CDR",
 };
 export function estadoFiscal(estado: string) {
   return ESTADOS_FISCALES[estado] || estado;
@@ -155,6 +245,32 @@ export function consultarFiscal(id: string, brand: string) {
     `/fiscal/${encodeURIComponent(id)}/consultar`,
     { method: "POST", body: JSON.stringify({ brand }) },
   );
+}
+export async function descargarResumenFiscal(
+  id: string,
+  tipo: "xml" | "cdr",
+  brand: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/fiscal/resumenes/${encodeURIComponent(id)}/archivos/${tipo}?brand=${encodeURIComponent(brand)}`,
+    { headers: { Authorization: `Bearer ${getAuthToken() || ""}` } },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(
+      body?.error || "Archivo del resumen no disponible.",
+      response.status,
+      body,
+    );
+  }
+  const url = URL.createObjectURL(await response.blob()),
+    link = document.createElement("a");
+  link.href = url;
+  link.download = `resumen-${id}-${tipo}.xml`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Descarga con la sesión; nunca exponer XML/CDR mediante una URL pública. */
