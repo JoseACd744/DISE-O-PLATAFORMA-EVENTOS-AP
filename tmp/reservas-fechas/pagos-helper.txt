@@ -1,0 +1,26 @@
+async function guardarCondicionesReserva(client: Queryable, fichaId: number, body: any) {
+  if (body.es_credito !== undefined) {
+    if (typeof body.es_credito !== "boolean") throw new CotizacionRegistroError("Indica si la reserva es a crédito");
+    await client.query("UPDATE fichas SET es_credito=$2 WHERE id=$1", [fichaId, body.es_credito]);
+  }
+  const abono=body.abono_inicial;
+  if (!abono) return;
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(abono.solicitud_id||"")) throw new CotizacionRegistroError("Identificador del abono inválido");
+  const guardado=await client.query("SELECT ficha_id,monto,fecha,medio FROM abonos WHERE solicitud_id=$1",[abono.solicitud_id]);
+  if (guardado.rows.length) {
+    const g=guardado.rows[0];
+    if(Number(g.ficha_id)!==fichaId || Number(g.monto)!==abono.monto || g.medio!==abono.medio) throw new CotizacionRegistroError("El identificador del abono ya fue utilizado");
+    return;
+  }
+  const f=(await client.query("SELECT es_cotizacion,cotizacion,descuento FROM fichas WHERE id=$1 FOR UPDATE",[fichaId])).rows[0];
+  if(f.es_cotizacion) throw new CotizacionRegistroError("Confirma la cotización antes de registrar el abono");
+  const monto=abono.monto;
+  if(typeof monto!=="number" || !Number.isFinite(monto) || monto<=0 || Math.abs(monto*100-Math.round(monto*100))>0.00001) throw new CotizacionRegistroError("El abono debe ser positivo y tener hasta dos decimales");
+  const fecha=String(abono.fecha||"");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !Number.isFinite(Date.parse(fecha)) || new Date(fecha).toISOString().slice(0,10)!==fecha) throw new CotizacionRegistroError("Fecha de abono inválida");
+  if(!["Transferencia","Yape","Plin","Efectivo","Link de Pago"].includes(abono.medio)) throw new CotizacionRegistroError("Medio de pago inválido");
+  const pagado=Number((await client.query("SELECT COALESCE(sum(monto),0) pagado FROM abonos WHERE ficha_id=$1",[fichaId])).rows[0].pagado);
+  const saldo=redondearCotizacion(Number(f.cotizacion)*(1-Number(f.descuento)/100)-pagado);
+  if(monto>saldo+0.001) throw new CotizacionRegistroError("El abono supera el saldo de esta fecha (S/ "+saldo.toFixed(2)+")");
+  await client.query("INSERT INTO abonos(ficha_id,fecha,monto,numero_operacion,comprobante_url,medio,solicitud_id) VALUES($1,$2,$3,$4,$5,$6,$7)",[fichaId,fecha,monto,abono.numero_operacion||null,abono.comprobante_url||null,abono.medio,abono.solicitud_id]);
+}

@@ -1,0 +1,52 @@
+// Guarda todas las fechas de una reserva y sus abonos en una única transacción.
+// Reutiliza las validaciones de stock, horarios, marca y trazabilidad de las fichas individuales.
+router.post("/reserva", async (req: Request,res: Response,next: NextFunction)=>{
+  const client=await pool.connect();
+  try {
+    const {fechas,brand,solicitud_id,grupo_id}=req.body??{};
+    const uuid=(s:any)=>typeof s==="string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(s);
+    if(!req.user || !["donofrio","jugueton"].includes(brand) || (req.user.rol!=="admin" && req.user.brand!==brand)){res.status(403).json({error:"No tienes acceso a esta reserva"});return;}
+    if(!uuid(solicitud_id) || (grupo_id && !uuid(grupo_id)) || !Array.isArray(fechas) || fechas.length<1 || fechas.length>31){res.status(400).json({error:"La reserva admite entre 1 y 31 fechas e identificadores válidos"});return;}
+    const dias=fechas.map((f:any)=>f.fecha_evento);
+    const ids=fechas.filter((f:any)=>f.id!==undefined).map((f:any)=>f.id);
+    if(new Set(dias).size!==dias.length || new Set(ids).size!==ids.length || ids.some((id:any)=>!Number.isSafeInteger(id)||id<1)){res.status(400).json({error:"Cada fecha debe ser diferente y sus fichas no pueden repetirse"});return;}
+    if(fechas.some((f:any)=>f.brand!==brand || f.es_cotizacion!==fechas[0].es_cotizacion || (f.cliente_id||null)!==(fechas[0].cliente_id||null) || f.cliente_nombre!==fechas[0].cliente_nombre)){res.status(400).json({error:"Las fechas deben pertenecer al mismo cliente, marca y estado de reserva"});return;}
+    const crypto=await import("node:crypto");
+    const canon=(value:any):any=>Array.isArray(value)?value.map(canon):value&&typeof value==="object"?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canon(value[k])])):value;
+    const hash=crypto.createHash("sha256").update(JSON.stringify(canon(req.body))).digest("hex");
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[solicitud_id]);
+    const previo=(await client.query("SELECT * FROM reserva_guardados WHERE solicitud_id=$1",[solicitud_id])).rows[0];
+    if(previo){
+      if(previo.usuario_id!==String(req.user.sub||"") || previo.brand!==brand || previo.solicitud_hash!==hash){await client.query("ROLLBACK");res.status(409).json({error:"Esta operación ya se utilizó con otros datos. Recarga la reserva antes de volver a guardar."});return;}
+      await client.query("COMMIT");res.json(previo.respuesta);return;
+    }
+    const grupo=grupo_id||crypto.randomUUID();
+    const miembros=(await client.query("SELECT id,brand FROM fichas WHERE reserva_grupo_id=$1 FOR UPDATE",[grupo])).rows;
+    if(grupo_id && !miembros.length){await client.query("ROLLBACK");res.status(404).json({error:"Reserva no encontrada"});return;}
+    if(miembros.some(f=>f.brand!==brand || !ids.includes(f.id))){await client.query("ROLLBACK");res.status(400).json({error:"Incluye todas las fechas guardadas de esta reserva. Las fechas existentes se eliminan desde su ficha."});return;}
+    if(ids.length){const actuales=(await client.query("SELECT id,brand,reserva_grupo_id FROM fichas WHERE id=ANY($1::int[]) FOR UPDATE",[ids])).rows;
+      if(actuales.length!==ids.length || actuales.some(f=>f.brand!==brand || (f.reserva_grupo_id && f.reserva_grupo_id!==grupo)) || (!grupo_id && ids.length>1)){await client.query("ROLLBACK");res.status(400).json({error:"Las fichas no pertenecen a esta reserva"});return;}
+    }
+    const compartido={query:async(sql:any,args?:any)=>{
+      if(typeof sql==="string" && /^(BEGIN|COMMIT|ROLLBACK)\s*;?$/i.test(sql.trim()))return {rows:[],rowCount:0};
+      return client.query(sql,args);
+    },release:()=>{}} as unknown as PoolClient;
+    const guardadas:any[]=[];
+    for(const fecha of fechas){
+      const metodo=fecha.id?"put":"post";const ruta=fecha.id?"/:id":"/";
+      const layer=(router as any).stack.find((l:any)=>l.route?.path===ruta && l.route.methods[metodo]);
+      let estado=200;let datos:any;let fallo:any;
+      const respuesta={status(n:number){estado=n;return this;},json(d:any){datos=d;return this;}};
+      const interna={body:fecha,params:{id:String(fecha.id||"")},query:{},user:req.user,[CLIENTE_RESERVA]:compartido};
+      await layer.route.stack[0].handle(interna,respuesta,(error:any)=>{fallo=error;});
+      if(fallo)throw fallo;
+      if(estado>=400){await client.query("ROLLBACK");res.status(estado).json({...datos,error:`${fecha.fecha_evento}: ${datos?.error||"No se pudo guardar"}`});return;}
+      await client.query("UPDATE fichas SET reserva_grupo_id=$2 WHERE id=$1",[datos.id,grupo]);
+      datos.reserva_grupo_id=grupo;guardadas.push(datos);
+    }
+    const respuesta={grupo_id:grupo,fichas:guardadas};
+    await client.query("INSERT INTO reserva_guardados(solicitud_id,brand,usuario_id,solicitud_hash,respuesta) VALUES($1,$2,$3,$4,$5::jsonb)",[solicitud_id,brand,String(req.user.sub||""),hash,JSON.stringify(respuesta)]);
+    await client.query("COMMIT");res.json(respuesta);
+  } catch(error){await client.query("ROLLBACK");next(error);}finally{client.release();}
+});

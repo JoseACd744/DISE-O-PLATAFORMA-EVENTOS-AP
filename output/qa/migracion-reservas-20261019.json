@@ -1,0 +1,21 @@
+{
+  "migration": "048_reservas_fechas_credito.sql",
+  "applied": true,
+  "before": {
+    "fichas": "197",
+    "cotizaciones": "104879.51",
+    "descuentos": "0.00",
+    "abonos": "262",
+    "abonado": "78168.00",
+    "clientes": "347"
+  },
+  "after": {
+    "fichas": "197",
+    "cotizaciones": "104879.51",
+    "descuentos": "0.00",
+    "abonos": "262",
+    "abonado": "78168.00",
+    "clientes": "347"
+  },
+  "preserved": true
+}

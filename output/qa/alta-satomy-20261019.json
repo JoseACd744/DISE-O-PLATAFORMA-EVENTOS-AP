@@ -1,0 +1,11 @@
+{
+  "usuario": {
+    "id": "8b1a27fa-d12c-455a-9ca4-aab9437dde1a",
+    "nombre": "Satomy",
+    "email": "donofriooeventosap@gmail.com",
+    "rol": "vendedor",
+    "brand": "donofrio"
+  },
+  "acceso": "Google",
+  "fichas_anteriores_sin_cambios": true
+}

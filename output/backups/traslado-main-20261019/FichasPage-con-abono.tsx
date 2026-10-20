@@ -1,0 +1,5128 @@
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
+import { DayPicker, DateRange } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { DateRangePicker } from "../components/DateRangePicker";
+import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { Pagination } from "../components/Pagination";
+import { useProducts } from "../contexts/ProductsContext";
+import { useBrand } from "../contexts/BrandContext";
+import {
+  IGV_RATE,
+  SIN_DESCUENTO,
+  construirLineasCotizacion,
+  getInflablesGratisIds,
+  mapDescuentoApi,
+  mapDescuentosPorId,
+  toMoneyNumber,
+  type DescuentoTipo,
+  type GrupoLinea,
+  type LineaCotizacion,
+  type LineaDescuento,
+  type OrigenLineas,
+} from "../lib/cotizacion";
+import { apiRequest, apiUpload, API_BASE_URL, ApiError } from "../lib/api";
+import { StatCard } from "../components/ui/stat-card";
+import { Modal } from "../components/ui/modal";
+import { EmptyState, ErrorBanner, LoadingState } from "../components/ui/feedback";
+import { Button } from "../components/ui/button";
+import { mensajeDeError, notify } from "../lib/notify";
+import { invalidarClientes, invalidarFichas, obtenerClientes, obtenerFichasConDetalle, obtenerTarifasEnvio, obtenerAsignaciones, reemplazarFichaEnCache } from "../lib/queries";
+import { Printer } from "lucide-react";
+import { buildFichasOperativasHtml, prepararFichaOperativa, type AsignacionOperativa } from "../lib/fichaOperativa";
+import { getAuthUser, isAdminUser, isVendedorUser } from "../lib/auth";
+import { getDescuentoMaxPct, setDescuentoMaxPct } from "../lib/settings";
+import { buildEventContractHtml, type EventContractItem } from "../lib/eventContract";
+import { DetalleAjusteCotizacion } from "../components/DetalleAjusteCotizacion";
+import { nombrePresentacion } from "../lib/presentacionPedido";
+import { aplicarPreciosCotizados, actualizarTotalPorLineas, compararLineas, registrarLineas, redondearDinero, type LineaRegistrada, type TrazabilidadCotizacion } from "../lib/cotizacionTrazabilidad";
+import { PageHeader } from "../components/ui/page-header";
+import { AvisoDisponibilidad, sugerirCodigo, type OcupacionUnidad, type OtraUnidad } from "../components/AvisoDisponibilidad";
+import { ComprobantesFicha } from "../components/ComprobantesFicha";
+import { campo, etiqueta } from "../lib/ui";
+
+// ── Financial types ──────────────────────────────────────────────
+
+interface Abono {
+  id: number;
+  fecha: string;
+  monto: number;
+  numeroOperacion: string;
+  comprobante?: string; // filename
+  comprobantePreview?: string; // data URL for preview
+  medio: "Transferencia" | "Yape" | "Plin" | "Efectivo" | "Link de Pago";
+}
+
+interface FichaPaquete extends LineaDescuento {
+  paqueteId: number;
+  paqueteNombre: string;
+  paqueteTipo: string;
+  cantidad: number;
+}
+
+interface FichaImagen {
+  abono_id: number;
+  url: string;
+  path: string;
+  fecha: string;
+}
+
+interface FichaProductoSuelto extends LineaDescuento {
+  productoNombre: string;
+  cantidad: number;
+}
+
+interface FichaRecurso extends LineaDescuento {
+  id: number;
+  recurso_id: number;
+  recurso_nombre: string;
+  cantidad: number;
+  sku: string;
+  precio: string;
+}
+
+type EstadoPago = "pagado" | "parcial" | "pendiente";
+
+interface Ficha {
+  es_cotizacion?: boolean;
+  es_credito?: boolean;
+  presentacion?: string;
+  movilidad_confirmada?: boolean;
+  personalPrecios?: Record<number, number>;
+  id: number;
+  fecha_evento: string;
+  fecha_reserva: string;
+  fecha: string;
+  distrito: string;
+  transporte?: "cumpleanos" | "delivery";
+  tipo_evento?: string;
+  titulo?: string;
+  costo_envio?: number;
+  dias_movilidad?: number;
+  descuento_movilidad?: number;
+  direccion: string;
+  referencia?: string;
+  hora_entrega: string;
+  hora_entrega_fin?: string;
+  hora_recojo: string;
+  hora_recojo_fin?: string;
+  paquetes: FichaPaquete[];
+  productosSueltos: FichaProductoSuelto[];
+  carritoIds?: number[];
+  inflableIds?: number[];
+  inflablesDescuentos?: Record<number, LineaDescuento>;
+  carritosDescuentos?: Record<number, LineaDescuento>;
+  recursos?: FichaRecurso[];
+  aplica_igv?: boolean;
+  comentarios?: string;
+  personalIds?: number[];
+  cliente_id?: string | null;
+  cliente_nombre: string;
+  cliente_celular: string;
+  contacto_nombre?: string;
+  contacto_celular?: string;
+  cotizacion_trazabilidad?: TrazabilidadCotizacion | null;
+  // Financial
+  cotizacion: number;
+  descuento: number;
+  abonos: Abono[];
+  // Brand identifier
+  brand: "donofrio" | "jugueton";
+  created_by?: string;
+  created_by_nombre?: string;
+  created_at?: string;
+}
+
+interface FichaFormData {
+  ajusteMotivo: string;
+  es_cotizacion: boolean;
+  es_credito: boolean;
+  presentacion: string;
+  movilidad_confirmada: boolean;
+  personalPrecios: Record<number, number>;
+  entregaEnRango: boolean;
+  recojoEnRango: boolean;
+  fecha_evento: string;
+  fecha_reserva: string;
+  distrito: string;
+  transporte: "cumpleanos" | "delivery";
+  tipoEvento: string;
+  titulo: string;
+  costo_envio: number;
+  dias_movilidad: number;
+  descuento_movilidad: number;
+  direccion: string;
+  referencia: string;
+  hora_entrega: string;
+  hora_entrega_fin: string;
+  hora_recojo: string;
+  hora_recojo_fin: string;
+  comentarios: string;
+  cliente_nombre: string;
+  cliente_celular: string;
+  contacto_nombre: string;
+  contacto_celular: string;
+  cotizacion: number;
+  descuento: number;
+  cliente_id: string;
+  paquetes: FichaPaquete[];
+  productosSueltos: FichaProductoSuelto[];
+  carritoIds: number[];
+  inflableIds: number[];
+  inflablesDescuentos: Record<number, LineaDescuento>;
+  carritosDescuentos: Record<number, LineaDescuento>;
+  personalIds: number[];
+  recursos: Array<{ recursoId: number; cantidad: number } & LineaDescuento>;
+  aplicaIgv: boolean;
+  registrarAbonoInicial: boolean;
+  abonoInicialFecha: string;
+  abonoInicialMonto: number;
+  abonoInicialMedio: Abono["medio"];
+  abonoInicialNumeroOperacion: string;
+}
+
+const FICHAS_PER_PAGE = 10;
+
+const getInitialFormData = (): FichaFormData => ({
+  ajusteMotivo: "",
+  es_cotizacion: false,
+  es_credito: false,
+  presentacion: "carrito",
+  movilidad_confirmada: false,
+  personalPrecios: {},
+  entregaEnRango: true,
+  recojoEnRango: true,
+  fecha_evento: getLocalDateString(),
+  fecha_reserva: getLocalDateString(),
+  distrito: "",
+  transporte: "cumpleanos",
+  tipoEvento: "",
+  titulo: "",
+  costo_envio: 0,
+  dias_movilidad: 1,
+  descuento_movilidad: 0,
+  direccion: "",
+  referencia: "",
+  hora_entrega: "",
+  hora_entrega_fin: "",
+  hora_recojo: "",
+  hora_recojo_fin: "",
+  comentarios: "",
+  cliente_nombre: "",
+  cliente_celular: "",
+  contacto_nombre: "",
+  contacto_celular: "",
+  cotizacion: 0,
+  descuento: 0,
+  cliente_id: "",
+  paquetes: [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }],
+  productosSueltos: [],
+  carritoIds: [0],
+  inflableIds: [],
+  inflablesDescuentos: {},
+  carritosDescuentos: {},
+  personalIds: [0],
+  recursos: [{ recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }],
+  aplicaIgv: false,
+  registrarAbonoInicial: false,
+  abonoInicialFecha: getLocalDateString(),
+  abonoInicialMonto: 0,
+  abonoInicialMedio: "Transferencia",
+  abonoInicialNumeroOperacion: "",
+});
+
+function actualizarMovilidad(prev: FichaFormData, patch: Partial<Pick<FichaFormData, "costo_envio" | "dias_movilidad" | "descuento_movilidad">>): FichaFormData {
+  const next = { ...prev, ...patch };
+  return next;
+}
+
+interface ExistingClient {
+  id: string;
+  nombre: string;
+  razon_social: string | null;
+  dni_ruc: string | null;
+  email?: string | null;
+  telefono: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  creado_por: "donofrio" | "jugueton";
+  status: "active" | "inactive";
+}
+
+interface TarifaEnvio {
+  id: number;
+  zona: string;
+  distrito: string;
+  costo_cumpleanos: number;
+  costo_delivery: number;
+}
+
+const TIPOS_EVENTO = [
+  "Cumpleaños/ Fiestas infantiles",
+  "Baby Shower",
+  "Revelación de género",
+  "Bodas/Matrimonios",
+  "Quinceañeros",
+  "Graduaciones",
+  "Bautizos",
+  "Reuniones familiares",
+  "Eventos corporativos",
+  "Fiestas de fin de año",
+  "Celebraciones navideñas",
+  "Eventos escolares",
+  "Kermeses",
+  "Macro eventos",
+  "Ferias",
+  "Activaciones de marca",
+  "Eventos deportivos",
+  "Inauguraciones",
+  "Celebraciones temáticas",
+  "Otros",
+] as const;
+
+interface CarritoConflict {
+  carrito_id: number;
+  carrito_modelo: string;
+  carrito_codigo: string;
+  ficha_id: number;
+  cliente_nombre: string;
+  fecha_evento: string;
+}
+
+interface InflableConflict {
+  inflable_id: number;
+  inflable_tipo: string;
+  inflable_codigo: string;
+  ficha_id: number;
+  cliente_nombre: string;
+  fecha_evento: string;
+}
+
+function getCostoFromTarifa(tarifa: TarifaEnvio, transporte: FichaFormData["transporte"]): number {
+  if (transporte === "delivery") return tarifa.costo_delivery;
+  return tarifa.costo_cumpleanos;
+}
+
+function labelTransporte(t?: string): string {
+  if (t === "cumpleanos") return "Cumpleaños";
+  if (t === "delivery") return "Delivery";
+  return t || "-";
+}
+
+// Distritos se cargan desde la API y se almacenan en `distritosOptions`/`distritos`.
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+function getDescuentoMonto(f: Ficha) { return f.cotizacion * ((f.descuento || 0) / 100); }
+function getTotal(f: Ficha) { return f.cotizacion - getDescuentoMonto(f); }
+function getTotalAbonado(f: Ficha) { return f.abonos.reduce((s, a) => s + a.monto, 0); }
+function getSaldo(f: Ficha) { return getTotal(f) - getTotalAbonado(f); }
+function getEstadoPago(f: Ficha): EstadoPago {
+  const saldo = getSaldo(f);
+  if (saldo <= 0) return "pagado";
+  if (getTotalAbonado(f) > 0) return "parcial";
+  return "pendiente";
+}
+function formatMoney(n: number) { return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+
+const HORA_VENTANA_AUTOCOMPLETAR_HORAS = 1;
+
+function addHoraMasUnaHora(hora: string): string {
+  const [hoursText, minutesText = "00"] = hora.split(":");
+  const hours = Number(hoursText);
+  if (!Number.isFinite(hours)) return "";
+  const newHours = (hours + HORA_VENTANA_AUTOCOMPLETAR_HORAS) % 24;
+  return `${String(newHours).padStart(2, "0")}:${minutesText.padStart(2, "0")}`;
+}
+
+function formatHoraRango(inicio: string | undefined | null, fin?: string | undefined | null): string {
+  if (!inicio) return "-";
+  if (!fin) return formatHoraFija(inicio);
+  return `${formatHoraFija(inicio)} a ${formatHoraFija(fin)}`;
+}
+
+function formatHoraFija(hora: string | undefined | null): string {
+  if (!hora) return "-";
+  const [hoursText, minutesText = "0"] = hora.split(":");
+  const hour24 = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hour24) || !Number.isFinite(minutes)) return hora;
+  const period = hour24 >= 12 ? "pm" : "am";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")}${period}`;
+}
+
+function HorarioSelector({ label, enRango, onChange }: { label: string; enRango: boolean; onChange: (enRango: boolean) => void }) {
+  return (
+    <div role="group" aria-label={`Tipo de horario de ${label}`} className="flex gap-2 mb-3">
+      {([false, true] as const).map((value) => (
+        <button key={String(value)} type="button" aria-pressed={enRango === value} onClick={() => onChange(value)}
+          className={`px-3 py-2 rounded-lg text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${enRango === value ? "bg-brand-orange text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}>
+          {value ? "Rango de hora" : "Hora exacta"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+
+function normalizeAssetUrl(value: string) {
+  if (!value) return "";
+  if (value.startsWith("/")) {
+    const apiOrigin = new URL(API_BASE_URL, window.location.origin).origin;
+    return `${apiOrigin}${value}`;
+  }
+  return value;
+}
+
+function extractStoragePathFromUrl(value: string) {
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  } catch {
+    // Si URL no es parseable, devolvemos vacío y se maneja fuera.
+  }
+
+  return "";
+}
+
+function getBrandMeta(brand: Ficha["brand"]) {
+  return brand === "donofrio"
+    ? {
+        label: "D'Onofrio",
+        logoUrl: "/images/donofrio.jpg",
+        badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+        logoClass: "w-6 h-6 rounded-sm object-contain bg-white p-0.5",
+        miniLogoInlineStyle: "width:24px; height:24px; border-radius:4px; object-fit:contain; background:#fff; padding:1px;",
+      }
+    : {
+        label: "Juguetón",
+        logoUrl: "/images/jugueton.png",
+        badgeClass: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+        logoClass: "w-4 h-4 rounded-full object-cover",
+        miniLogoInlineStyle: "width:18px; height:18px; border-radius:999px; object-fit:cover;",
+      };
+}
+
+function TransporteBadge({ transporte, tipoEvento }: { transporte?: string; tipoEvento?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 ring-1 ring-pink-200 dark:ring-pink-700">
+        {tipoEvento || "Cumpleaños"}
+      </span>
+      {transporte === "delivery" && (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 ring-1 ring-teal-200 dark:ring-teal-700">
+          Delivery
+        </span>
+      )}
+    </span>
+  );
+}
+
+function EstadoPagoBadge({ estado }: { estado: EstadoPago }) {
+  if (estado === "pagado") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        Completado
+      </span>
+    );
+  }
+
+  if (estado === "parcial") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+        <CircleDashed className="w-3.5 h-3.5" />
+        Parcial
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+      <AlertCircle className="w-3.5 h-3.5" />
+      Pendiente
+    </span>
+  );
+}
+
+function formatEstadoPersonal(estado: string) {
+  if (estado === "ocupado" || estado === "en-ruta") return "Ocupado";
+  if (estado === "descanso") return "Descanso";
+  return "Disponible";
+}
+
+// Función helper para obtener estado dinámico (será usada dentro del componente)
+
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder = "Seleccionar...",
+}: {
+  options: readonly string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = options.filter((opt) => opt.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange text-left"
+      >
+        <span className={value ? "" : "text-gray-400"}>{value || placeholder}</span>
+        <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-auto bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg">
+          <div className="sticky top-0 bg-white dark:bg-gray-700 p-2 border-b border-gray-100 dark:border-gray-600">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar tipo de evento..."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                autoFocus
+              />
+            </div>
+          </div>
+          {filtered.length === 0 ? (
+            <div className="p-3 text-sm text-gray-400 text-center">Sin resultados</div>
+          ) : (
+            filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onChange(opt);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center gap-2 ${
+                  opt === value ? "bg-brand-orange/10" : ""
+                }`}
+              >
+                {opt === value && <Check className="w-3 h-3 text-brand-orange shrink-0" />}
+                <span className="text-gray-900 dark:text-white">{opt}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function AbonoModal({
+  ficha,
+  abono,
+  onClose,
+  onSave,
+  onUpdate,
+}: {
+  ficha: Ficha;
+  abono?: Abono | null;
+  onClose: () => void;
+  onSave: (fichaId: number, abono: Abono) => Promise<void>;
+  onUpdate?: (fichaId: number, abonoId: number, abono: Abono) => Promise<void>;
+}) {
+  const isEditing = Boolean(abono);
+  const [fecha, setFecha] = useState(abono?.fecha || getLocalDateString());
+  const [monto, setMonto] = useState<string>(abono ? String(abono.monto) : "");
+  const [numeroOperacion, setNumeroOperacion] = useState(abono?.numeroOperacion || "");
+  const [medio, setMedio] = useState<Abono["medio"]>(abono?.medio || "Transferencia");
+  const originalComprobante = abono?.comprobante || "";
+  const [comprobante, setComprobante] = useState<string>(originalComprobante);
+  const [comprobanteName, setComprobanteName] = useState<string>("");
+  const [comprobantePath, setComprobantePath] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isCleaningUpload, setIsCleaningUpload] = useState(false);
+  const [modalError, setModalError] = useState<string>("");
+
+  const saldo = Math.max(0, getSaldo(ficha));
+
+  const resetUploadedComprobante = () => {
+    setComprobante("");
+    setComprobanteName("");
+    setComprobantePath("");
+  };
+
+  const cleanupUploadedComprobante = async (path: string) => {
+    if (!path) return true;
+    try {
+      await apiRequest<{ ok?: boolean }>("/upload", {
+        method: "DELETE",
+        body: JSON.stringify({ path }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleRemoveComprobante = async () => {
+    if (comprobantePath) {
+      setIsCleaningUpload(true);
+      await cleanupUploadedComprobante(comprobantePath);
+      setIsCleaningUpload(false);
+    }
+    resetUploadedComprobante();
+  };
+
+  const handleModalClose = async () => {
+    if (isSaving || isUploading || isCleaningUpload) return;
+
+    if (!comprobantePath) {
+      onClose();
+      return;
+    }
+
+    setIsCleaningUpload(true);
+    const cleaned = await cleanupUploadedComprobante(comprobantePath);
+    setIsCleaningUpload(false);
+
+    if (!cleaned) {
+      setModalError("No se pudo eliminar el archivo subido. Intenta nuevamente antes de cerrar.");
+      return;
+    }
+
+    resetUploadedComprobante();
+    onClose();
+  };
+
+  const uploadComprobanteFile = async (file: File) => {
+    setIsUploading(true);
+    setModalError("");
+
+    try {
+      if (comprobantePath) {
+        const cleaned = await cleanupUploadedComprobante(comprobantePath);
+        if (!cleaned) {
+          throw new Error("No se pudo eliminar el comprobante anterior. Intenta de nuevo antes de subir otro archivo.");
+        }
+        resetUploadedComprobante();
+      }
+
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "comprobantes");
+      setComprobante(normalizedUrl);
+      setComprobanteName(file.name);
+      setComprobantePath(rawPath);
+    } catch (err) {
+      setModalError(mensajeDeError(err, "No se pudo subir el comprobante."));
+      resetUploadedComprobante();
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Se limpia el input para que volver a elegir el mismo archivo tras un error vuelva a subirlo
+    event.target.value = "";
+    if (!file) return;
+    await uploadComprobanteFile(file);
+  };
+
+  const handleComprobantePaste = async (event: React.ClipboardEvent) => {
+    if (isUploading || isCleaningUpload) return;
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const renamedFile = new File([file], file.name || `comprobante-pegado-${Date.now()}.png`, { type: file.type });
+    await uploadComprobanteFile(renamedFile);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const montoNumerico = Number(monto);
+    if (!montoNumerico || montoNumerico <= 0) {
+      setModalError("Ingresa un monto mayor a S/ 0.00.");
+      return;
+    }
+    if (isUploading) {
+      setModalError("Espera a que termine de subirse el comprobante.");
+      return;
+    }
+
+    setModalError("");
+    setIsSaving(true);
+    try {
+      const payload: Abono = {
+        id: abono?.id ?? Date.now(),
+        fecha,
+        monto: montoNumerico,
+        numeroOperacion: numeroOperacion.trim(),
+        comprobante: comprobante || undefined,
+        comprobantePreview: comprobante || undefined,
+        medio,
+      };
+
+      if (isEditing && abono && onUpdate) {
+        await onUpdate(ficha.id, abono.id, payload);
+      } else {
+        await onSave(ficha.id, payload);
+      }
+
+      if (originalComprobante && originalComprobante !== comprobante) {
+        const path = extractStoragePathFromUrl(originalComprobante);
+        if (path) await cleanupUploadedComprobante(path);
+      }
+
+      setComprobantePath("");
+      onClose();
+    } catch (err) {
+      // El comprobante subido se conserva para poder reintentar; si se cierra sin guardar, se limpia
+      setModalError(mensajeDeError(err, isEditing ? "No se pudieron guardar los cambios del abono." : "No se pudo guardar el abono."));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={() => void handleModalClose()}
+      title={isEditing ? "Editar Abono" : "Registrar Abono"}
+      description={ficha.cliente_nombre}
+      busy={isSaving || isCleaningUpload}
+      error={modalError || undefined}
+      footer={
+        <>
+          <Button type="button" variant="subtle" size="lg" onClick={() => void handleModalClose()} disabled={isSaving || isCleaningUpload}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="abono-form" variant="brand" size="lg" loading={isSaving} disabled={isUploading || isCleaningUpload}>
+            {isSaving ? "Guardando..." : isUploading ? "Subiendo comprobante..." : isEditing ? "Guardar cambios" : "Guardar abono"}
+          </Button>
+        </>
+      }
+    >
+        <div className="mb-5 rounded-lg bg-gray-50 dark:bg-gray-700/50 p-4 grid grid-cols-2 gap-4">
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a pagar</p>
+            <p className="text-base sm:text-lg text-gray-900 dark:text-white tabular-nums whitespace-nowrap truncate">{formatMoney(getTotal(ficha))}</p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo pendiente</p>
+            <p className={`text-base sm:text-lg tabular-nums whitespace-nowrap truncate ${saldo > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(saldo)}</p>
+          </div>
+        </div>
+
+        <form id="abono-form" onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className={etiqueta}>Fecha</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(event) => setFecha(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className={etiqueta}>Monto</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={monto}
+              onChange={(event) => setMonto(event.target.value)}
+              placeholder="0.00"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className={etiqueta}>Medio de pago</label>
+            <select
+              value={medio}
+              onChange={(event) => setMedio(event.target.value as Abono["medio"])}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            >
+              <option value="Transferencia">Transferencia</option>
+              <option value="Yape">Yape</option>
+              <option value="Plin">Plin</option>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Link de Pago">Link de Pago</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={etiqueta}>Número de operación</label>
+            <input
+              type="text"
+              value={numeroOperacion}
+              onChange={(event) => setNumeroOperacion(event.target.value)}
+              placeholder="Opcional"
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className={etiqueta}>Comprobante</label>
+            <div
+              tabIndex={0}
+              onPaste={(e) => void handleComprobantePaste(e)}
+              className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange ${
+                isUploading || isCleaningUpload ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+              }`}
+            >
+              <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploading || isCleaningUpload ? "cursor-not-allowed" : "hover:text-brand-orange"}`}>
+                <Upload className="w-4 h-4" />
+                <span>{isUploading ? "Subiendo..." : isCleaningUpload ? "Limpiando archivo..." : comprobanteName || "Subir imagen del comprobante"}</span>
+                <input type="file" accept="image/*" onChange={handleFileChange} disabled={isUploading || isCleaningUpload} className="hidden" />
+              </label>
+              <span className="text-xs text-gray-400 dark:text-gray-500">o haz clic aquí y pega una imagen (Ctrl+V)</span>
+            </div>
+            {comprobante && (
+              <div className="mt-3">
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <img src={comprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveComprobante()}
+                  disabled={isUploading || isCleaningUpload}
+                  className="mt-2 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Quitar imagen
+                </button>
+              </div>
+            )}
+          </div>
+
+        </form>
+    </Modal>
+  );
+}
+
+// ── Main Component ───────────────────────────────────────────────
+
+// Ficha tal como la devuelve la API (lista con detalle o GET /fichas/:id) → forma de la página
+function mapFichaApi(f: any): Ficha {
+  return {
+    personalPrecios: Object.fromEntries((f.personal ?? []).map((p: any) => [Number(p.id), toMoneyNumber(p.precio_cotizado)])),
+    id: f.id,
+    fecha_evento: f.fecha_evento || f.fecha || "",
+    fecha_reserva: f.fecha_reserva || f.fecha || "",
+    fecha: f.fecha_evento || f.fecha || "",
+    distrito: f.distrito || "",
+    es_cotizacion: f.es_cotizacion === true,
+    es_credito: f.es_credito === true,
+    presentacion: f.presentacion || "carrito",
+    movilidad_confirmada: f.movilidad_confirmada === true,
+    transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
+    tipo_evento: f.tipo_evento || "",
+    titulo: f.titulo || "",
+    costo_envio: Number(f.costo_envio || 0),
+    dias_movilidad: Math.max(1, Math.trunc(Number(f.dias_movilidad) || 1)),
+    descuento_movilidad: toMoneyNumber(f.descuento_movilidad),
+    direccion: f.direccion || "",
+    referencia: f.referencia || "",
+    hora_entrega: f.hora_entrega || "",
+    hora_entrega_fin: f.hora_entrega_fin || "",
+    hora_recojo: f.hora_recojo || "",
+    hora_recojo_fin: f.hora_recojo_fin || "",
+    paquetes: (f.paquetes || []).map((p: any) => ({
+      paqueteId: p.paquete_id || 0,
+      paqueteNombre: p.paquete_nombre || "",
+      paqueteTipo: p.paquete_tipo || "",
+      cantidad: toMoneyNumber(p.cantidad) || 1,
+      ...mapDescuentoApi(p),
+    })),
+    productosSueltos: (f.productosSueltos || []).map((p: any) => ({
+      productoNombre: p.producto_nombre,
+      cantidad: toMoneyNumber(p.cantidad) || 1,
+      ...mapDescuentoApi(p),
+    })),
+    carritoIds: f.carritoIds || [],
+    inflableIds: f.inflableIds || [],
+    inflablesDescuentos: mapDescuentosPorId(f.inflables, "id"),
+    carritosDescuentos: mapDescuentosPorId(f.carritos, "id"),
+    recursos: (f.recursos || []).map((r: any) => ({
+      id: r.id,
+      recurso_id: r.recurso_id,
+      recurso_nombre: r.recurso_nombre || "",
+      cantidad: toMoneyNumber(r.cantidad) || 1,
+      sku: r.sku || "",
+      precio: String(toMoneyNumber(r.precio)),
+      ...mapDescuentoApi(r),
+    })),
+    aplica_igv: f.aplica_igv === true,
+    comentarios: f.comentarios || "",
+    personalIds: f.personalIds || [],
+    cliente_id: f.cliente_id || null,
+    cliente_nombre: f.cliente_nombre,
+    cliente_celular: f.cliente_celular || "",
+    contacto_nombre: f.contacto_nombre || "",
+    contacto_celular: f.contacto_celular || "",
+    cotizacion_trazabilidad: f.cotizacion_trazabilidad ?? null,
+    cotizacion: toMoneyNumber(f.cotizacion),
+    descuento: toMoneyNumber(f.descuento),
+    brand: f.brand,
+    created_by: f.created_by || "",
+    created_by_nombre: f.created_by_nombre || "",
+    created_at: f.created_at || "",
+    abonos: (f.abonos || []).map((a: any) => ({
+      id: a.id,
+      fecha: a.fecha,
+      monto: toMoneyNumber(a.monto),
+      numeroOperacion: a.numero_operacion || "",
+      comprobante: a.comprobante_url || "",
+      medio: a.medio,
+    })),
+  };
+}
+
+export function FichasPage() {
+  const [fichas, setFichas] = useState<Ficha[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [imprimiendoFichas, setImprimiendoFichas] = useState(false);
+  const [fichasSeleccionadasIds, setFichasSeleccionadasIds] = useState<Set<number>>(() => new Set());
+  const [error, setError] = useState("");
+  const [deleteFichaId, setDeleteFichaId] = useState<number | null>(null);
+  const [deleteFichaSubmitting, setDeleteFichaSubmitting] = useState(false);
+  const [deleteFichaError, setDeleteFichaError] = useState("");
+  // Error del formulario de ficha: se muestra dentro del modal, junto al botón Guardar
+  const [formError, setFormError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<"created_desc" | "created_asc" | "evento_asc" | "evento_desc">("created_desc");
+  const [selectedDistrito, setSelectedDistrito] = useState<string>("Todos");
+  const [selectedFicha, setSelectedFicha] = useState<Ficha | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [tipoEventoMissing, setTipoEventoMissing] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [fichaImagenes, setFichaImagenes] = useState<FichaImagen[]>([]);
+  const [loadingFichaImagenes, setLoadingFichaImagenes] = useState(false);
+  const [fichaImagenesError, setFichaImagenesError] = useState("");
+  const [previewComprobanteUrl, setPreviewComprobanteUrl] = useState<string | null>(null);
+  const [showAbonoModal, setShowAbonoModal] = useState(false);
+  const [abonoTargetFicha, setAbonoTargetFicha] = useState<Ficha | null>(null);
+  const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
+  const [deleteAbonoTarget, setDeleteAbonoTarget] = useState<{ fichaId: number; abonoId: number } | null>(null);
+  const [deleteAbonoSubmitting, setDeleteAbonoSubmitting] = useState(false);
+  const [deleteAbonoError, setDeleteAbonoError] = useState("");
+  const [abonoInicialComprobante, setAbonoInicialComprobante] = useState<string>("");
+  const [abonoInicialComprobanteName, setAbonoInicialComprobanteName] = useState<string>("");
+  const [abonoInicialComprobantePath, setAbonoInicialComprobantePath] = useState<string>("");
+  const [isUploadingAbonoInicialComprobante, setIsUploadingAbonoInicialComprobante] = useState(false);
+  const [formData, setFormDataState] = useState<FichaFormData>(getInitialFormData());
+  const [clients, setClients] = useState<ExistingClient[]>([]);
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [isSavingNewClient, setIsSavingNewClient] = useState(false);
+  const [newClientError, setNewClientError] = useState("");
+  const [newClientForm, setNewClientForm] = useState({
+    nombre: "",
+    razonSocial: "",
+    dniRuc: "",
+    email: "",
+    telefono: "",
+    direccion: "",
+    ciudad: "",
+    canal: "Referidos",
+    status: "active" as "active" | "inactive",
+    anioRegistro: "",
+    fichasBase: 0,
+    recomendaciones: 0,
+  });
+  const [estadoFilter, setEstadoFilter] = useState<"Todos" | EstadoPago>("Todos");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
+  const createFichaLockRef = useRef(false);
+  const abonoSolicitudRef = useRef(crypto.randomUUID());
+  const reservaSolicitudRef = useRef(crypto.randomUUID());
+  // Inflables que se marcaron solos por venir incluidos en un paquete
+  const autoInflablesRef = useRef<number[]>([]);
+  const dateRefreshLockRef = useRef(false);
+  const [cotizacionEditada, setCotizacionEditada] = useState(false);
+  const [registroCotizacion, setRegistroCotizacion] = useState<TrazabilidadCotizacion | null>(null);
+  const [preciosCotizados, setPreciosCotizados] = useState<LineaRegistrada[]>([]);
+  const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
+  const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
+  const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
+  const [distritosOptions, setDistritosOptions] = useState<string[]>([]);
+  // Advertencia de disponibilidad: inflable/carrito ocupado ese día o recurso sin stock suficiente
+  const [avisoDisp, setAvisoDisp] = useState<
+    | { tipo: "inflable" | "carrito"; unidadId: number; filaIdx?: number; servidor?: OcupacionUnidad }
+    | { tipo: "recurso"; recursoId: number; pedido: number }
+    | null
+  >(null);
+  const [carritoCalendarId, setCarritoCalendarId] = useState<number | null>(null);
+  const [descuentoMaxPct, setDescuentoMaxPctState] = useState<number>(() => getDescuentoMaxPct());
+  const [editingDescuentoCap, setEditingDescuentoCap] = useState(false);
+  const [descuentoCapDraft, setDescuentoCapDraft] = useState("");
+
+  const isAdmin = isAdminUser();
+  const [fichaFiscal, setFichaFiscal] = useState<Ficha | null>(null);
+  const isVendedor = isVendedorUser();
+  const currentUserId = getAuthUser()?.id;
+  const canEditFicha = (ficha: Ficha) => !isVendedor || ficha.created_by === currentUserId;
+
+  const { brand } = useBrand();
+  const { paquetes: paquetesCatalogo, allProducts, carritos, inflables, personales, recursos, reloadData, isLoadingData } = useProducts();
+  // Paquetes sin "inflables incluidos" configurados: se deducen del contenido.
+  // - Un contenido con el nombre de un tipo de inflable ("1 BURBUJA TRANSPARENTE" en un COMBO) es ese inflable.
+  // - Un contenido genérico "INFLABLE …" ("1 INFLABLE MEDIANO", "1 INFLABLE GRANDE") es un inflable a elección:
+  //   cualquier tipo entra sin costo (incluye los tipos que se agreguen después).
+  const contextPaquetes = useMemo(() => {
+    const tipoPorNombre = new Map<string, number>();
+    inflables.forEach((i) => { if (i.tipoNombre) tipoPorNombre.set(i.tipoNombre.trim().toUpperCase(), i.tipoId); });
+    const todosLosTipos = Array.from(new Set(inflables.map((i) => i.tipoId)));
+    return paquetesCatalogo.map((p) => {
+      if (p.inflablesIncluidos.length || p.brand !== "jugueton") return p;
+      const derivados = p.contenido.flatMap((item) => {
+        const nombre = (item.productoNombre || "").trim().toUpperCase();
+        const cantidad = Number(item.cantidad) || 1;
+        const tipoId = tipoPorNombre.get(nombre);
+        if (tipoId !== undefined) return [{ tipoIds: [tipoId], cantidad }];
+        const generico = /^INFLABLE/.test(nombre) || /^INFLABLE/i.test(item.productoSku || "");
+        return generico && todosLosTipos.length ? [{ tipoIds: todosLosTipos, cantidad }] : [];
+      });
+      return derivados.length ? { ...p, inflablesIncluidos: derivados } : p;
+    });
+  }, [paquetesCatalogo, inflables]);
+
+  // Productos y nombres de la marca activa únicamente
+  const productsDeLaMarca = useMemo(() => allProducts.filter((p) => p.brand === brand), [allProducts, brand]);
+  const productNames = useMemo(() => {
+    const names = productsDeLaMarca.map((p) => p.producto);
+    const extra = brand === "donofrio" ? ["Termo de helado (5L)", "Termo de helado (10L)"] : [];
+    return [...new Set([...names, ...extra])];
+  }, [productsDeLaMarca, brand]);
+
+  // Tras guardar o borrar una ficha: fichas al día y, como cambian stock de recursos y estado
+  // del personal de apoyo, solo esos dos catálogos (antes se recargaban los 7).
+  const refreshFichasAndCatalogs = async () => {
+    // Las otras vistas de fichas (Reportes, Logística, Rutas) quedan viejas: se recargan al abrirlas
+    void invalidarFichas();
+    await Promise.all([loadFichas({ forzar: true }), reloadData("recursos", "personal")]);
+  };
+
+  // Refresca la ficha tras un cambio ya guardado; si falla, avisa sin tratarlo como error del guardado
+  // (así no se reintenta y duplica lo que ya se guardó)
+  const refrescarTrasGuardar = async (fichaId: number) => {
+    try {
+      await refrescarFicha(fichaId);
+      if (selectedFicha && selectedFicha.id === fichaId) await loadFichaImagenes(fichaId);
+    } catch {
+      notify.aviso("Se guardó, pero no se pudo actualizar la vista. Recarga la página para ver los cambios.");
+    }
+  };
+
+  // Tras un cambio en los abonos de una ficha: se vuelve a pedir solo esa ficha
+  const refrescarFicha = async (fichaId: number) => {
+    const raw = await apiRequest<any>(`/fichas/${fichaId}`);
+    if (brand) reemplazarFichaEnCache(brand, raw);
+    const actualizada = mapFichaApi(raw);
+    setFichas((prev) => prev.map((f) => (f.id === fichaId ? actualizada : f)));
+    setSelectedFicha((prev) => (prev && prev.id === fichaId ? { ...prev, abonos: actualizada.abonos } : prev));
+    return actualizada;
+  };
+
+  // Obtener estado dinámico del personal basado en eventos asignados en una fecha específica
+  const getDynamicPersonalEstado = (personalId: number, eventDate?: string): Ficha["personalIds"] extends any[] ? string : string => {
+    if (!eventDate) {
+      // Si no hay fecha, verificar si tiene ANY evento
+      const hasEvents = fichas.filter(f => !f.es_cotizacion).some((f) => f.personalIds?.includes(personalId));
+      return hasEvents ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
+    } else {
+      // Verificar si tiene eventos en esa fecha específica
+      const hasEventsOnDate = fichas.filter(f => !f.es_cotizacion).some(
+        (f) => f.personalIds?.includes(personalId) &&
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+      );
+      return hasEventsOnDate ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
+    }
+  };
+
+  // Obtener disponibilidad dinámica de un carrito según los eventos ya registrados
+  const getDynamicCarritoEstado = (carritoId: number, eventDate?: string): string => {
+    if (formData.es_cotizacion) return "Disponible";
+    const excludeId = editingFichaId;
+    if (!eventDate) {
+      const busy = fichas.filter(f => !f.es_cotizacion).some((f) => f.id !== excludeId && f.carritoIds?.includes(carritoId));
+      return busy ? "Ocupado" : "Disponible";
+    }
+    const busyOnDate = fichas.filter(f => !f.es_cotizacion).some(
+      (f) =>
+        f.id !== excludeId &&
+        f.carritoIds?.includes(carritoId) &&
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+    );
+    return busyOnDate ? "Ocupado" : "Disponible";
+  };
+
+  const getDynamicInflableEstado = (inflableId: number, eventDate?: string): string => {
+    if (formData.es_cotizacion) return "Disponible";
+    const excludeId = editingFichaId;
+    if (!eventDate) {
+      const busy = fichas.filter(f => !f.es_cotizacion).some((f) => f.id !== excludeId && f.inflableIds?.includes(inflableId));
+      return busy ? "Ocupado" : "Disponible";
+    }
+    const busyOnDate = fichas.filter(f => !f.es_cotizacion).some(
+      (f) =>
+        f.id !== excludeId &&
+        f.inflableIds?.includes(inflableId) &&
+        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+    );
+    return busyOnDate ? "Ocupado" : "Disponible";
+  };
+
+  // Fechas en que un carrito ya está asignado (para el calendario)
+  const getFechasOcupadasCarrito = (carritoId: number): Date[] => {
+    return fichas
+      .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && f.carritoIds?.includes(carritoId))
+      .map((f) => {
+        const raw = (f.fecha_evento || f.fecha || "").split("T")[0];
+        const d = new Date(`${raw}T00:00:00`);
+        return isNaN(d.getTime()) ? null : d;
+      })
+      .filter((d): d is Date => d !== null);
+  };
+
+  const availableClients = useMemo(
+    () => clients.filter((c) => c.status === "active"),
+    [clients]
+  );
+
+  // ── Líneas de cotización (con descuento por ítem) ───────────────
+  // Se usa tanto en el formulario (panel de Precios) como al generar proforma y contrato,
+  // para que lo cotizado y lo impreso siempre coincidan.
+  const construirLineas = (origen: OrigenLineas, guardadas: LineaRegistrada[] = []): LineaCotizacion[] =>
+    aplicarPreciosCotizados(construirLineasCotizacion(origen, {
+      paquetes: contextPaquetes,
+      productos: productsDeLaMarca,
+      carritos,
+      inflables,
+      recursos,
+    }), guardadas);
+
+  const origenDesdeFormulario = (form = formData): OrigenLineas => ({
+    personal: form.transporte === "delivery" ? [] : form.personalIds.filter(id => id > 0).map(id => ({
+      id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: form.personalPrecios[id] ?? personales.find(p => p.id === id)?.precio ?? 0,
+    })),
+    brand: (brand ?? "donofrio") as "donofrio" | "jugueton",
+    paquetes: form.paquetes,
+    productosSueltos: form.productosSueltos,
+    carritoIds: form.transporte === "delivery" ? [] : form.carritoIds,
+    carritosDescuentos: form.carritosDescuentos,
+    inflableIds: form.inflableIds,
+    inflablesDescuentos: form.inflablesDescuentos,
+    recursos: form.transporte === "delivery" ? [] : form.recursos.map((r) => ({ ...r })),
+    costoEnvio: form.costo_envio,
+    diasMovilidad: form.dias_movilidad,
+    descuentoMovilidad: form.descuento_movilidad,
+    distrito: form.distrito,
+  });
+
+  const origenDesdeFicha = (ficha: Ficha): OrigenLineas => ({
+    personal: (ficha.personalIds ?? []).map(id => ({ id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: ficha.personalPrecios?.[id] ?? 0 })),
+    brand: ficha.brand,
+    paquetes: ficha.paquetes,
+    productosSueltos: ficha.productosSueltos,
+    carritoIds: ficha.carritoIds ?? [],
+    carritosDescuentos: ficha.carritosDescuentos ?? {},
+    inflableIds: ficha.inflableIds ?? [],
+    inflablesDescuentos: ficha.inflablesDescuentos ?? {},
+    recursos: (ficha.recursos ?? []).map((r) => ({
+      recursoId: r.recurso_id,
+      cantidad: r.cantidad,
+      nombre: r.recurso_nombre,
+      precio: toMoneyNumber(r.precio),
+      descuentoTipo: r.descuentoTipo,
+      descuentoValor: r.descuentoValor,
+    })),
+    costoEnvio: toMoneyNumber(ficha.costo_envio),
+    diasMovilidad: ficha.dias_movilidad ?? 1,
+    descuentoMovilidad: toMoneyNumber(ficha.descuento_movilidad),
+    distrito: ficha.distrito,
+  });
+
+  // Al cambiar ítems, recalcula el total. Solo conserva ajustes manuales documentados.
+  // Abrir una ficha usa setFormDataState para mantener intacto su total histórico.
+  const setFormData: React.Dispatch<React.SetStateAction<FichaFormData>> = (action) => {
+    setFormDataState(prev => {
+      const next = typeof action === "function" ? action(prev) : action;
+      if (next.cotizacion !== prev.cotizacion) return next;
+      const anteriores = construirLineas(origenDesdeFormulario(prev), preciosCotizados);
+      const siguientes = construirLineas(origenDesdeFormulario(next), preciosCotizados);
+      if (!compararLineas(registrarLineas(anteriores), registrarLineas(siguientes)).length) return next;
+      const conservarAjuste = cotizacionEditada || Boolean(next.ajusteMotivo.trim());
+      return { ...next, cotizacion: cotizacionMode === "auto"
+        ? redondearDinero(siguientes.reduce((sum, l) => sum + l.total, 0))
+        : actualizarTotalPorLineas(prev.cotizacion, anteriores, siguientes, conservarAjuste) };
+    });
+  };
+
+  const lineasFormulario = useMemo(
+    () => construirLineas(origenDesdeFormulario(), preciosCotizados),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brand, carritos, contextPaquetes, formData, inflables, productsDeLaMarca, recursos, preciosCotizados]
+  );
+
+  const actualizarDescuentoLinea = (ref: LineaCotizacion["ref"], patch: Partial<LineaDescuento>) => {
+    setFormData((prev) => {
+      switch (ref.tipo) {
+        case "paquete":
+          return { ...prev, paquetes: prev.paquetes.map((p, i) => (i === ref.index ? { ...p, ...patch } : p)) };
+        case "producto":
+          return { ...prev, productosSueltos: prev.productosSueltos.map((p, i) => (i === ref.index ? { ...p, ...patch } : p)) };
+        case "recurso":
+          return { ...prev, recursos: prev.recursos.map((r, i) => (i === ref.index ? { ...r, ...patch } : r)) };
+        case "carrito":
+          return {
+            ...prev,
+            carritosDescuentos: {
+              ...prev.carritosDescuentos,
+              [ref.id!]: { ...(prev.carritosDescuentos[ref.id!] ?? SIN_DESCUENTO), ...patch },
+            },
+          };
+        case "inflable":
+          return {
+            ...prev,
+            inflablesDescuentos: {
+              ...prev.inflablesDescuentos,
+              [ref.id!]: { ...(prev.inflablesDescuentos[ref.id!] ?? SIN_DESCUENTO), ...patch },
+            },
+          };
+        case "movilidad":
+          // La movilidad guarda su descuento como porcentaje en la ficha
+          return patch.descuentoValor === undefined
+            ? prev
+            : actualizarMovilidad(prev, { descuento_movilidad: Math.min(100, Math.max(0, patch.descuentoValor)) });
+        default:
+          return prev;
+      }
+    });
+  };
+
+  const resumenFormulario = useMemo(() => {
+    const subtotalBruto = lineasFormulario.reduce((sum, l) => sum + l.subtotal, 0);
+    const descuentos = lineasFormulario.reduce((sum, l) => sum + l.descuentoMonto, 0);
+    // Suma de las líneas ya con su descuento: es lo que se guarda en `cotizacion`.
+    const totalLineas = Math.max(0, redondearDinero(subtotalBruto - descuentos));
+
+    // El total a cobrar parte de la cotización guardada (que puede estar ajustada a mano)
+    // y recién ahí se aplica el descuento global, igual que hace getTotal() y el backend.
+    const cotizacion = toMoneyNumber(formData.cotizacion);
+    const descuentoGlobal = Math.max(0, cotizacion * (toMoneyNumber(formData.descuento) / 100));
+    const total = Math.max(0, cotizacion - descuentoGlobal);
+
+    // El precio cotizado ya incluye IGV; al marcarlo solo se desglosa en los documentos.
+    const valorVenta = formData.aplicaIgv ? total / (1 + IGV_RATE) : total;
+    return {
+      subtotalBruto,
+      descuentos,
+      totalLineas,
+      descuentoGlobal,
+      ajusteManual: cotizacion - totalLineas,
+      total,
+      valorVenta,
+      igv: total - valorVenta,
+    };
+  }, [lineasFormulario, formData.aplicaIgv, formData.cotizacion, formData.descuento]);
+
+  const cotizacionSugerida = resumenFormulario.totalLineas;
+
+  useEffect(() => {
+    if (cotizacionMode !== "auto") return;
+    setFormData((prev) => (prev.cotizacion === cotizacionSugerida ? prev : { ...prev, cotizacion: cotizacionSugerida }));
+  }, [cotizacionMode, cotizacionSugerida]);
+
+  // Una sola petición con todas las fichas y su detalle (antes: una por ficha).
+  // Si otra página ya las cargó hace poco, se reutilizan de la caché.
+  const loadFichas = async ({ forzar = false }: { forzar?: boolean } = {}) => {
+    if (!brand) return;
+    setLoading(true);
+    setError("");
+    try {
+      const details = await obtenerFichasConDetalle(brand, { incluirCotizaciones: true, forzar });
+      const mapped: Ficha[] = details.map(mapFichaApi);
+
+      setFichas(mapped);
+    } catch (err) {
+      setError(mensajeDeError(err, "No se pudieron cargar las fichas."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadClients = async ({ forzar = false }: { forzar?: boolean } = {}) => {
+    try {
+      const data = await obtenerClientes<ExistingClient>(undefined, { forzar });
+      setClients(data || []);
+    } catch (err) {
+      setClients([]);
+      notify.error(err, "No se pudo cargar la lista de clientes; no podrás buscarlos al crear una ficha.", { id: "clientes-fichas" });
+    }
+  };
+
+  useEffect(() => {
+    loadFichas();
+    loadClients();
+  }, [brand]);
+
+  useEffect(() => {
+    if (!brand) return;
+    const loadDistritos = async () => {
+      try {
+        const tarifas = await obtenerTarifasEnvio<TarifaEnvio>();
+        const districts = Array.from(new Set((tarifas || []).map(t => (t.distrito || "").trim()).filter(Boolean)));
+        districts.sort((a, b) => a.localeCompare(b));
+        setDistritosOptions(["Todos", ...districts]);
+      } catch (err) {
+        // Fallback: construir distritos a partir de las fichas cargadas
+        const fallback = ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
+        setDistritosOptions(fallback);
+      }
+    };
+
+    void loadDistritos();
+    // fichas solo se usa como respaldo si fallan las tarifas: no hace falta volver a pedirlas cuando cambian
+  }, [brand]);
+
+  useEffect(() => {
+    if (!formData.distrito || !showAddModal) {
+      setTarifaCache(null);
+      return;
+    }
+    // La tarifa del distrito sale de la lista ya cargada (misma fila que /tarifas-envio/distrito/:d)
+    let cancelled = false;
+    obtenerTarifasEnvio<TarifaEnvio>()
+      .then((tarifas) => {
+        if (cancelled) return;
+        const buscado = formData.distrito.trim().toLowerCase();
+        const tarifa = (tarifas || []).find((t) => (t.distrito || "").trim().toLowerCase() === buscado);
+        if (!tarifa) throw new Error("Distrito sin tarifa");
+        setTarifaCache(tarifa);
+        // Al editar se conserva la movilidad guardada, incluso si se ajustó a mano.
+        const fichaOriginal = fichas.find((f) => f.id === editingFichaId);
+        if (!fichaOriginal || fichaOriginal.distrito !== formData.distrito) {
+          setFormData((prev) => actualizarMovilidad(prev, { costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
+        }
+      })
+      .catch(() => { if (!cancelled) setTarifaCache(null); });
+    return () => { cancelled = true; };
+  }, [formData.distrito, showAddModal]);
+  // Inflables que ya vienen incluidos (S/ 0) en los paquetes elegidos: cuántos cupos hay, cuántos se
+  // usaron y qué tipos entran, para marcarlos en la lista y que no parezca que se cobran aparte.
+  const inflablesIncluidos = useMemo(() => {
+    const paquetesElegidos = formData.paquetes.filter((p) => p.paqueteId > 0);
+    const cupos = paquetesElegidos.flatMap((p) => {
+      const catalogo = contextPaquetes.find((item) => item.id === p.paqueteId);
+      const cantidadPaquete = Math.max(0, toMoneyNumber(p.cantidad));
+      return (catalogo?.inflablesIncluidos ?? [])
+        .filter((slot) => slot.cantidad > 0 && cantidadPaquete > 0)
+        .map((slot) => ({ nombre: catalogo?.nombre ?? "el paquete", tipoIds: slot.tipoIds, cantidad: slot.cantidad * cantidadPaquete }));
+    });
+    const total = cupos.reduce((sum, c) => sum + c.cantidad, 0);
+    const gratisIds = total > 0
+      ? getInflablesGratisIds(paquetesElegidos, formData.inflableIds, contextPaquetes, inflables)
+      : new Set<number>();
+    // Se reparte igual que en la cotización: cada inflable marcado ocupa el primer cupo libre de su tipo.
+    // Así, sin marcar, solo se ofrecen como incluidos los tipos que aún tienen cupo libre.
+    const restantePorCupo = cupos.map((c) => c.cantidad);
+    formData.inflableIds.forEach((id) => {
+      const tipo = inflables.find((i) => i.id === id)?.tipoId;
+      const idx = cupos.findIndex((c, k) => restantePorCupo[k] > 0 && tipo !== undefined && c.tipoIds.includes(tipo));
+      if (idx >= 0) restantePorCupo[idx] -= 1;
+    });
+    const tiposIncluidos = new Set(cupos.flatMap((c) => c.tipoIds));
+    const tiposConCupoLibre = new Set(cupos.flatMap((c, k) => (restantePorCupo[k] > 0 ? c.tipoIds : [])));
+    const paquetePorTipo = new Map<number, string>();
+    cupos.forEach((c) => c.tipoIds.forEach((t) => { if (!paquetePorTipo.has(t)) paquetePorTipo.set(t, c.nombre); }));
+    const nombres = Array.from(new Set(cupos.map((c) => c.nombre)));
+    return { total, usados: gratisIds.size, restantes: Math.max(0, total - gratisIds.size), gratisIds, tiposIncluidos, tiposConCupoLibre, paquetePorTipo, nombres };
+  }, [formData.paquetes, formData.inflableIds, contextPaquetes, inflables]);
+
+  // Catálogo de paquetes filtrado por la marca activa
+  const movilidadPorConfirmar = formData.transporte === "delivery" && ["mala", "santa rosa"].includes(formData.distrito.trim().toLowerCase());
+  const paquetesDisponibles = contextPaquetes
+    .filter(p => p.brand === brand && (brand !== "donofrio" || (p.presentacion || "carrito") === formData.presentacion || (formData.presentacion === "solo_helados" && (p.presentacion || "carrito") === "carrito") || formData.paquetes.some(linea => linea.paqueteId === p.id)))
+    .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
+
+  const distritos = distritosOptions.length > 0
+    ? distritosOptions
+    : ["Todos", ...Array.from(new Set(fichas.filter(f => f.brand === brand).map(f => f.distrito)))];
+
+  const filteredFichas = fichas.filter(ficha => {
+    const matchesSearch = ficha.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ficha.titulo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ficha.direccion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ficha.distrito.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDistrito = selectedDistrito === "Todos" || ficha.distrito === selectedDistrito;
+    const matchesEstado = estadoFilter === "Todos" || getEstadoPago(ficha) === estadoFilter;
+    const matchesBrand = ficha.brand === brand; // Solo mostrar fichas de la marca actual
+    const matchesRange = (fecha: string, range: DateRange | undefined) =>
+      (!range?.from || fecha >= getLocalDateString(range.from)) &&
+      (!range?.to || fecha <= getLocalDateString(range.to));
+    const matchesFecha = matchesRange((ficha.fecha_evento || ficha.fecha || "").slice(0, 10), dateRange);
+    const matchesFechaContacto = matchesRange((ficha.fecha_reserva || ficha.fecha || "").slice(0, 10), contactDateRange);
+    return matchesSearch && matchesDistrito && matchesEstado && matchesBrand && matchesFecha && matchesFechaContacto;
+  }).sort((a, b) => {
+    if (sortBy === "created_desc") return (b.created_at || "").localeCompare(a.created_at || "");
+    if (sortBy === "created_asc") return (a.created_at || "").localeCompare(b.created_at || "");
+    // Fecha del evento y, dentro del mismo día, hora de entrega
+    const claveA = `${(a.fecha_evento || a.fecha || "").slice(0, 10)} ${a.hora_entrega || ""}`;
+    const claveB = `${(b.fecha_evento || b.fecha || "").slice(0, 10)} ${b.hora_entrega || ""}`;
+    if (sortBy === "evento_asc") return claveA.localeCompare(claveB);
+    return claveB.localeCompare(claveA);
+  });
+
+  // Paginación de la grilla de fichas
+  const totalFichasPages = Math.max(1, Math.ceil(filteredFichas.length / FICHAS_PER_PAGE));
+  const fichasStartIndex = (currentPage - 1) * FICHAS_PER_PAGE;
+  const paginatedFichas = filteredFichas.slice(fichasStartIndex, fichasStartIndex + FICHAS_PER_PAGE);
+
+  const fichasSeleccionadas = fichas.filter(ficha => !ficha.es_cotizacion && ficha.brand === brand && fichasSeleccionadasIds.has(ficha.id));
+  const seleccionadasEnFiltro = filteredFichas.filter(ficha => !ficha.es_cotizacion && fichasSeleccionadasIds.has(ficha.id)).length;
+  const imprimiblesEnFiltro = filteredFichas.filter(ficha => !ficha.es_cotizacion);
+  const todasSeleccionadasEnFiltro = imprimiblesEnFiltro.length > 0 && seleccionadasEnFiltro === imprimiblesEnFiltro.length;
+  const seleccionadasFueraDelFiltro = fichasSeleccionadas.length - seleccionadasEnFiltro;
+  const cambiarSeleccionFicha = (id: number, seleccionada: boolean) => {
+    setFichasSeleccionadasIds(prev => {
+      const siguiente = new Set(prev);
+      if (seleccionada) siguiente.add(id);
+      else siguiente.delete(id);
+      return siguiente;
+    });
+  };
+  const cambiarSeleccionFiltro = (seleccionado: boolean) => {
+    setFichasSeleccionadasIds(prev => {
+      const siguiente = new Set(prev);
+      filteredFichas.filter(ficha => !ficha.es_cotizacion).forEach(ficha => {
+        if (seleccionado) siguiente.add(ficha.id);
+        else siguiente.delete(ficha.id);
+      });
+      return siguiente;
+    });
+  };
+
+  useEffect(() => {
+    setFichasSeleccionadasIds(new Set());
+  }, [brand]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedDistrito, estadoFilter, dateRange, contactDateRange, brand, sortBy]);
+
+  // Financial stats
+  const stats = useMemo(() => {
+    const confirmadas = fichas.filter(f => !f.es_cotizacion);
+    const ventaTotal = confirmadas.reduce((s, f) => s + f.cotizacion, 0);
+    const descuentos = confirmadas.reduce((s, f) => s + getDescuentoMonto(f), 0);
+    const totalAbonado = confirmadas.reduce((s, f) => s + getTotalAbonado(f), 0);
+    const saldoPendiente = confirmadas.reduce((s, f) => s + Math.max(0, getSaldo(f)), 0);
+    const pagadas = confirmadas.filter(f => getEstadoPago(f) === "pagado").length;
+    const parciales = confirmadas.filter(f => getEstadoPago(f) === "parcial").length;
+    const pendientes = confirmadas.filter(f => getEstadoPago(f) === "pendiente").length;
+    return { ventaTotal, descuentos, totalAbonado, saldoPendiente, pagadas, parciales, pendientes };
+  }, [fichas]);
+
+  const getUnidadesHelado = (ficha: Ficha) => {
+    const unidadesPaquetes = ficha.paquetes.reduce((sum, fp) => {
+      const paquete = contextPaquetes.find(p => p.id === fp.paqueteId);
+      if (!paquete) return sum;
+      const unidadesBase = paquete.contenido.reduce((s, item) => s + item.cantidad, 0);
+      return sum + (unidadesBase * fp.cantidad);
+    }, 0);
+    const unidadesSueltas = ficha.productosSueltos.reduce((s, p) => s + p.cantidad, 0);
+    return unidadesPaquetes + unidadesSueltas;
+  };
+
+  const getNombresPersonal = (ficha: Ficha) => {
+    const ids = ficha.personalIds ?? [];
+    return ids.map(id => { const p = personales.find(x => x.id === id); return p ? (p.nombre_completo || p.nombre) : undefined; }).filter(Boolean) as string[];
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const formatDate = (dateIso: string) => {
+    const raw = dateIso.includes("T") ? dateIso.slice(0, 10) : dateIso;
+    const d = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return dateIso;
+    return d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
+  };
+
+  const formatDiaSemana = (dateIso: string) => {
+    if (!dateIso) return "";
+    const raw = dateIso.includes("T") ? dateIso.slice(0, 10) : dateIso;
+    const d = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return "";
+    const dia = d.toLocaleDateString("es-PE", { weekday: "long" });
+    return dia.charAt(0).toUpperCase() + dia.slice(1);
+  };
+
+  const esFinDeSemana = (dateIso: string) => {
+    if (!dateIso) return false;
+    const d = new Date(`${dateIso.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return false;
+    return d.getDay() === 0 || d.getDay() === 6;
+  };
+
+  const getFichaTitulo = (ficha: Ficha) => ficha.titulo || `Ficha #${String(ficha.id).padStart(7, "0")}`;
+
+  const handleImprimirFichas = async (seleccion: Ficha[]) => {
+    seleccion = seleccion.filter(f => !f.es_cotizacion);
+    if (!seleccion.length || imprimiendoFichas || isLoadingData) return;
+    const ventana = window.open("", "_blank");
+    if (!ventana) {
+      notify.error("Permite las ventanas emergentes para abrir las fichas de impresión.");
+      return;
+    }
+    ventana.document.write("<title>Preparando fichas</title><p>Preparando fichas y consultando choferes asignados...</p>");
+    ventana.document.close();
+    setImprimiendoFichas(true);
+    try {
+      const asignaciones = await obtenerAsignaciones<AsignacionOperativa>({ forzar: true });
+      if (ventana.closed) return;
+      const operativas = seleccion.map(ficha => prepararFichaOperativa(ficha, {
+        paquetes: contextPaquetes, carritos, inflables, personal: personales,
+      }, asignaciones));
+      ventana.document.open();
+      ventana.document.write(buildFichasOperativasHtml(operativas));
+      ventana.document.close();
+      ventana.focus();
+    } catch (err) {
+      ventana.close();
+      notify.error(mensajeDeError(err, "No se pudieron preparar las fichas para imprimir."));
+    } finally {
+      setImprimiendoFichas(false);
+    }
+  };
+
+  const handleGenerarProforma = (ficha: Ficha) => {
+    const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
+    const total = getTotal(ficha);
+    const lineasFicha = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas);
+    const diferencia = redondearDinero(ficha.cotizacion - lineasFicha.reduce((sum, l) => sum + l.total, 0));
+    if (Math.abs(diferencia) >= 0.01 && !(ficha.cotizacion_trazabilidad?.actual.origen === "manual" && ficha.cotizacion_trazabilidad.actual.motivo.trim())) {
+      handleOpenEditModal(ficha);
+      setFormError("El total guardado no coincide con los ítems. Pulsa «Usar sugerido» y guarda, o indica un motivo real para conservar el ajuste antes de generar la proforma.");
+      return;
+    }
+    const valorVenta = ficha.aplica_igv ? total / (1 + IGV_RATE) : total;
+    const igvMonto = total - valorVenta;
+    // Valor de lista y descuento se calculan contra el total real para que la resta
+    // impresa siempre cuadre, incluyendo el descuento global y cualquier ajuste manual.
+    const valorListaFicha = lineasFicha.reduce((sum, l) => sum + l.subtotal, 0);
+    const descuentosFicha = Math.max(0, valorListaFicha - total);
+    const razonSocialCliente = cliente?.razon_social || ficha.cliente_nombre;
+    const abonado = getTotalAbonado(ficha);
+    const saldo = Math.max(0, getSaldo(ficha));
+    const unidadesHelado = getUnidadesHelado(ficha);
+    const brandMeta = getBrandMeta(ficha.brand);
+    const fechaEmision = new Date().toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const fechaParaArchivo = getLocalDateString();
+    const numeroFicha = String(ficha.id).padStart(4, "0");
+    const defaultFileName = ficha.brand === "jugueton"
+      ? `Cotizacion_Jugueton_${numeroFicha}_${fechaParaArchivo}`
+      : `Proforma_Donofrio_${numeroFicha}_${fechaParaArchivo}`;
+    const estadoPago = getEstadoPago(ficha);
+    const carritoDetalle = (ficha.carritoIds ?? [])
+      .map(id => carritos.find(c => c.id === id))
+      .filter(Boolean)
+      .map(c => `${c!.codigo} - ${c!.modelo}`);
+    const inflableDetalle = (ficha.inflableIds ?? [])
+      .map(id => inflables.find(i => i.id === id)?.tipoNombre)
+      .filter(Boolean) as string[];
+    const personalDetalle = getNombresPersonal(ficha);
+    const config = ficha.brand === "donofrio"
+      ? {
+          empresa: "EventosAP x D'Onofrio",
+          subtitulo: "Proforma de Servicio de Heladería",
+          colorPrimario: "#1F3C8B",
+          colorSecundario: "#EF8022",
+          logoUrl: "/images/donofrio.jpg",
+        }
+      : {
+          empresa: "Juguetón Eventos",
+          subtitulo: "Proforma de Servicio de Inflables y Animación",
+          colorPrimario: "#0F766E",
+          colorSecundario: "#F59E0B",
+          logoUrl: "/images/jugueton.png",
+        };
+
+    const popup = window.open("", `proforma-${ficha.id}`, "width=1000,height=760");
+    if (!popup) {
+      notify.aviso("El navegador bloqueó la ventana de la proforma. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.");
+      return;
+    }
+
+    if (ficha.brand === "jugueton") {
+      const numeroCotizacion = String(ficha.id).padStart(4, "0");
+      const eventDate = new Date(`${(ficha.fecha_evento || ficha.fecha || "").slice(0, 10)}T00:00:00`);
+      const fechaEventoTexto = Number.isNaN(eventDate.getTime())
+        ? (ficha.fecha_evento || ficha.fecha)
+        : eventDate.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })
+            .replace(/(^.|\s.)/g, (m) => m.toUpperCase());
+
+      const etiquetaGrupo: Record<GrupoLinea, string> = {
+        Paquete: "Paquete",
+        Producto: "Producto",
+        Carrito: "Carrito",
+        Inflable: "Inflables",
+        Recurso: "Recurso",
+        Movilidad: "Transporte",
+        Personal: "Personal",
+      };
+
+      const filasJugueton = lineasFicha.map((linea) => ({
+        producto: etiquetaGrupo[linea.grupo],
+        descripcion: escapeHtml(linea.descripcion),
+        contenidoStr: linea.detalle,
+        cantidad: linea.cantidad,
+        precio: linea.total,
+        descuentoMonto: linea.descuentoMonto,
+        incluido: linea.incluidoEnPaquete === true,
+      }));
+
+      const bloqueStaff = [
+        personalDetalle.length > 0 ? `Personal de staff: ${personalDetalle.join(", ")}` : "Personal de staff: 1 PERSONAL",
+        "Incluye instalacion y desmontaje",
+        ficha.comentarios ? `Observacion: ${ficha.comentarios}` : "Precio incluye IGV",
+      ].join("<br/>");
+
+      filasJugueton.push({
+        producto: "OTROS",
+        descripcion: bloqueStaff,
+        contenidoStr: undefined,
+        cantidad: 1,
+        precio: 0,
+        descuentoMonto: 0,
+        incluido: false,
+      });
+
+      const filasTablaJugueton = filasJugueton
+        .map((row) => {
+          const mainRow = `
+            <tr>
+              <td>${escapeHtml(row.producto)}</td>
+              <td>${row.descripcion}</td>
+              <td class="text-center">${row.cantidad}</td>
+              <td class="text-right">${row.incluido ? "Incluido" : row.precio > 0 ? formatMoney(row.precio) : "-"}</td>
+            </tr>
+          `;
+          const cs = (row as { contenidoStr?: string }).contenidoStr;
+          const subRow = cs ? `
+            <tr>
+              <td style="border-top:none; background:#fff;"></td>
+              <td colspan="3" style="border-top:none; background:#fff; color:#6b7280; font-size:0.85em; font-style:italic; padding-top:2px; padding-bottom:6px;">${escapeHtml(cs)}</td>
+            </tr>
+          ` : "";
+          return mainRow + subRow;
+        })
+        .join("");
+
+      const htmlJugueton = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="UTF-8" />
+          <title>${defaultFileName}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              background: #ececec;
+              color: #0076bf;
+            }
+            .actions {
+              position: sticky;
+              top: 0;
+              display: flex;
+              justify-content: center;
+              gap: 8px;
+              padding: 10px;
+              background: #ececec;
+              z-index: 2;
+            }
+            .btn {
+              border: none;
+              border-radius: 7px;
+              padding: 8px 12px;
+              font-size: 13px;
+              cursor: pointer;
+              color: #fff;
+              background: #0076bf;
+            }
+            .btn.secondary { background: #5f6b75; }
+            .sheet {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 12px auto 20px;
+              background: #f6f6f6;
+              padding: 13mm 11mm;
+              box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+            }
+            .top {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 14px;
+            }
+            .logo {
+              width: 180px;
+              height: auto;
+              object-fit: contain;
+            }
+            .title-block {
+              text-align: right;
+              min-width: 250px;
+            }
+            .title-block h1 {
+              margin: 0;
+              letter-spacing: 1px;
+              font-size: 36px;
+              line-height: 0.95;
+              color: #0076bf;
+            }
+            .docno {
+              margin-top: 2px;
+              font-size: 15px;
+              font-weight: 700;
+            }
+            .inline-box {
+              margin-top: 8px;
+              border: 1px solid #d6975d;
+              display: grid;
+              grid-template-columns: 84px 1fr;
+            }
+            .inline-box span {
+              padding: 4px 8px;
+              border-right: 1px solid #d6975d;
+              font-weight: 700;
+              font-size: 17px;
+            }
+            .inline-box strong {
+              padding: 4px 8px;
+              font-size: 17px;
+              font-weight: 700;
+            }
+            .info {
+              margin-top: 8px;
+              font-size: 19px;
+              line-height: 1.35;
+            }
+            .hora-box {
+              width: 255px;
+              margin: 6px 0 8px auto;
+              border: 1px solid #d6975d;
+              display: grid;
+              grid-template-columns: 84px 1fr;
+            }
+            .hora-box span,
+            .hora-box strong {
+              padding: 4px 8px;
+              font-size: 17px;
+            }
+            .hora-box span {
+              border-right: 1px solid #d6975d;
+              font-weight: 700;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 18px;
+            }
+            th, td {
+              border: 1px solid #d6975d;
+              padding: 3px 6px;
+              vertical-align: top;
+            }
+            th {
+              text-align: left;
+              font-size: 19px;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .totals {
+              margin-top: 8px;
+              width: 255px;
+              margin-left: auto;
+              border: 1px solid #d6975d;
+              border-collapse: collapse;
+            }
+            .totals .row {
+              display: grid;
+              grid-template-columns: 1fr 120px;
+              border-bottom: 1px solid #d6975d;
+              min-height: 34px;
+              align-items: center;
+            }
+            .totals .row:last-child { border-bottom: 0; }
+            .totals .label {
+              padding: 4px 8px;
+              font-size: 20px;
+              font-weight: 700;
+            }
+            .totals .value {
+              border-left: 1px solid #d6975d;
+              padding: 4px 8px;
+              font-size: 20px;
+              font-weight: 700;
+              text-align: right;
+            }
+            .legal {
+              margin-top: 12px;
+              font-size: 14px;
+              line-height: 1.2;
+            }
+            .legal p { margin: 0 0 4px; }
+            .legal .highlight { font-weight: 700; }
+            .payments {
+              margin-top: 14px;
+              display: grid;
+              grid-template-columns: 1fr 230px;
+              gap: 14px;
+              align-items: end;
+            }
+            .payments h3 {
+              margin: 0 0 4px;
+              font-size: 26px;
+              letter-spacing: 0.4px;
+            }
+            .payments .company {
+              margin: 0;
+              font-size: 20px;
+            }
+            .payments .ruc {
+              margin: 0 0 8px;
+              font-size: 20px;
+            }
+            .pay-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 18px;
+            }
+            .pay-table td {
+              border: 1px solid #d6975d;
+              padding: 4px 6px;
+            }
+            .signature {
+              text-align: center;
+              font-size: 23px;
+            }
+            .signature .line {
+              border-top: 2px solid #d6975d;
+              margin-bottom: 6px;
+            }
+            @media print {
+              body { background: #fff; }
+              .actions { display: none; }
+              .sheet {
+                margin: 0;
+                box-shadow: none;
+                width: 100%;
+                min-height: auto;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="actions">
+            <button class="btn" onclick="window.print()">Imprimir / Guardar PDF</button>
+            <button class="btn secondary" onclick="window.close()">Cerrar</button>
+          </div>
+          <main class="sheet">
+            <section class="top">
+              <img class="logo" src="${new URL("/images/jugueton.png", window.location.origin).href}" alt="Jugueton" />
+              <div class="title-block">
+                <h1>COTIZACIÓN</h1>
+                <div class="docno">${numeroCotizacion}</div>
+                <div class="inline-box">
+                  <span>FECHA</span>
+                  <strong>${fechaEmision}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="info">
+              <div><strong>Cliente:</strong> ${escapeHtml(ficha.cliente_nombre)}</div>
+              <div><strong>Correo:</strong> ${escapeHtml(ficha.contacto_nombre || "-")}</div>
+              <div><strong>Teléfono:</strong> ${escapeHtml(ficha.cliente_celular)}</div>
+              <div><strong>Dirección del evento:</strong> ${escapeHtml(ficha.direccion || "Por confirmar")} - ${escapeHtml(ficha.distrito)}</div>
+              ${ficha.presentacion && ficha.presentacion !== "carrito" ? `<div><strong>Presentación:</strong> ${escapeHtml(nombrePresentacion(ficha.presentacion))}</div>` : ""}
+              <div><strong>Fecha del evento:</strong> ${escapeHtml(fechaEventoTexto)}</div>
+            </section>
+
+            <div class="hora-box">
+              ${ficha.brand === "jugueton" ? `
+              <span>ENTREGA:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_entrega))}</strong>
+              <span>INICIO:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_entrega_fin))}</strong>
+              <span>RECOJO:</span>
+              <strong>${escapeHtml(formatHoraFija(ficha.hora_recojo))}</strong>
+              ` : `
+              <span>ENTREGA:</span>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin))}</strong>
+              <span>RECOJO:</span>
+              <strong>${escapeHtml(formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin))}</strong>
+              `}
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 20%;">Producto</th>
+                  <th>Descripción</th>
+                  <th style="width: 12%;" class="text-center">Cantidad</th>
+                  <th style="width: 19%;" class="text-right">P. con DSCT</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filasTablaJugueton}
+              </tbody>
+            </table>
+
+            <section class="totals">
+              ${descuentosFicha > 0 ? `
+              <div class="row">
+                <div class="label">Valor de lista</div>
+                <div class="value">${formatMoney(valorListaFicha)}</div>
+              </div>
+              <div class="row">
+                <div class="label">Descuento</div>
+                <div class="value">- ${formatMoney(descuentosFicha)}</div>
+              </div>
+              ` : `
+              <div class="row">
+                <div class="label">Subtotal</div>
+                <div class="value">${formatMoney(total)}</div>
+              </div>
+              `}
+              ${ficha.aplica_igv ? `
+              <div class="row">
+                <div class="label">Valor Venta</div>
+                <div class="value">${formatMoney(valorVenta)}</div>
+              </div>
+              <div class="row">
+                <div class="label">IGV (18%)</div>
+                <div class="value">${formatMoney(igvMonto)}</div>
+              </div>
+              ` : ""}
+              <div class="row">
+                <div class="label">Total a Pagar</div>
+                <div class="value">${formatMoney(total)}</div>
+              </div>
+            </section>
+
+            <section class="legal">
+              <p>Esta cotización tiene una validez de 30 días. Después de este tiempo deberá solicitar una nueva cotización y estará sujeta a variación de precios.</p>
+              <p>Se emiten factura o boleta según la solicitud del cliente al momento de la reserva.</p>
+              <p class="highlight">Puedes reservar con el 50% del monto total y la diferencia un día antes de tu evento, o con el 100% si así lo prefieres.</p>
+            </section>
+
+            <section class="payments">
+              <div>
+                <h3>MÉTODOS DE PAGO</h3>
+                <p class="company">DISTRIBUCIONES DISAM E.I.R.L</p>
+                <p class="ruc">RUC:20613544250</p>
+                <table class="pay-table">
+                  <tr><td>Transferencia BCP</td><td>1947106235050</td></tr>
+                  <tr><td></td><td>CCI: 00219400710623505090</td></tr>
+                  <tr><td>Yape</td><td>906 729 831</td></tr>
+                </table>
+              </div>
+              <div class="signature">
+                <div class="line"></div>
+                <div>Fernanda Yllescas</div>
+                <div style="font-size:20px;">Coordinadora de ventas</div>
+              </div>
+            </section>
+          </main>
+        </body>
+      </html>
+    `;
+
+      popup.document.open();
+      popup.document.write(htmlJugueton);
+      popup.document.close();
+      return;
+    }
+
+      const filasDonofrio = [
+      ...lineasFicha.map((linea) => ({
+        cantidad: linea.cantidad,
+        descripcion: linea.descripcion
+          + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
+          + (linea.descuentoMonto > 0 ? ` — dscto. ${formatMoney(linea.descuentoMonto)}` : ""),
+        contenidoStr: linea.detalle,
+        pu: linea.precioUnitario,
+        total: linea.total,
+        destacado: linea.grupo === "Paquete" || linea.grupo === "Movilidad",
+      })),
+      ...(Math.abs(ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0)) >= 0.01
+        ? [{
+            cantidad: 1,
+            descripcion: ficha.cotizacion_trazabilidad?.actual.origen === "manual" ? `Ajuste del total: ${ficha.cotizacion_trazabilidad.actual.motivo}` : "Diferencia respecto al desglose",
+            contenidoStr: undefined,
+            pu: ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0),
+            total: ficha.cotizacion - lineasFicha.reduce((sum, linea) => sum + linea.total, 0),
+            destacado: false,
+          }]
+        : []),
+      ...(ficha.comentarios
+        ? [{
+            cantidad: 1,
+            descripcion: ficha.comentarios,
+            contenidoStr: undefined,
+            pu: 0,
+            total: 0,
+            destacado: false,
+          }]
+        : []),
+    ];
+
+    const filasTablaDonofrio = filasDonofrio
+      .map((row) => {
+        const mainRow = `
+          <tr class="${row.destacado ? "row-highlight" : ""}">
+            <td class="cell-right">${row.cantidad}</td>
+            <td>${escapeHtml(row.descripcion)}</td>
+            <td class="cell-right">${row.pu !== 0 ? formatMoney(row.pu) : ""}</td>
+            <td class="cell-right">${row.total !== 0 ? formatMoney(row.total) : ""}</td>
+          </tr>
+        `;
+        const cs = (row as { contenidoStr?: string }).contenidoStr;
+        const subRow = cs ? `
+          <tr>
+            <td style="border-top:none; background:#fff;"></td>
+            <td colspan="3" style="border-top:none; background:#fff; color:#6b7280; font-size:0.85em; font-style:italic; padding-top:2px; padding-bottom:5px;">${escapeHtml(cs)}</td>
+          </tr>
+        ` : "";
+        return mainRow + subRow;
+      })
+      .join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="UTF-8" />
+          <title>${defaultFileName}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #0a2a74;
+              background: #efefef;
+            }
+            .actions {
+              position: sticky;
+              top: 0;
+              display: flex;
+              justify-content: center;
+              gap: 8px;
+              padding: 10px;
+              background: #efefef;
+              z-index: 3;
+            }
+            .btn {
+              border: none;
+              border-radius: 8px;
+              padding: 8px 12px;
+              font-size: 13px;
+              cursor: pointer;
+              color: #fff;
+              background: #1d4ea4;
+            }
+            .btn.secondary { background: #6b7280; }
+            .sheet {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 14px auto;
+              background: #f8f8f8;
+              padding: 10mm 10mm 8mm;
+              box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+              position: relative;
+            }
+            .bar-top,
+            .bar-bottom {
+              height: 7mm;
+              background: #f1cd19;
+            }
+            .bar-bottom { margin-top: 7mm; }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 16px;
+              margin: 6mm 0 5mm;
+            }
+            .logo {
+              width: 170px;
+              max-width: 100%;
+              height: auto;
+              object-fit: contain;
+            }
+            .company {
+              flex: 1;
+              text-align: right;
+              font-size: 14px;
+              line-height: 1.2;
+              font-weight: 700;
+            }
+            .company .line {
+              margin-top: 4px;
+              border-top: 4px solid #1d4ea4;
+              position: relative;
+            }
+            .company .line::before {
+              content: "";
+              position: absolute;
+              left: 8px;
+              top: -8px;
+              width: 10px;
+              height: 10px;
+              background: #1d4ea4;
+              transform: rotate(45deg);
+            }
+            .meta-top {
+              display: grid;
+              grid-template-columns: 1fr 220px;
+              gap: 14px;
+              margin-bottom: 4mm;
+            }
+            .client {
+              font-size: 13px;
+              line-height: 1.35;
+            }
+            .client .row {
+              display: grid;
+              grid-template-columns: 72px 1fr;
+              gap: 8px;
+              margin-bottom: 2px;
+            }
+            .quote-box {
+              font-size: 13px;
+              font-weight: 700;
+            }
+            .quote-box .row {
+              display: grid;
+              grid-template-columns: 88px 1fr;
+              margin-bottom: 4px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 6px;
+              font-size: 12px;
+            }
+            th, td {
+              border: 1px solid #111;
+              padding: 3px 4px;
+              vertical-align: top;
+            }
+            th {
+              text-align: center;
+              background: #ffffff;
+              font-size: 13px;
+              font-weight: 700;
+            }
+            .row-highlight td {
+              background: #eb872a;
+              color: #111;
+              font-weight: 700;
+            }
+            .cell-right {
+              text-align: right;
+              white-space: nowrap;
+            }
+            .total-row td {
+              background: #eb872a;
+              font-weight: 700;
+            }
+            .legal {
+              margin-top: 12mm;
+              font-size: 13px;
+              color: #111;
+              line-height: 1.35;
+            }
+            .footer-info {
+              margin-top: 8mm;
+              display: grid;
+              grid-template-columns: 1fr 1.2fr;
+              gap: 14px;
+              align-items: end;
+            }
+            .seller {
+              font-size: 14px;
+              color: #0f172a;
+              line-height: 1.4;
+            }
+            .accounts {
+              width: 100%;
+              font-size: 12px;
+            }
+            .accounts td {
+              border: 1px solid #111;
+              padding: 3px 4px;
+              color: #111;
+            }
+            .brand-footer {
+              margin-top: 6mm;
+              border-top: 4px solid #1d4ea4;
+              border-bottom: 4px solid #ef8f21;
+              padding: 4px 0;
+              color: #1d4ea4;
+              font-size: 12px;
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+            }
+            @media print {
+              body { background: #fff; }
+              .actions { display: none; }
+              .sheet {
+                margin: 0;
+                box-shadow: none;
+                width: 100%;
+                min-height: auto;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="actions">
+            <button class="btn" onclick="window.print()">Imprimir / Guardar PDF</button>
+            <button class="btn secondary" onclick="window.close()">Cerrar</button>
+          </div>
+          <main class="sheet">
+            <div class="bar-top"></div>
+
+            <header class="header">
+              <img class="logo" src="${new URL("/images/donofrio.jpg", window.location.origin).href}" alt="D'Onofrio" />
+              <div class="company">
+                <div>DISTRIBUCIONES Y CONCESIONES AP EIRL</div>
+                <div>RUC: 20556840149</div>
+                <div class="line"></div>
+              </div>
+            </header>
+
+            <section class="meta-top">
+              <div class="client">
+                <div class="row"><strong>RAZÓN SOCIAL</strong><span>${escapeHtml(razonSocialCliente)}</span></div>
+                <div class="row"><strong>RUC / DNI</strong><span>${escapeHtml(cliente?.dni_ruc || "-")}</span></div>
+                <div class="row"><strong>CORREO</strong><span>${escapeHtml(cliente?.email || "-")}</span></div>
+                <div class="row"><strong>TELÉFONO</strong><span>${escapeHtml(ficha.cliente_celular || "-")}</span></div>
+                <div class="row"><strong>Atención</strong><span>${escapeHtml(ficha.contacto_nombre || ficha.cliente_nombre)}</span></div>
+                <div class="row"><strong></strong><span>Mediante la presente, enviamos lo solicitado:</span></div>
+              </div>
+              <div class="quote-box">
+                <div class="row"><span>COTIZACIÓN:</span><span>${numeroFicha}</span></div>
+                <div class="row"><span>DISTRITO:</span><span>${escapeHtml(ficha.distrito)}</span></div>
+                ${ficha.presentacion && ficha.presentacion !== "carrito" ? `<div class="row"><span>PRESENTACIÓN:</span><span>${escapeHtml(nombrePresentacion(ficha.presentacion))}</span></div>` : ""}
+                <div class="row"><span>FECHA:</span><span>${fechaEmision}</span></div>
+              </div>
+            </section>
+
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 16%;">CANTIDAD</th>
+                  <th>DESCRIPCIÓN</th>
+                  <th style="width: 13%;">P/U</th>
+                  <th style="width: 14%;">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filasTablaDonofrio}
+                ${descuentosFicha > 0 ? `
+                <tr>
+                  <td></td>
+                  <td>Valor de lista</td>
+                  <td></td>
+                  <td class="cell-right">${formatMoney(valorListaFicha)}</td>
+                </tr>
+                <tr>
+                  <td></td>
+                  <td>Descuento</td>
+                  <td></td>
+                  <td class="cell-right">- ${formatMoney(descuentosFicha)}</td>
+                </tr>
+                ` : ""}
+                ${ficha.aplica_igv ? `
+                <tr>
+                  <td></td>
+                  <td>VALOR VENTA</td>
+                  <td></td>
+                  <td class="cell-right">${formatMoney(valorVenta)}</td>
+                </tr>
+                <tr>
+                  <td></td>
+                  <td>IGV (18%)</td>
+                  <td></td>
+                  <td class="cell-right">${formatMoney(igvMonto)}</td>
+                </tr>
+                ` : ""}
+                <tr class="total-row">
+                  <td></td>
+                  <td>MONTO TOTAL INCLUIDO IGV</td>
+                  <td></td>
+                  <td class="cell-right">${formatMoney(total)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <section class="legal">
+              <div>Se emiten factura o boleta segun la solicitud del cliente al momento de la reserva.</div>
+              <div>Forma de pago: para separar el pedido puede ser con el 100% o un adelanto del 50% del monto total.</div>
+              <div>El saldo restante debera ser cancelado a mas tardar al momento de la entrega.</div>
+            </section>
+
+            <section class="footer-info">
+              <div class="seller">
+                <div><strong>YANELA CASTILLO</strong></div>
+                <div>Coordinadora de ventas</div>
+                <div>Celular: 991 980 588</div>
+              </div>
+              <table class="accounts">
+                <tbody>
+                  <tr><td>Yape</td><td>991980588</td></tr>
+                  <tr><td>BCP</td><td>19472414931093</td></tr>
+                  <tr><td>CCI</td><td>00219417241493109394</td></tr>
+                  <tr><td>BBVA</td><td>1105080100018200</td></tr>
+                  <tr><td>CCI</td><td>01150800010001820094</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="brand-footer">
+              <span>www.donofrioeventos.com | ventas@eventosdonofrio.pe</span>
+              <span>991 980 588</span>
+            </section>
+
+            <div class="bar-bottom"></div>
+          </main>
+        </body>
+      </html>
+    `;
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+  };
+
+  const handleGenerarContrato = (ficha: Ficha) => {
+    if (ficha.es_cotizacion) { notify.aviso("Confirma la ficha antes de generar su contrato."); return; }
+    if (isLoadingData) {
+      notify.aviso("Espera a que termine de cargar el catálogo para generar el contrato completo.");
+      return;
+    }
+    const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
+    const total = getTotal(ficha);
+    const abonado = getTotalAbonado(ficha);
+    const saldo = Math.max(0, getSaldo(ficha));
+    const etiquetaContrato: Record<GrupoLinea, string> = {
+      Paquete: "Paquete: ",
+      Producto: "",
+      Carrito: "Carrito ",
+      Inflable: "Inflable ",
+      Recurso: "",
+      Movilidad: "",
+      Personal: "",
+    };
+
+    const items: EventContractItem[] = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas).map((linea) => ({
+      descripcion: etiquetaContrato[linea.grupo]
+        + linea.descripcion
+        + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
+        + (linea.descuentoMonto > 0 ? " (dscto. " + formatMoney(linea.descuentoMonto) + ")" : ""),
+      detalle: linea.detalle,
+      cantidad: linea.cantidad,
+      monto: linea.incluidoEnPaquete ? undefined : linea.total,
+    }));
+
+    const popup = window.open("", "contrato-" + ficha.brand + "-" + ficha.id, "width=1000,height=800");
+    if (!popup) {
+      notify.aviso("El navegador bloqueó la ventana del contrato. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.");
+      return;
+    }
+
+    const direccionEvento = [ficha.direccion, ficha.distrito].filter(Boolean).join(", ") || "dirección por confirmar";
+    const operativa = prepararFichaOperativa(ficha, { paquetes: contextPaquetes, carritos, inflables, personal: personales }, []);
+    const html = buildEventContractHtml({
+      brand: ficha.brand,
+      logoUrl: new URL(ficha.brand === "donofrio" ? "/images/eventos_ap.png" : "/images/jugueton.png", window.location.origin).href,
+      bannerUrl: new URL("/images/contrato-donofrio-banner.png", window.location.origin).href,
+      footerUrl: new URL("/images/contrato-donofrio-footer.png", window.location.origin).href,
+      numero: String(ficha.id).padStart(5, "0"),
+      clienteNombre: cliente?.razon_social || ficha.cliente_nombre,
+      clienteDocumento: cliente?.dni_ruc || "",
+      clienteEmail: cliente?.email || "",
+      clienteTelefono: ficha.cliente_celular || cliente?.telefono || "",
+      fechaEvento: formatDate(ficha.fecha_evento || ficha.fecha),
+      direccionEvento,
+      horarioEntrega: operativa.entrega,
+      horarioInicio: operativa.inicio,
+      horarioRecojo: operativa.recojo,
+      delivery: ficha.transporte === "delivery",
+      movilidad: (ficha.costo_envio ?? 0) > 0 ? `Sí${(ficha.dias_movilidad ?? 1) > 1 ? ` (${ficha.dias_movilidad} fechas)` : ""}` : "Sin cargo registrado",
+      personal: operativa.personal,
+      items,
+      total,
+      abonado,
+      saldo,
+    });
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+  };
+
+  const handleAddPersonalRow = () => {
+    setFormData((prev) => ({ ...prev, personalIds: [...prev.personalIds, 0] }));
+  };
+
+  const handleRemovePersonalRow = (idx: number) => {
+    setFormData((prev) => actualizarPersonalFicha(prev, prev.personalIds.filter((_, i) => i !== idx)));
+  };
+
+  const actualizarPersonalFicha = (prev: FichaFormData, ids: number[]): FichaFormData => {
+    return { ...prev, personalIds: ids };
+  };
+
+  const handlePersonalChange = (idx: number, personalId: number) => {
+    setFormData((prev) => actualizarPersonalFicha(prev, prev.personalIds.map((value, i) => (i === idx ? personalId : value))));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    if (name === "cotizacion") {
+      setCotizacionEditada(true);
+      setCotizacionMode("manual");
+      setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
+    } else if (name === "descuento") {
+      const clamped = Math.min(Math.max(Number(value) || 0, 0), descuentoMaxPct);
+      setFormData((prev) => ({ ...prev, descuento: clamped }));
+    } else if (name === "transporte" && tarifaCache) {
+      setFormData(prev => ({ ...prev, movilidad_confirmada: false }));
+      const newTransporte = value as FichaFormData["transporte"];
+      setFormData((prev) => ({ ...actualizarMovilidad(prev, { costo_envio: getCostoFromTarifa(tarifaCache, newTransporte) }), transporte: newTransporte, presentacion: newTransporte !== "delivery" && prev.presentacion === "solo_helados" ? "carrito" : prev.presentacion }));
+    } else if (name === "transporte") {
+      setFormData(prev => ({ ...prev, transporte: value as FichaFormData["transporte"], presentacion: value !== "delivery" && prev.presentacion === "solo_helados" ? "carrito" : prev.presentacion }));
+    } else if (name === "costo_envio") {
+      setFormData(prev => ({ ...prev, movilidad_confirmada: false }));
+      setFormData((prev) => actualizarMovilidad(prev, { costo_envio: Math.max(0, Number(value) || 0) }));
+    } else if (name === "dias_movilidad") {
+      setFormData((prev) => actualizarMovilidad(prev, { dias_movilidad: Math.max(1, Math.trunc(Number(value) || 1)) }));
+    } else if (name === "hora_entrega") {
+      setFormData((prev) => ({
+        ...prev,
+        hora_entrega: value,
+        hora_entrega_fin: brand === "jugueton" ? prev.hora_entrega_fin : (prev.entregaEnRango && value ? addHoraMasUnaHora(value) : ""),
+      }));
+    } else if (name === "hora_recojo") {
+      setFormData((prev) => ({
+        ...prev,
+        hora_recojo: value,
+        hora_recojo_fin: brand === "jugueton" ? prev.hora_recojo_fin : (prev.recojoEnRango && value ? addHoraMasUnaHora(value) : ""),
+      }));
+    } else if (name === "descuento_movilidad") {
+      const clamped = Math.min(Math.max(Number(value) || 0, 0), 100);
+      setFormData((prev) => actualizarMovilidad(prev, { descuento_movilidad: clamped }));
+    } else if (name === "abonoInicialMonto") {
+      setFormData((prev) => ({ ...prev, abonoInicialMonto: Number(value) || 0 }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value, ...(name === "distrito" || name === "transporte" ? { movilidad_confirmada: false } : {}) }));
+    }
+
+    if (name === "fecha_evento" && !dateRefreshLockRef.current) {
+      dateRefreshLockRef.current = true;
+      // Para ver la disponibilidad del día basta con las fichas; antes recargaba también los 7 catálogos
+      void loadFichas().finally(() => {
+        dateRefreshLockRef.current = false;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const fetchDiscountCap = async () => {
+      try {
+        const res = await apiRequest<{ value: number }>("/settings/descuento-max");
+        if (res && typeof res.value === "number") {
+          setDescuentoMaxPctState(res.value);
+          setDescuentoMaxPct(res.value);
+        }
+      } catch (err) {
+        console.error("Error loading discount cap:", err);
+      }
+    };
+    fetchDiscountCap();
+  }, []);
+
+  const handleStartEditDescuentoCap = () => {
+    setDescuentoCapDraft(String(descuentoMaxPct));
+    setEditingDescuentoCap(true);
+  };
+
+  const handleSaveDescuentoCap = async () => {
+    try {
+      const value = Math.min(100, Math.max(0, Number(descuentoCapDraft) || 0));
+      await apiRequest("/settings/descuento-max", {
+        method: "PUT",
+        body: JSON.stringify({ value }),
+      });
+      setDescuentoMaxPctState(value);
+      setDescuentoMaxPct(value);
+      setEditingDescuentoCap(false);
+      setFormData((prev) => ({ ...prev, descuento: Math.min(prev.descuento, value) }));
+      notify.ok(`Tope de descuento actualizado a ${value}%`);
+    } catch (err) {
+      console.error("Error saving discount cap:", err);
+      notify.error(err, "No se pudo guardar el tope de descuento.");
+    }
+  };
+
+  const handleExistingClientChange = (clientId: string) => {
+    const selectedClient = availableClients.find((c) => c.id === clientId);
+    if (!selectedClient) {
+      setFormData((prev) => ({ ...prev, cliente_id: "" }));
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      cliente_id: selectedClient.id,
+      cliente_nombre: selectedClient.nombre || prev.cliente_nombre,
+      cliente_celular: selectedClient.telefono || prev.cliente_celular,
+      contacto_nombre: selectedClient.razon_social || prev.contacto_nombre,
+    }));
+  };
+
+  const handleOpenNewClientModal = () => {
+    setNewClientForm({ nombre: "", razonSocial: "", dniRuc: "", email: "", telefono: "", direccion: "", ciudad: "", canal: "Referidos", status: "active", anioRegistro: "", fichasBase: 0, recomendaciones: 0 });
+    setNewClientError("");
+    setShowNewClientModal(true);
+  };
+
+  const handleCreateClientInline = async () => {
+    if (!newClientForm.nombre || !newClientForm.telefono) {
+      setNewClientError("El nombre y el teléfono son obligatorios.");
+      return;
+    }
+    if (isSavingNewClient) return;
+
+    setIsSavingNewClient(true);
+    setNewClientError("");
+    try {
+      const created = await apiRequest<{ id: string }>("/clients", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: newClientForm.nombre,
+          razon_social: newClientForm.razonSocial || null,
+          dni_ruc: newClientForm.dniRuc || null,
+          email: newClientForm.email || null,
+          telefono: newClientForm.telefono,
+          direccion: newClientForm.direccion || null,
+          ciudad: newClientForm.ciudad || null,
+          canal: newClientForm.canal,
+          status: newClientForm.status,
+          creado_por: brand,
+          anio_registro: newClientForm.anioRegistro ? Number(newClientForm.anioRegistro) : null,
+          fichas_base: Number(newClientForm.fichasBase) || 0,
+          recomendaciones: Number(newClientForm.recomendaciones) || 0,
+        }),
+      });
+
+      invalidarClientes();
+      await loadClients({ forzar: true });
+      if (created?.id) {
+        setFormData((prev) => ({
+          ...prev,
+          cliente_id: created.id,
+          cliente_nombre: newClientForm.nombre,
+          cliente_celular: newClientForm.telefono,
+        }));
+      }
+      setShowNewClientModal(false);
+      notify.ok(`Cliente ${newClientForm.nombre} creado y asignado a la ficha`);
+    } catch (err) {
+      setNewClientError(mensajeDeError(err, "No se pudo crear el cliente."));
+    } finally {
+      setIsSavingNewClient(false);
+    }
+  };
+
+  const handleAddFormPaquete = () => {
+    setFormData(prev => ({ ...prev, paquetes: [...prev.paquetes, { paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }] }));
+  };
+  // Al cambiar los paquetes se marcan solos los inflables que incluyen (una unidad libre por cupo).
+  // Lo que marcó la persona se respeta; al quitar el paquete solo se desmarcan los que se marcaron solos.
+  const aplicarPaquetes = (paquetes: typeof formData.paquetes) => {
+    if (brand !== "jugueton") {
+      setFormData({ ...formData, paquetes });
+      return;
+    }
+    const auto = new Set(autoInflablesRef.current);
+    const manuales = formData.inflableIds.filter((id) => !auto.has(id));
+    const cupos = paquetes
+      .filter((p) => p.paqueteId > 0)
+      .flatMap((p) => {
+        const catalogo = contextPaquetes.find((item) => item.id === p.paqueteId);
+        const cantidadPaquete = Math.max(0, toMoneyNumber(p.cantidad));
+        return (catalogo?.inflablesIncluidos ?? []).map((slot) => ({ tipoIds: slot.tipoIds, restante: slot.cantidad * cantidadPaquete }));
+      })
+      .filter((c) => c.restante > 0);
+    // Los marcados a mano ocupan su cupo primero (misma regla que la cotización)
+    manuales.forEach((id) => {
+      const tipo = inflables.find((i) => i.id === id)?.tipoId;
+      const cupo = cupos.find((c) => c.restante > 0 && tipo !== undefined && c.tipoIds.includes(tipo));
+      if (cupo) cupo.restante -= 1;
+    });
+    const usados = new Set(manuales);
+    const libre = (i: (typeof inflables)[number]) =>
+      !usados.has(i.id) && i.estado !== "mantenimiento" &&
+      (!formData.fecha_evento || getDynamicInflableEstado(i.id, formData.fecha_evento) !== "Ocupado");
+    const elegidos: number[] = [];
+    cupos.forEach((cupo) => {
+      // Cupo "a elección" (varios tipos posibles): no se elige por la persona, solo se marcan los que entran
+      if (cupo.tipoIds.length > 1) return;
+      while (cupo.restante > 0) {
+        const candidatos = inflables.filter((i) => cupo.tipoIds.includes(i.tipoId) && libre(i));
+        // Si ya estaba marcado solo, se mantiene el mismo (no cambia de unidad al tocar la cantidad)
+        const elegido = candidatos.find((i) => auto.has(i.id)) ?? candidatos[0];
+        if (!elegido) break;
+        elegidos.push(elegido.id);
+        usados.add(elegido.id);
+        cupo.restante -= 1;
+      }
+    });
+    autoInflablesRef.current = elegidos;
+    setFormData({ ...formData, paquetes, inflableIds: [...manuales, ...elegidos] });
+  };
+  const handleRemoveFormPaquete = (idx: number) => {
+    aplicarPaquetes(formData.paquetes.filter((_, i) => i !== idx));
+  };
+  const handlePaqueteChange = (idx: number, paqueteId: number) => {
+    const paq = paquetesDisponibles.find(p => p.id === paqueteId);
+    if (!paq) return;
+    aplicarPaquetes(formData.paquetes.map((p, i) => i === idx ? { ...p, paqueteId: paq.id, paqueteNombre: paq.nombre } : p));
+  };
+  const handlePaqueteCantidadChange = (idx: number, cantidad: number) => {
+    aplicarPaquetes(formData.paquetes.map((p, i) => i === idx ? { ...p, cantidad } : p));
+  };
+  const handleAddProductoSuelto = () => {
+    setFormData(prev => ({ ...prev, productosSueltos: [...prev.productosSueltos, { productoNombre: "", cantidad: 0, ...SIN_DESCUENTO }] }));
+  };
+  const handleRemoveProductoSuelto = (idx: number) => {
+    setFormData(prev => ({ ...prev, productosSueltos: prev.productosSueltos.filter((_, i) => i !== idx) }));
+  };
+
+  const handleAddCarritoRow = () => {
+    setFormData((prev) => ({ ...prev, carritoIds: [...prev.carritoIds, 0] }));
+  };
+
+  const handleRemoveCarritoRow = (idx: number) => {
+    setFormData((prev) => ({ ...prev, carritoIds: prev.carritoIds.filter((_, i) => i !== idx) }));
+  };
+
+  const handleCarritoChange = (idx: number, carritoId: number) => {
+    if (carritoId > 0 && formData.fecha_evento && getDynamicCarritoEstado(carritoId, formData.fecha_evento) === "Ocupado") {
+      setAvisoDisp({ tipo: "carrito", unidadId: carritoId, filaIdx: idx });
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      carritoIds: prev.carritoIds.map((value, i) => (i === idx ? carritoId : value)),
+    }));
+  };
+
+  const handleToggleInflable = (inflableId: number) => {
+    // Marcar uno ocupado ese día: primero se avisa dónde está y se ofrecen alternativas
+    if (!formData.inflableIds.includes(inflableId) && formData.fecha_evento && getDynamicInflableEstado(inflableId, formData.fecha_evento) === "Ocupado") {
+      setAvisoDisp({ tipo: "inflable", unidadId: inflableId });
+      return;
+    }
+    // Si la persona lo toca, deja de considerarse "marcado solo por el paquete"
+    autoInflablesRef.current = autoInflablesRef.current.filter((id) => id !== inflableId);
+    setFormData(prev => {
+      const ids = prev.inflableIds;
+      return { ...prev, inflableIds: ids.includes(inflableId) ? ids.filter(id => id !== inflableId) : [...ids, inflableId] };
+    });
+  };
+
+  const handleAddRecursoRow = () => {
+    setFormData((prev) => ({ ...prev, recursos: [...prev.recursos, { recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }] }));
+  };
+
+  const useSuggestedCotizacion = () => {
+    setCotizacionEditada(false);
+    setCotizacionMode("auto");
+    setFormData((prev) => ({ ...prev, cotizacion: cotizacionSugerida }));
+  };
+
+  const actualizarPreciosCatalogo = () => {
+    const nuevas = construirLineas(origenDesdeFormulario());
+    const conservarAjuste = cotizacionEditada || Boolean(formData.ajusteMotivo.trim());
+    const cotizacion = actualizarTotalPorLineas(formData.cotizacion, lineasFormulario, nuevas, conservarAjuste);
+    setPreciosCotizados([]);
+    setFormDataState(prev => ({ ...prev, cotizacion }));
+    if (!conservarAjuste) setCotizacionMode("auto");
+  };
+
+  const handleRemoveRecursoRow = (idx: number) => {
+    setFormData((prev) => ({ ...prev, recursos: prev.recursos.filter((_, i) => i !== idx) }));
+  };
+
+  const handleRecursoChange = (idx: number, recursoId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      recursos: prev.recursos.map((recurso, i) => (i === idx ? { ...recurso, recursoId } : recurso)),
+    }));
+    if (!formData.es_cotizacion && recursoId > 0 && formData.transporte !== "delivery") {
+      const disponible = stockDisponibleRecurso(recursoId);
+      const pedido = Number(formData.recursos[idx]?.cantidad || 1);
+      if (disponible !== null && pedido > disponible) setAvisoDisp({ tipo: "recurso", recursoId, pedido });
+    }
+  };
+
+  const handleRecursoCantidadChange = (idx: number, cantidad: number) => {
+    setFormData(prev => ({
+      ...prev,
+      recursos: prev.recursos.map((r, i) => i === idx ? { ...r, cantidad: Math.max(1, cantidad) } : r),
+    }));
+  };
+
+  const handleAddAbono = async (fichaId: number, abono: Abono) => {
+    // Si el POST falla, el error sube al modal del abono (que lo muestra y permite reintentar)
+    await apiRequest(`/fichas/${fichaId}/abonos`, {
+      method: "POST",
+      body: JSON.stringify({
+        fecha: abono.fecha,
+        monto: abono.monto,
+        numero_operacion: abono.numeroOperacion || null,
+        comprobante_url: abono.comprobante || null,
+        medio: abono.medio,
+      }),
+    });
+    notify.ok(`Abono de ${formatMoney(abono.monto)} registrado`);
+    await refrescarTrasGuardar(fichaId);
+  };
+
+  const loadFichaImagenes = async (fichaId: number) => {
+    setLoadingFichaImagenes(true);
+    setFichaImagenesError("");
+    try {
+      const data = await apiRequest<FichaImagen[]>(`/fichas/${fichaId}/imagenes`);
+      const mapped = (data || []).map((item) => ({
+        ...item,
+        url: normalizeAssetUrl(item.url),
+      }));
+      setFichaImagenes(mapped);
+    } catch (err) {
+      setFichaImagenes([]);
+      setFichaImagenesError(err instanceof Error ? err.message : "No se pudieron cargar las imágenes");
+    } finally {
+      setLoadingFichaImagenes(false);
+    }
+  };
+
+  const handleUpdateAbono = async (fichaId: number, abonoId: number, abono: Abono) => {
+    await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        fecha: abono.fecha,
+        monto: abono.monto,
+        numero_operacion: abono.numeroOperacion || null,
+        comprobante_url: abono.comprobante || null,
+        medio: abono.medio,
+      }),
+    });
+    notify.ok("Abono actualizado");
+    await refrescarTrasGuardar(fichaId);
+  };
+
+  const handleDeleteAbono = (fichaId: number, abonoId: number) => {
+    setDeleteAbonoTarget({ fichaId, abonoId });
+  };
+
+  const confirmDeleteAbono = async () => {
+    if (!deleteAbonoTarget) return;
+    const { fichaId, abonoId } = deleteAbonoTarget;
+
+    setDeleteAbonoSubmitting(true);
+    try {
+      const abonoAEliminar = selectedFicha?.id === fichaId
+        ? selectedFicha.abonos.find((a) => a.id === abonoId)
+        : undefined;
+
+      setDeleteAbonoError("");
+      await apiRequest(`/fichas/${fichaId}/abonos/${abonoId}`, { method: "DELETE" });
+
+      if (abonoAEliminar?.comprobante) {
+        const path = extractStoragePathFromUrl(abonoAEliminar.comprobante);
+        if (path) {
+          try {
+            await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }), silencioso: true });
+          } catch {
+            // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
+          }
+        }
+      }
+
+      setDeleteAbonoTarget(null);
+      notify.ok("Abono eliminado");
+      await refrescarTrasGuardar(fichaId);
+    } catch (err) {
+      setDeleteAbonoError(mensajeDeError(err, "No se pudo eliminar el abono."));
+    } finally {
+      setDeleteAbonoSubmitting(false);
+    }
+  };
+
+  const openFichaDetail = (ficha: Ficha) => {
+    setSelectedFicha(ficha);
+    setShowDetailModal(true);
+    setPreviewComprobanteUrl(null);
+    setFichaImagenes([]);
+    setFichaImagenesError("");
+    void loadFichaImagenes(ficha.id);
+  };
+
+  const closeFichaDetail = () => {
+    setShowDetailModal(false);
+    setSelectedFicha(null);
+    setFichaImagenes([]);
+    setFichaImagenesError("");
+    setPreviewComprobanteUrl(null);
+  };
+
+  const handleOpenEditModal = (ficha: Ficha, conAbono = false) => {
+    abonoSolicitudRef.current = crypto.randomUUID();
+    setRegistroCotizacion(ficha.cotizacion_trazabilidad ?? null);
+    setPreciosCotizados(ficha.cotizacion_trazabilidad?.actual.lineas ?? registrarLineas(construirLineas(origenDesdeFicha(ficha))));
+    setCotizacionEditada(false);
+    autoInflablesRef.current = [];
+    setFormDataState({
+      ajusteMotivo: ficha.cotizacion_trazabilidad?.actual.motivo ?? "",
+      personalPrecios: ficha.personalPrecios ?? {},
+      es_cotizacion: conAbono ? false : ficha.es_cotizacion === true,
+      es_credito: ficha.es_credito === true,
+      presentacion: ficha.presentacion || "carrito",
+      movilidad_confirmada: ficha.movilidad_confirmada === true,
+      entregaEnRango: Boolean(ficha.hora_entrega_fin),
+      recojoEnRango: Boolean(ficha.hora_recojo_fin),
+      fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
+      fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
+      distrito: ficha.distrito || "",
+      transporte: ficha.transporte || "cumpleanos",
+      tipoEvento: ficha.tipo_evento || "",
+      titulo: ficha.titulo || "",
+      costo_envio: ficha.costo_envio || 0,
+      dias_movilidad: ficha.dias_movilidad ?? 1,
+      descuento_movilidad: ficha.descuento_movilidad || 0,
+      direccion: ficha.direccion || "",
+      referencia: ficha.referencia || "",
+      hora_entrega: ficha.hora_entrega || "",
+      hora_entrega_fin: ficha.hora_entrega_fin || "",
+      hora_recojo: ficha.hora_recojo || "",
+      hora_recojo_fin: ficha.hora_recojo_fin || "",
+      comentarios: ficha.comentarios || "",
+      cliente_nombre: ficha.cliente_nombre || "",
+      cliente_celular: ficha.cliente_celular || "",
+      contacto_nombre: ficha.contacto_nombre || "",
+      contacto_celular: ficha.contacto_celular || "",
+      cotizacion: ficha.cotizacion,
+      descuento: ficha.descuento,
+      cliente_id: ficha.cliente_id || "",
+      paquetes: ficha.paquetes.length > 0
+        ? ficha.paquetes.map(p => ({ paqueteId: p.paqueteId, paqueteNombre: p.paqueteNombre, paqueteTipo: p.paqueteTipo, cantidad: p.cantidad, descuentoTipo: p.descuentoTipo, descuentoValor: p.descuentoValor }))
+        : [{ paqueteId: 0, paqueteNombre: "", paqueteTipo: "", cantidad: 1, ...SIN_DESCUENTO }],
+      productosSueltos: ficha.productosSueltos || [],
+      carritoIds: (ficha.carritoIds ?? []).length > 0 ? ficha.carritoIds! : [0],
+      inflableIds: ficha.inflableIds || [],
+      inflablesDescuentos: ficha.inflablesDescuentos ?? {},
+      carritosDescuentos: ficha.carritosDescuentos ?? {},
+      personalIds: (ficha.personalIds ?? []).length > 0 ? ficha.personalIds! : [0],
+      recursos: (ficha.recursos ?? []).length > 0
+        ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad, descuentoTipo: r.descuentoTipo, descuentoValor: r.descuentoValor }))
+        : [{ recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }],
+      aplicaIgv: ficha.aplica_igv === true,
+      registrarAbonoInicial: conAbono,
+      abonoInicialFecha: getLocalDateString(),
+      abonoInicialMonto: 0,
+      abonoInicialMedio: "Transferencia",
+      abonoInicialNumeroOperacion: "",
+    });
+    setCotizacionMode("manual");
+    setEditingFichaId(ficha.id);
+    resetAbonoInicialComprobante();
+    setFormError("");
+    closeFichaDetail();
+    setShowAddModal(true);
+  };
+
+  const iniciarRegistroAbono = (ficha: Ficha) => {
+    if (ficha.es_cotizacion) {
+      handleOpenEditModal(ficha, true);
+      return;
+    }
+    setAbonoTargetFicha(ficha);
+    setEditingAbono(null);
+    setShowAbonoModal(true);
+  };
+
+  const handleDeleteFicha = async (ficha: Ficha) => {
+    setDeleteFichaId(ficha.id);
+  };
+
+  const confirmDeleteFicha = async () => {
+    if (!deleteFichaId) return;
+
+    setDeleteFichaSubmitting(true);
+    setDeleteFichaError("");
+    try {
+      await apiRequest(`/fichas/${deleteFichaId}`, { method: "DELETE" });
+      const eliminada = deleteFichaId;
+      if (selectedFicha?.id === deleteFichaId) {
+        closeFichaDetail();
+      }
+      if (abonoTargetFicha?.id === deleteFichaId) {
+        setShowAbonoModal(false);
+        setAbonoTargetFicha(null);
+      }
+      setDeleteFichaId(null);
+      notify.ok(`Ficha #${eliminada} eliminada`);
+      try {
+        await refreshFichasAndCatalogs();
+      } catch {
+        notify.aviso("La ficha se eliminó, pero no se pudo actualizar la lista. Recarga la página.");
+      }
+    } catch (err) {
+      setDeleteFichaError(mensajeDeError(err, "No se pudo eliminar la ficha."));
+    } finally {
+      setDeleteFichaSubmitting(false);
+    }
+  };
+
+  const resetAbonoInicialComprobante = () => {
+    setAbonoInicialComprobante("");
+    setAbonoInicialComprobanteName("");
+    setAbonoInicialComprobantePath("");
+  };
+
+  const cleanupAbonoInicialComprobante = async () => {
+    if (!abonoInicialComprobantePath) return;
+    try {
+      await apiRequest<{ ok?: boolean }>("/upload", {
+        method: "DELETE",
+        body: JSON.stringify({ path: abonoInicialComprobantePath }),
+      });
+    } catch {
+      // best-effort cleanup: an orphaned file in storage is not worth blocking the user over
+    }
+  };
+
+  const uploadAbonoInicialComprobanteFile = async (file: File) => {
+    setIsUploadingAbonoInicialComprobante(true);
+    setFormError("");
+
+    try {
+      await cleanupAbonoInicialComprobante();
+      resetAbonoInicialComprobante();
+
+      const { url: normalizedUrl, path: rawPath } = await apiUpload(file, "comprobantes");
+      setAbonoInicialComprobante(normalizedUrl);
+      setAbonoInicialComprobanteName(file.name);
+      setAbonoInicialComprobantePath(rawPath);
+    } catch (err) {
+      setFormError(mensajeDeError(err, "No se pudo subir el comprobante del abono inicial."));
+      resetAbonoInicialComprobante();
+    } finally {
+      setIsUploadingAbonoInicialComprobante(false);
+    }
+  };
+
+  const handleAbonoInicialComprobanteChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    await uploadAbonoInicialComprobanteFile(file);
+  };
+
+  const handleAbonoInicialComprobantePaste = async (event: React.ClipboardEvent) => {
+    if (isUploadingAbonoInicialComprobante) return;
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    const renamedFile = new File([file], file.name || `comprobante-pegado-${Date.now()}.png`, { type: file.type });
+    await uploadAbonoInicialComprobanteFile(renamedFile);
+  };
+
+  const stockDisponibleRecurso = (recursoId: number) => {
+    const recurso = recursos.find((r) => r.id === recursoId);
+    if (!recurso) return null;
+    const yaAsignado = editingFichaId !== null
+      ? (fichas.find((f) => f.id === editingFichaId)?.recursos ?? [])
+          .filter((r) => r.recurso_id === recursoId)
+          .reduce((sum, r) => sum + Number(r.cantidad || 0), 0)
+      : 0;
+    return Number(recurso.stockActual || 0) + yaAsignado;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!brand) {
+      setFormError("No se pudo determinar la marca de tu cuenta. Cierra sesión y vuelve a iniciar sesión; si el problema continúa, contacta al administrador.");
+      return;
+    }
+    if (createFichaLockRef.current || isSaving) return;
+    if (!formData.es_cotizacion && !formData.tipoEvento) {
+      setTipoEventoMissing(true);
+      setFormError("Elige el tipo de evento antes de guardar.");
+      return;
+    }
+    setTipoEventoMissing(false);
+    if (cotizacionEditada && Math.abs(resumenFormulario.ajusteManual) >= 0.01 && !formData.ajusteMotivo.trim()) {
+      setFormError("Indica el motivo o concepto del ajuste de Cotización Total.");
+      return;
+    }
+    if (movilidadPorConfirmar && !formData.movilidad_confirmada) {
+      setFormError("No hay tarifa delivery definida para este distrito. Ingresa y confirma la movilidad antes de guardar.");
+      return;
+    }
+    // Sin stock suficiente el servidor rechaza la ficha: se avisa antes y con el nombre del recurso
+    if (!formData.es_cotizacion && formData.transporte !== "delivery") {
+      const pedidos = new Map<number, number>();
+      formData.recursos.filter((r) => r.recursoId > 0).forEach((r) => pedidos.set(r.recursoId, (pedidos.get(r.recursoId) ?? 0) + Number(r.cantidad || 0)));
+      for (const [recursoId, cantidad] of pedidos) {
+        const disponible = stockDisponibleRecurso(recursoId);
+        if (disponible !== null && cantidad > disponible) {
+          setAvisoDisp({ tipo: "recurso", recursoId, pedido: cantidad });
+          return;
+        }
+      }
+    }
+    if (isUploadingAbonoInicialComprobante) {
+      setFormError("Espera a que termine de subirse el comprobante del abono inicial.");
+      return;
+    }
+    setFormError("");
+
+    const montoAbonoInicial = toMoneyNumber(formData.abonoInicialMonto);
+    const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100) - (fichas.find(f => f.id === editingFichaId)?.abonos.reduce((sum, a) => sum + a.monto, 0) ?? 0));
+    if (!formData.es_cotizacion && formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
+      setFormError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
+      return;
+    }
+
+    createFichaLockRef.current = true;
+    setIsSaving(true);
+
+    const carritoIdsPayload = formData.transporte === "delivery" ? [] : formData.carritoIds.filter((carritoId) => carritoId > 0);
+    const inflableIdsPayload = formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [];
+
+    const payload = {
+      es_cotizacion: formData.es_cotizacion,
+      es_credito: !formData.es_cotizacion && formData.es_credito,
+      ...(!formData.es_cotizacion && formData.registrarAbonoInicial ? { abono_inicial: {
+        solicitud_id: abonoSolicitudRef.current,
+        fecha: formData.abonoInicialFecha, monto: montoAbonoInicial,
+        numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
+        comprobante_url: abonoInicialComprobante || null, medio: formData.abonoInicialMedio,
+      }} : {}),
+      presentacion: formData.presentacion,
+      movilidad_confirmada: formData.movilidad_confirmada,
+      fecha: formData.fecha_evento,
+      fecha_evento: formData.fecha_evento,
+      fecha_reserva: formData.fecha_reserva,
+      distrito: formData.distrito,
+      transporte: formData.transporte,
+      tipo_evento: formData.tipoEvento,
+      titulo: formData.titulo || null,
+      direccion: formData.direccion,
+      referencia: formData.referencia,
+      hora_entrega: formData.hora_entrega || null,
+      hora_entrega_fin: formData.hora_entrega_fin || null,
+      hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
+      hora_recojo_fin: brand === "jugueton" || formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
+      comentarios: formData.comentarios,
+      cliente_id: formData.cliente_id || null,
+      cliente_nombre: formData.cliente_nombre,
+      cliente_celular: formData.cliente_celular,
+      contacto_nombre: formData.contacto_nombre,
+      contacto_celular: formData.contacto_celular,
+      cotizacion: Number(formData.cotizacion),
+      cotizacion_registro: {
+        origen: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "calculado"
+          : cotizacionEditada || formData.ajusteMotivo.trim() ? "manual"
+            : "sin_registro",
+        motivo: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "" : formData.ajusteMotivo.trim(),
+        base: redondearDinero(resumenFormulario.totalLineas),
+        lineas: registrarLineas(lineasFormulario),
+      },
+      descuento: toMoneyNumber(formData.descuento),
+      costo_envio: toMoneyNumber(formData.costo_envio),
+      dias_movilidad: formData.dias_movilidad,
+      descuento_movilidad: toMoneyNumber(formData.descuento_movilidad),
+      aplica_igv: formData.aplicaIgv,
+      brand,
+      created_by: getAuthUser()?.id,
+      paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
+      productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
+      carritoIds: carritoIdsPayload,
+      carritosDescuentos: carritoIdsPayload.map((carritoId) => ({
+        carritoId,
+        ...(formData.carritosDescuentos[carritoId] ?? SIN_DESCUENTO),
+      })),
+      inflableIds: inflableIdsPayload,
+      inflablesDescuentos: inflableIdsPayload.map((inflableId) => ({
+        inflableId,
+        ...(formData.inflablesDescuentos[inflableId] ?? SIN_DESCUENTO),
+      })),
+      personalIds: formData.transporte === "delivery" ? [] : formData.personalIds.filter((personalId) => personalId > 0),
+      recursos: formData.transporte === "delivery" ? [] : formData.recursos.filter((recurso) => recurso.recursoId > 0),
+    };
+
+    // Cierra el formulario y refresca la lista (si el refresco falla, lo guardado igual quedó)
+    const cerrarTrasGuardar = async () => {
+      setShowAddModal(false);
+      setEditingFichaId(null);
+      setFormData(getInitialFormData());
+      resetAbonoInicialComprobante();
+      try {
+        await refreshFichasAndCatalogs();
+      } catch {
+        notify.aviso("Se guardó, pero no se pudo actualizar la lista. Recarga la página.");
+      }
+    };
+
+    try {
+      if (editingFichaId !== null) {
+        await apiRequest(`/fichas/${editingFichaId}`, { method: "PUT", body: JSON.stringify(payload) });
+        notify.ok(`Ficha #${editingFichaId} actualizada`);
+      } else {
+        // La ficha y el primer abono se guardan en una sola transacción.
+        // El identificador permite reintentar tras una respuesta perdida sin duplicarlos.
+        const createdFicha = payload.abono_inicial
+          ? (await apiRequest<{ fichas: Array<{ id: number }> }>("/fichas/reserva", {
+              method: "POST", body: JSON.stringify({ brand, solicitud_id: reservaSolicitudRef.current, fechas: [payload] }),
+            })).fichas[0]
+          : await apiRequest<{ id: number }>("/fichas", { method: "POST", body: JSON.stringify(payload) });
+        notify.ok(`Ficha #${createdFicha.id} creada${payload.abono_inicial ? " con abono registrado" : ""}`);
+      }
+
+      await cerrarTrasGuardar();
+    } catch (err) {
+      const conflictosRespuesta = (err instanceof ApiError ? (err.body as { conflicts?: unknown[] } | null)?.conflicts : undefined) ?? [];
+      if (err instanceof ApiError && err.status === 409 && conflictosRespuesta.length > 0) {
+        const body = err.body as { error?: string; conflicts?: Record<string, unknown>[] };
+        const conflicts = body.conflicts ?? [];
+        const primero = conflicts[0] as Partial<InflableConflict & CarritoConflict>;
+        const servidor: OcupacionUnidad = {
+          fichaId: Number(primero.ficha_id),
+          titulo: fichas.find((f) => f.id === Number(primero.ficha_id)) ? getFichaTitulo(fichas.find((f) => f.id === Number(primero.ficha_id))!) : `Ficha #${primero.ficha_id}`,
+          cliente: String(primero.cliente_nombre ?? ""),
+          fecha: String(primero.fecha_evento ?? ""),
+        };
+        if ("inflable_id" in primero) {
+          setAvisoDisp({ tipo: "inflable", unidadId: Number(primero.inflable_id), servidor });
+        } else if ("carrito_id" in primero) {
+          setAvisoDisp({ tipo: "carrito", unidadId: Number(primero.carrito_id), filaIdx: formData.carritoIds.indexOf(Number(primero.carrito_id)), servidor });
+        } else {
+          // Personal de apoyo ya asignado a otra ficha ese día
+          setFormError(`${conflicts.map((c) => `${String((c as { personal_nombre?: string }).personal_nombre ?? "Personal")} ya está en la ficha #${String(c.ficha_id)} (${String(c.cliente_nombre ?? "")})`).join("; ")} para esa fecha. Quítalo o elige a otra persona.`);
+        }
+        return;
+      }
+      setFormError(mensajeDeError(err, editingFichaId !== null ? "No se pudo actualizar la ficha." : "No se pudo crear la ficha."));
+    } finally {
+      createFichaLockRef.current = false;
+      setIsSaving(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    void cleanupAbonoInicialComprobante();
+    setShowAddModal(false);
+    setFormData(getInitialFormData());
+    setCotizacionMode("auto");
+    setEditingFichaId(null);
+    setTipoEventoMissing(false);
+    setFormError("");
+    resetAbonoInicialComprobante();
+  };
+
+  const inputClass = campo;
+
+  return (
+    <div className="p-4 sm:p-6 md:p-8">
+      <DeleteConfirmDialog
+        open={deleteFichaId !== null}
+        onOpenChange={(open) => {
+          if (!open) { setDeleteFichaId(null); setDeleteFichaError(""); }
+        }}
+        title={deleteFichaId ? `Eliminar ficha #${deleteFichaId}` : "Eliminar ficha"}
+        description="¿Seguro que quieres eliminar esta ficha? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar ficha"
+        loadingLabel="Eliminando..."
+        loading={deleteFichaSubmitting}
+        onConfirm={confirmDeleteFicha}
+        error={deleteFichaError}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteAbonoTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) { setDeleteAbonoTarget(null); setDeleteAbonoError(""); }
+        }}
+        title="Eliminar abono"
+        description="¿Seguro que quieres eliminar este abono? El comprobante asociado también se eliminará. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar abono"
+        loadingLabel="Eliminando..."
+        loading={deleteAbonoSubmitting}
+        onConfirm={confirmDeleteAbono}
+        error={deleteAbonoError}
+      />
+
+      {/* Disponibilidad: inflable/carrito ocupado ese día o recurso sin stock (con opción de agregar unidades) */}
+      {avisoDisp && avisoDisp.tipo === "recurso" && (() => {
+        const recurso = recursos.find((r) => r.id === avisoDisp.recursoId);
+        if (!recurso) return null;
+        return (
+          <AvisoDisponibilidad
+            modo="recurso"
+            nombre={`${recurso.recurso}${recurso.sku ? ` · ${recurso.sku}` : ""}`}
+            disponible={stockDisponibleRecurso(recurso.id) ?? 0}
+            pedido={avisoDisp.pedido}
+            onClose={() => setAvisoDisp(null)}
+            onAgregar={async (cantidad) => {
+              await apiRequest(`/recursos/${recurso.id}/stock/movements`, {
+                method: "POST",
+                body: JSON.stringify({
+                  tipo: "entrada",
+                  cantidad,
+                  motivo: "Agregado desde la ficha (faltaba stock)",
+                  referencia: editingFichaId !== null ? `ficha:${editingFichaId}` : "ficha-nueva",
+                }),
+              });
+              await reloadData("recursos");
+              setAvisoDisp(null);
+              notify.ok(`Se ${cantidad === 1 ? "agregó 1 unidad" : `agregaron ${cantidad} unidades`} de «${recurso.recurso}» al stock. Ya puedes guardar la ficha.`);
+            }}
+          />
+        );
+      })()}
+      {avisoDisp && avisoDisp.tipo !== "recurso" && (() => {
+        const esInflable = avisoDisp.tipo === "inflable";
+        const lista: Array<{ id: number; codigo: string; estado: string; tipoId: number }> = esInflable ? inflables : carritos;
+        const unidad = lista.find((u) => u.id === avisoDisp.unidadId);
+        if (!unidad) return null;
+        const nombre = esInflable ? (unidad as (typeof inflables)[number]).tipoNombre : (unidad as (typeof carritos)[number]).modelo;
+        const mismoTipo = (u: (typeof lista)[number]) => (esInflable || unidad.tipoId)
+          ? u.tipoId === unidad.tipoId
+          : (u as (typeof carritos)[number]).modelo === nombre;
+        const seleccionados = esInflable ? formData.inflableIds : formData.carritoIds;
+        const ocupacionesDe = (id: number): OcupacionUnidad[] => {
+          const fecha = (formData.fecha_evento || "").split("T")[0];
+          if (!fecha) return [];
+          return fichas
+            .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && (esInflable ? f.inflableIds : f.carritoIds)?.includes(id)
+              && (f.fecha_evento || f.fecha || "").split("T")[0] === fecha)
+            .map((f) => ({ fichaId: f.id, titulo: getFichaTitulo(f), cliente: f.cliente_nombre, fecha: f.fecha_evento || f.fecha }));
+        };
+        const orden = { libre: 0, "en-esta-ficha": 1, ocupada: 2, mantenimiento: 3 } as const;
+        const otras: OtraUnidad[] = lista
+          .filter((u) => u.id !== unidad.id && mismoTipo(u))
+          .map((u) => {
+            const oc = ocupacionesDe(u.id);
+            const estado: OtraUnidad["estado"] = u.estado === "mantenimiento" ? "mantenimiento" : seleccionados.includes(u.id) ? "en-esta-ficha" : oc.length ? "ocupada" : "libre";
+            return { id: u.id, codigo: u.codigo, estado, ocupacion: oc[0] };
+          })
+          .sort((a, b) => orden[a.estado] - orden[b.estado] || a.codigo.localeCompare(b.codigo));
+        const ocupaciones = ocupacionesDe(unidad.id);
+        const codigos = lista.map((u) => u.codigo || "");
+        // Reemplaza la unidad ocupada por la elegida (o la agrega si aún no estaba en la ficha)
+        const asignar = (nuevoId: number) => {
+          autoInflablesRef.current = autoInflablesRef.current.filter((id) => id !== unidad.id);
+          if (esInflable) {
+            setFormData((prev) => ({ ...prev, inflableIds: [...prev.inflableIds.filter((id) => id !== unidad.id && id !== nuevoId), nuevoId] }));
+          } else {
+            setFormData((prev) => {
+              const ids = [...prev.carritoIds];
+              const idx = avisoDisp.filaIdx !== undefined && avisoDisp.filaIdx >= 0 ? avisoDisp.filaIdx : ids.indexOf(unidad.id);
+              if (idx >= 0 && idx < ids.length) ids[idx] = nuevoId; else ids.push(nuevoId);
+              return { ...prev, carritoIds: ids };
+            });
+          }
+          setAvisoDisp(null);
+        };
+        return (
+          <AvisoDisponibilidad
+            modo="unidad"
+            tipo={avisoDisp.tipo}
+            nombre={nombre}
+            codigo={unidad.codigo}
+            ocupaciones={ocupaciones.length ? ocupaciones : avisoDisp.servidor ? [avisoDisp.servidor] : []}
+            otras={otras}
+            codigoSugerido={sugerirCodigo(unidad.codigo || nombre, codigos)}
+            codigosExistentes={codigos}
+            formatFecha={(iso) => `${formatDiaSemana(iso)} ${formatDate(iso)}`.trim()}
+            onClose={() => setAvisoDisp(null)}
+            onUsar={(id) => {
+              const elegida = lista.find((u) => u.id === id);
+              asignar(id);
+              notify.ok(`Se asignó ${elegida?.codigo ?? "la unidad"} en lugar de ${unidad.codigo}.`);
+            }}
+            onRegistrar={async (codigo) => {
+              let creada: { id: number };
+              if (esInflable) {
+                creada = await apiRequest<{ id: number }>("/inflables", {
+                  method: "POST",
+                  body: JSON.stringify({ tipo_id: unidad.tipoId, codigo, estado: "disponible" }),
+                });
+                await reloadData("inflables");
+              } else {
+                const c = unidad as (typeof carritos)[number];
+                creada = await apiRequest<{ id: number }>("/carritos", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    modelo: c.modelo, codigo, tipo_id: c.tipoId || null, descripcion: c.descripcion || null,
+                    precio_alquiler: c.precioAlquiler ?? null, imagen_url: c.imagenUrl || null, estado: "disponible",
+                  }),
+                });
+                await reloadData("carritos");
+              }
+              asignar(creada.id);
+              notify.ok(`Se registró ${esInflable ? "el inflable" : "el carrito"} ${codigo} (${nombre}) y se asignó a esta ficha.`);
+            }}
+          />
+        );
+      })()}
+
+      {error ? (
+        <ErrorBanner className="mb-4" onRetry={() => void loadFichas({ forzar: true })}>{error}</ErrorBanner>
+      ) : null}
+
+      <PageHeader title="Fichas de Eventos" subtitle="Gestiona eventos, pagos parciales y control financiero" />
+
+      {isAdmin && (
+        <div className="mb-6 bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl border border-brand-navy/10 dark:border-blue-900/20 shadow-sm flex flex-col items-start md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+              <Percent className="w-6 h-6 text-brand-navy dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Tope de Descuento Global</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">El porcentaje máximo que los vendedores pueden aplicar a las cotizaciones.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto self-end md:self-center">
+            {editingDescuentoCap ? (
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <div className="relative flex-1 md:flex-none">
+                  <input
+                    type="number"
+                    value={descuentoCapDraft}
+                    onChange={(e) => setDescuentoCapDraft(e.target.value)}
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    className="w-full md:w-24 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-transparent text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-navy outline-none transition-all"
+                    autoFocus
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                </div>
+                <button
+                  onClick={handleSaveDescuentoCap}
+                  className="px-5 py-2 bg-brand-navy text-white rounded-xl hover:bg-brand-navy-hover transition-all shadow-sm font-medium"
+                >
+                  Guardar
+                </button>
+                <button
+                  onClick={() => setEditingDescuentoCap(false)}
+                  className="px-5 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900/50 px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-800">
+                <span className="text-2xl font-bold text-brand-navy dark:text-blue-400">{descuentoMaxPct}%</span>
+                <button
+                  onClick={handleStartEditDescuentoCap}
+                  className="flex items-center gap-2 text-brand-orange hover:text-brand-orange-hover font-medium text-sm transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Cambiar tope
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Indicadores: montos arriba (2 columnas hasta 1280 px para que siempre entren) y conteos debajo */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-3 md:mb-4">
+        <StatCard label="Venta Total" value={formatMoney(stats.ventaTotal)} icon={<DollarSign className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
+        <StatCard label="Total Final" value={formatMoney(stats.ventaTotal - stats.descuentos)} tone="purple" icon={<DollarSign className="text-purple-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Cobrado" value={formatMoney(stats.totalAbonado)} tone="green" icon={<Receipt className="text-green-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Por Cobrar" value={formatMoney(stats.saldoPendiente)} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <StatCard label="Eventos" value={fichas.filter(f => !f.es_cotizacion).length} icon={<Calendar className="text-brand-navy dark:text-blue-400" />} loading={loading && !fichas.length} />
+        <StatCard label="Pagadas" value={stats.pagadas} tone="green" icon={<CheckCircle2 className="text-green-500" />} loading={loading && !fichas.length} />
+        <StatCard label="Parciales" value={stats.parciales} tone="orange" icon={<CircleDashed className="text-brand-orange" />} loading={loading && !fichas.length} />
+        <StatCard label="Pendientes" value={stats.pendientes} tone="red" icon={<AlertCircle className="text-red-500" />} loading={loading && !fichas.length} />
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DateRangePicker label="Fecha de contacto del cliente" selectedRange={contactDateRange}
+            onRangeChange={setContactDateRange} onClear={() => setContactDateRange(undefined)} />
+          <DateRangePicker label="Fecha del evento" selectedRange={dateRange}
+            onRangeChange={(range) => {
+              setDateRange(range);
+              if (range?.from && (sortBy === "created_desc" || sortBy === "created_asc")) setSortBy("evento_asc");
+            }}
+            onClear={() => setDateRange(undefined)} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"><CreditCard className="w-4 h-4" /> Crédito</span>
+          <div role="group" aria-label="Filtrar por estado de crédito" className="flex flex-wrap gap-2">
+            {([
+              { value: "Todos", label: "Todos" },
+              { value: "pagado", label: "Completado" },
+              { value: "pendiente", label: "Pendiente" },
+              { value: "parcial", label: "Parcial" },
+            ] as const).map(({ value, label }) => (
+              <button key={value} type="button" aria-pressed={estadoFilter === value} onClick={() => setEstadoFilter(value)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange ${estadoFilter === value ? "bg-brand-orange text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+          <div className="flex-1 w-full lg:max-w-md">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input type="text" placeholder="Buscar por cliente, dirección o distrito..." value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <select aria-label="Filtrar por distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)}
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
+              {distritos.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+              className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
+              <option value="created_desc">Creación: más reciente</option>
+              <option value="created_asc">Creación: más antigua</option>
+              <option value="evento_asc">Evento: fecha ascendente</option>
+              <option value="evento_desc">Evento: fecha descendente</option>
+            </select>
+            <button onClick={() => { autoInflablesRef.current = []; setRegistroCotizacion(null); setPreciosCotizados([]); setCotizacionEditada(false); setShowAddModal(true); setFormDataState(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); abonoSolicitudRef.current = crypto.randomUUID(); reservaSolicitudRef.current = crypto.randomUUID(); setFormError(""); }}
+              className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
+              <Plus className="w-5 h-5" /> Nueva Ficha
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+            <input type="checkbox" checked={todasSeleccionadasEnFiltro}
+              ref={input => { if (input) input.indeterminate = seleccionadasEnFiltro > 0 && !todasSeleccionadasEnFiltro; }}
+              onChange={e => cambiarSeleccionFiltro(e.target.checked)} disabled={!filteredFichas.length}
+              className="h-4 w-4 accent-brand-orange" />
+            Seleccionar fichas confirmadas del filtro ({imprimiblesEnFiltro.length})
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+            {fichasSeleccionadas.length} seleccionada(s). La selección se conserva entre páginas y filtros.
+            {seleccionadasFueraDelFiltro > 0 && ` ${seleccionadasFueraDelFiltro} fuera del filtro actual; también se imprimirán.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {fichasSeleccionadas.length > 0 && (
+            <Button variant="ghost" onClick={() => setFichasSeleccionadasIds(new Set())}>Limpiar selección</Button>
+          )}
+          <Button variant="navy" disabled={!fichasSeleccionadas.length || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas(fichasSeleccionadas)}>
+            <Printer /> {imprimiendoFichas ? "Preparando..." : `Imprimir seleccionadas (${fichasSeleccionadas.length})`}
+          </Button>
+          <Button variant="subtle" disabled={!imprimiblesEnFiltro.length || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas(imprimiblesEnFiltro)}>
+            <Printer /> Imprimir filtro ({imprimiblesEnFiltro.length})
+          </Button>
+        </div>
+      </div>
+
+      {/* Fichas Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {paginatedFichas.map(ficha => {
+          const estado = getEstadoPago(ficha);
+          const total = getTotal(ficha);
+          const abonado = getTotalAbonado(ficha);
+          const pctPagado = total > 0 ? Math.min(100, (abonado / total) * 100) : 0;
+          const unidadesHelado = getUnidadesHelado(ficha);
+          const brandMeta = getBrandMeta(ficha.brand);
+
+          return (
+            <div key={ficha.id} className={`bg-white dark:bg-gray-800 rounded-xl border p-6 hover:shadow-lg transition-shadow ${fichasSeleccionadasIds.has(ficha.id) ? "border-brand-orange ring-1 ring-brand-orange" : "border-gray-200 dark:border-gray-700"}`}>
+              <label className="flex items-center gap-2 mb-3 text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-fit">
+                <input type="checkbox" checked={fichasSeleccionadasIds.has(ficha.id)} disabled={ficha.es_cotizacion}
+                  onChange={e => cambiarSeleccionFicha(ficha.id, e.target.checked)}
+                  className="h-4 w-4 accent-brand-orange" />
+                Seleccionar ficha #{String(ficha.id).padStart(4, "0")}
+              </label>
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <TransporteBadge transporte={ficha.transporte} tipoEvento={ficha.tipo_evento} />
+                    {ficha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
+                    <EstadoPagoBadge estado={estado} />
+                    {ficha.es_credito && !ficha.es_cotizacion && <span className="rounded-full bg-purple-100 px-2 py-1 text-xs text-purple-700">A crédito</span>}
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
+                      <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
+                      {brandMeta.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDiaSemana(ficha.fecha_evento || ficha.fecha)} {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
+                  </div>
+                  <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{getFichaTitulo(ficha)}</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                    <Phone className="w-4 h-4 shrink-0" />
+                    <span className="truncate" title={`${ficha.cliente_nombre} · ${ficha.cliente_celular}`}>{ficha.cliente_nombre} · {ficha.cliente_celular}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => handleImprimirFichas([ficha])} disabled={ficha.es_cotizacion || imprimiendoFichas || isLoadingData}
+                    className="p-2 text-gray-400 hover:text-brand-navy hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-40"
+                    title="Imprimir ficha operativa" aria-label="Imprimir ficha operativa">
+                    <Printer className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => handleGenerarProforma(ficha)}
+                    className="p-2 text-gray-400 hover:text-brand-navy hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                    title="Generar proforma"
+                  >
+                    <FileText className="w-5 h-5" />
+                  </button>
+                  <button
+                      onClick={() => handleGenerarContrato(ficha)}
+                      disabled={ficha.es_cotizacion || isLoadingData}
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                      title="Generar contrato"
+                    >
+                      <FileSignature className="w-5 h-5" />
+                    </button>
+                  {canEditFicha(ficha) && (
+                    <button onClick={() => iniciarRegistroAbono(ficha)}
+                      className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                      title="Registrar abono" aria-label="Registrar abono">
+                      <CreditCard className="w-5 h-5" />
+                    </button>
+                  )}
+                  <button onClick={() => openFichaDetail(ficha)} aria-label="Ver detalle" title="Ver detalle"
+                    className="p-2 text-gray-400 hover:text-brand-orange hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    <Eye className="w-5 h-5" />
+                  </button>
+                  {!ficha.es_cotizacion && <button onClick={() => setFichaFiscal(ficha)} aria-label="Comprobantes electrónicos" title="Comprobantes electrónicos"
+                    className="p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"><Receipt className="w-5 h-5" /></button>}
+                  {canEditFicha(ficha) && (
+                    <button
+                      onClick={() => handleDeleteFicha(ficha)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      title="Eliminar ficha"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Paquetes badges */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {ficha.paquetes.map((paq, idx) => (
+                  <span key={idx} className="px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    {paq.cantidad > 1 && `${paq.cantidad}x `}{paq.paqueteNombre}
+                  </span>
+                ))}
+                {ficha.productosSueltos.length > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-xs bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">
+                    +{ficha.productosSueltos.reduce((s, p) => s + p.cantidad, 0)} adicionales
+                  </span>
+                )}
+                <span className="px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  {unidadesHelado} unid. helado
+                </span>
+              </div>
+
+              {/* Location */}
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 mb-4">
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-900 dark:text-white truncate">{ficha.direccion || "Dirección por confirmar"}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{ficha.distrito}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial summary card */}
+              <div className="bg-gradient-to-r from-brand-navy/5 to-brand-orange/5 dark:from-brand-navy/10 dark:to-brand-orange/10 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Cotización</span>
+                  <span className="text-sm text-gray-900 dark:text-white">{formatMoney(ficha.cotizacion)}</span>
+                </div>
+                {ficha.descuento > 0 && (
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-red-500">Descuento ({ficha.descuento}%)</span>
+                    <span className="text-sm text-red-500">-{formatMoney(getDescuentoMonto(ficha))}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-gray-600 dark:text-gray-300">Abonado ({ficha.abonos.length} pago{ficha.abonos.length !== 1 ? "s" : ""})</span>
+                  <span className="text-sm text-green-600 dark:text-green-400">{formatMoney(abonado)}</span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mb-1">
+                  <div className={`h-2 rounded-full transition-all ${estado === "pagado" ? "bg-green-500" : estado === "parcial" ? "bg-brand-orange" : "bg-red-400"}`}
+                    style={{ width: `${pctPagado}%` }} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">{pctPagado.toFixed(0)}% pagado</span>
+                  <span className={`text-xs ${getSaldo(ficha) > 0 ? "text-red-500" : "text-green-500"}`}>
+                    Saldo: {formatMoney(Math.max(0, getSaldo(ficha)))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="flex items-center gap-1"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-600 dark:text-gray-400">
+                    {ficha.brand === "jugueton"
+                      ? `${formatHoraFija(ficha.hora_entrega)}${ficha.hora_entrega_fin ? ` · Inicio ${formatHoraFija(ficha.hora_entrega_fin)}` : ""}${ficha.hora_recojo ? ` · ${formatHoraFija(ficha.hora_recojo)}` : ""}`
+                      : `${formatHoraRango(ficha.hora_entrega, ficha.hora_entrega_fin)}${ficha.hora_recojo ? ` · ${formatHoraRango(ficha.hora_recojo, ficha.hora_recojo_fin)}` : ""}`}
+                  </span></div>
+                  {(ficha.carritoIds?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1"><PackageIcon className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.carritoIds!.length}c</span></div>
+                  )}
+                  {ficha.brand === "jugueton" && (ficha.inflableIds?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-1"><Wind className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{ficha.inflableIds!.length}i</span></div>
+                  )}
+                  <div className="flex items-center gap-1"><User className="w-4 h-4 text-gray-400" /><span className="text-gray-600 dark:text-gray-400">{(ficha.personalIds ?? []).length}p</span></div>
+                </div>
+                {(ficha.created_by_nombre || ficha.created_by) && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 truncate max-w-[120px]" title={ficha.created_by_nombre || ficha.created_by}>
+                    {ficha.created_by_nombre || ficha.created_by}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filteredFichas.length > 0 && (
+        <div className="mt-6">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalFichasPages}
+            onPageChange={setCurrentPage}
+            totalItems={filteredFichas.length}
+            itemsPerPage={FICHAS_PER_PAGE}
+          />
+        </div>
+      )}
+
+      {/* Reporte de unidades de helado por ficha */}
+      {filteredFichas.length > 0 && (
+        <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg text-gray-900 dark:text-white mb-1">Reporte de Unidades de Helado por Ficha</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Total unidades en el filtro actual: {filteredFichas.reduce((sum, f) => sum + getUnidadesHelado(f), 0)}
+          </p>
+          <div className="max-h-96 overflow-y-auto overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white dark:bg-gray-800">
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Ficha</th>
+                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
+                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Marca</th>
+                  <th className="text-left py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Creado por</th>
+                  <th className="text-right py-2 px-3 text-xs text-gray-500 dark:text-gray-400 uppercase">Unidades Helado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {filteredFichas.map(ficha => (
+                  (() => {
+                    const meta = getBrandMeta(ficha.brand);
+                    return (
+                      <tr key={ficha.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td className="py-3 px-3 text-gray-700 dark:text-gray-300">#{ficha.id}</td>
+                        <td className="py-3 px-3 text-gray-900 dark:text-white">{ficha.cliente_nombre}</td>
+                        <td className="py-3 px-3">
+                          <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${meta.badgeClass}`}>
+                            <img src={meta.logoUrl} alt={meta.label} className={meta.logoClass} />
+                            {meta.label}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-gray-500 dark:text-gray-400 text-xs">{ficha.created_by_nombre || ficha.created_by || "—"}</td>
+                        <td className="py-3 px-3 text-right text-gray-900 dark:text-white">{getUnidadesHelado(ficha)}</td>
+                      </tr>
+                    );
+                  })()
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {filteredFichas.length === 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+          {loading ? (
+            <LoadingState label="Cargando fichas…" />
+          ) : error ? null : (
+            <EmptyState
+              icon={<Calendar />}
+              title={fichas.length ? "Ninguna ficha coincide con los filtros" : "Aún no hay fichas"}
+              description={fichas.length ? "Prueba con otras fechas, distrito o estado." : "Crea la primera con el botón «Nueva Ficha»."}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Detail Modal ──────────────────────────────────────── */}
+      {showDetailModal && selectedFicha && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-3xl w-full p-4 sm:p-6 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-6">
+              <div className="min-w-0">
+                <h3 className="text-xl sm:text-2xl text-gray-900 dark:text-white mb-2 break-words">{getFichaTitulo(selectedFicha)}</h3>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
+                  {selectedFicha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
+                  <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
+                </div>
+              </div>
+              <button onClick={closeFichaDetail} aria-label="Cerrar" className="shrink-0 -mr-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:text-gray-200 dark:hover:bg-gray-700"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Cliente */}
+              <div>
+                <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Información del Cliente</h4>
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2"><User className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_nombre}</span></div>
+                  <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-gray-900 dark:text-white">{selectedFicha.cliente_celular}</span></div>
+                  {selectedFicha.contacto_nombre && (
+                    <>
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-2 pt-2"><p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Contacto Alternativo</p></div>
+                      <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" /><span className="text-gray-700 dark:text-gray-300">{selectedFicha.contacto_nombre}</span></div>
+                      {selectedFicha.contacto_celular && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" /><span className="text-gray-700 dark:text-gray-300">{selectedFicha.contacto_celular}</span></div>}
+                    </>
+                  )}
+                  {(selectedFicha.created_by_nombre || selectedFicha.created_by) && (
+                    <>
+                      <div className="border-t border-gray-200 dark:border-gray-600 my-2 pt-2" />
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Registrado por</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{selectedFicha.created_by_nombre || selectedFicha.created_by}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ── FINANCIAL SECTION ──────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Resumen Financiero</h4>
+                  {canEditFicha(selectedFicha) && (
+                    <button
+                      onClick={() => iniciarRegistroAbono(selectedFicha)}
+                      className="text-xs text-brand-orange hover:underline flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Registrar Abono
+                    </button>
+                  )}
+                </div>
+                <div className="bg-gradient-to-r from-brand-navy/5 to-brand-orange/5 dark:from-brand-navy/10 dark:to-brand-orange/10 rounded-lg p-5">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cotización</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-gray-900 dark:text-white">{formatMoney(selectedFicha.cotizacion)}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento {selectedFicha.descuento > 0 ? `(${selectedFicha.descuento}%)` : ""}</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-red-500">{selectedFicha.descuento > 0 ? `-${formatMoney(getDescuentoMonto(selectedFicha))}` : "—"}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total a Pagar</p>
+                      <p className="text-base sm:text-lg tabular-nums whitespace-nowrap truncate text-brand-navy dark:text-blue-400">{formatMoney(getTotal(selectedFicha))}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Saldo</p>
+                      <p className={`text-base sm:text-lg tabular-nums whitespace-nowrap truncate ${getSaldo(selectedFicha) > 0 ? "text-red-500" : "text-green-500"}`}>{formatMoney(Math.max(0, getSaldo(selectedFicha)))}</p>
+                    </div>
+                  </div>
+
+                  {/* Progress */}
+                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2">
+                    <div className={`h-2.5 rounded-full transition-all ${getEstadoPago(selectedFicha) === "pagado" ? "bg-green-500" : getEstadoPago(selectedFicha) === "parcial" ? "bg-brand-orange" : "bg-red-400"}`}
+                      style={{ width: `${getTotal(selectedFicha) > 0 ? Math.min(100, (getTotalAbonado(selectedFicha) / getTotal(selectedFicha)) * 100) : 0}%` }} />
+                  </div>
+                  <p className="text-xs text-gray-400 text-right">{getTotalAbonado(selectedFicha) > 0 ? `${((getTotalAbonado(selectedFicha) / getTotal(selectedFicha)) * 100).toFixed(0)}% pagado` : "Sin abonos"}</p>
+                </div>
+
+                {/* Abonos history */}
+                {selectedFicha.abonos.length > 0 && (
+                  <div className="mt-4">
+                    <h5 className="text-xs text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wide">Historial de Abonos ({selectedFicha.abonos.length})</h5>
+                    <div className="space-y-2">
+                      {selectedFicha.abonos.map(abono => (
+                        <div key={abono.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                            <CreditCard className="w-5 h-5 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm text-gray-900 dark:text-white">{formatMoney(abono.monto)}</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{abono.fecha}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{abono.medio}</span>
+                              {abono.numeroOperacion && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">#{abono.numeroOperacion}</span>
+                              )}
+                              {abono.comprobante && (
+                                <span className="text-xs text-brand-orange flex items-center gap-0.5"><Receipt className="w-3 h-3" /> Comp.</span>
+                              )}
+                            </div>
+                          </div>
+                          {canEditFicha(selectedFicha) && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(abono); setShowAbonoModal(true); }}
+                                className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+                                title="Editar abono">
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAbono(selectedFicha.id, abono.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Eliminar abono">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Imágenes / comprobantes */}
+              <div>
+                <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" /> Comprobantes de la Ficha
+                </h4>
+
+                {loadingFichaImagenes && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <div key={idx} className="h-28 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                    ))}
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && fichaImagenesError && (
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+                    {fichaImagenesError}
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && !fichaImagenesError && fichaImagenes.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 p-4 text-sm text-gray-500 dark:text-gray-400">
+                    Esta ficha no tiene imágenes de comprobantes registradas.
+                  </div>
+                )}
+
+                {!loadingFichaImagenes && !fichaImagenesError && fichaImagenes.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {fichaImagenes.map((img) => (
+                      <div key={`${img.abono_id}-${img.url}`} className="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden bg-white dark:bg-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewComprobanteUrl(img.url)}
+                          className="w-full"
+                        >
+                          <img
+                            src={img.url}
+                            alt={`Comprobante abono ${img.abono_id}`}
+                            className="h-28 w-full object-cover bg-black/5"
+                          />
+                        </button>
+                        <div className="p-2">
+                          <p className="text-xs text-gray-600 dark:text-gray-300 truncate">Abono #{img.abono_id}</p>
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{img.fecha}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <a
+                              href={img.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Ver
+                            </a>
+                            <a
+                              href={img.url}
+                              download={img.path || `comprobante-${img.abono_id}`}
+                              className="inline-flex items-center gap-1 text-[11px] text-brand-orange hover:underline"
+                            >
+                              <Download className="w-3 h-3" /> Descargar
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Paquetes */}
+              <div>
+                <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Paquetes Asignados</h4>
+                <div className="mb-3">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    Total helados: {getUnidadesHelado(selectedFicha)} unidades
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {selectedFicha.paquetes.map((paq, idx) => (
+                    <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"><Layers className="w-4 h-4" /></div>
+                        <div>
+                          <p className="text-gray-900 dark:text-white">{paq.paqueteNombre}</p>
+                        </div>
+                      </div>
+                      <span className="text-lg text-gray-900 dark:text-white">x{paq.cantidad}</span>
+                    </div>
+                  ))}
+                </div>
+                {selectedFicha.productosSueltos.length > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Productos Adicionales</h4>
+                    <div className="bg-brand-orange/5 dark:bg-brand-orange/10 rounded-lg p-4">
+                      <div className="space-y-2">
+                        {selectedFicha.productosSueltos.map((prod, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-brand-orange" /><span className="text-gray-900 dark:text-white">{prod.productoNombre}</span></div>
+                            <span className="text-gray-600 dark:text-gray-400 font-mono">x{prod.cantidad}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Ubicación + Horarios + Recursos */}
+              <div>
+                <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Ubicación</h4>
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-red-500 mt-0.5" /><div><p className="text-gray-900 dark:text-white">{selectedFicha.direccion}</p><p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{selectedFicha.distrito}</p>{selectedFicha.referencia && <p className="text-sm text-gray-500 mt-2 italic">Ref: {selectedFicha.referencia}</p>}</div></div>
+                </div>
+              </div>
+              <div className={selectedFicha.brand === "jugueton" ? "grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"}>
+                <div className="bg-brand-navy/5 dark:bg-brand-navy/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Entrega</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_entrega) : formatHoraRango(selectedFicha.hora_entrega, selectedFicha.hora_entrega_fin)}</p></div>
+                {selectedFicha.brand === "jugueton" && (
+                  <div className="bg-brand-orange/5 dark:bg-brand-orange/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Inicio</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{formatHoraFija(selectedFicha.hora_entrega_fin)}</p></div>
+                )}
+                <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-4"><div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-red-500" /><span className="text-xs text-gray-600 dark:text-gray-400">Recojo</span></div><p className="text-lg sm:text-xl text-gray-900 dark:text-white whitespace-nowrap">{selectedFicha.brand === "jugueton" ? formatHoraFija(selectedFicha.hora_recojo) : formatHoraRango(selectedFicha.hora_recojo, selectedFicha.hora_recojo_fin)}</p></div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Tipo de Evento</p>
+                <p className="text-gray-900 dark:text-white">{selectedFicha.tipo_evento || "-"}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Modalidad: {labelTransporte(selectedFicha.transporte)}{selectedFicha.costo_envio ? ` — ${selectedFicha.dias_movilidad ?? 1} día(s) × ${formatMoney(selectedFicha.costo_envio)} = ${formatMoney(selectedFicha.costo_envio * (selectedFicha.dias_movilidad ?? 1))}` : ""}</p>
+                {(selectedFicha.descuento_movilidad ?? 0) > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Descuento movilidad: {selectedFicha.descuento_movilidad}% — Total movilidad: {formatMoney(Math.max(0, toMoneyNumber(selectedFicha.costo_envio) * (selectedFicha.dias_movilidad ?? 1) * (1 - toMoneyNumber(selectedFicha.descuento_movilidad) / 100)))}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Registrado por:</span>
+                  {(() => {
+                    const meta = getBrandMeta(selectedFicha.brand);
+                    return (
+                      <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${meta.badgeClass}`}>
+                        <img src={meta.logoUrl} alt={meta.label} className={meta.logoClass} />
+                        {meta.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+                {(selectedFicha.carritoIds?.length ?? 0) > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
+                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Carritos Asignados</span></div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedFicha.carritoIds!.map(id => {
+                        const c = carritos.find(c => c.id === id);
+                        return c ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">{c.codigo} — {c.modelo}</span> : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+                {selectedFicha.brand === "jugueton" && (selectedFicha.inflableIds?.length ?? 0) > 0 && (
+                  <>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
+                      <div className="flex items-center gap-2 mb-2"><Wind className="w-4 h-4 text-brand-navy dark:text-blue-400" /><span className="text-xs text-gray-600 dark:text-gray-400">Inflables Asignados</span></div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedFicha.inflableIds!.map(id => {
+                          const inf = inflables.find(i => i.id === id);
+                          return inf ? <span key={id} className="text-xs px-2 py-1 rounded-full bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-blue-400">{inf.tipoNombre} {inf.codigo}</span> : null;
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {(selectedFicha.recursos?.length ?? 0) > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2">
+                    <div className="flex items-center gap-2 mb-2"><PackageIcon className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Recursos Asignados</span></div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedFicha.recursos!.map(r => (
+                        <span key={r.id} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">
+                          {r.cantidad}× {r.recurso_nombre}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 col-span-2"><div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-brand-orange" /><span className="text-xs text-gray-600 dark:text-gray-400">Personal Asignado</span></div><div className="flex flex-wrap gap-1.5">{getNombresPersonal(selectedFicha).length > 0 ? getNombresPersonal(selectedFicha).map(nombre => <span key={nombre} className="text-xs px-2 py-1 rounded-full bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20">{nombre}</span>) : <span className="text-xs text-gray-400">Sin personal asignado</span>}</div></div>
+              </div>
+              {selectedFicha.comentarios && (
+                <div><h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Comentarios</h4><div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"><p className="text-gray-900 dark:text-white">{selectedFicha.comentarios}</p></div></div>
+              )}
+            </div>
+
+            {/* Acciones: barra compacta fija al pie del detalle (el ✕ de arriba cierra) */}
+            <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 mt-6 px-4 sm:px-6 py-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-100 dark:border-gray-700 rounded-b-xl flex flex-wrap items-center gap-2">
+              <Button variant="subtle" className="max-sm:grow" disabled={selectedFicha.es_cotizacion || imprimiendoFichas || isLoadingData} onClick={() => handleImprimirFichas([selectedFicha])}>
+                <Printer /> Ficha operativa
+              </Button>
+              <Button variant="subtle" className="max-sm:grow" onClick={() => handleGenerarProforma(selectedFicha)} title="Generar proforma">
+                <FileText /> Proforma
+              </Button>
+              {!selectedFicha.es_cotizacion && <Button variant="subtle" className="max-sm:grow" onClick={() => setFichaFiscal(selectedFicha)}><Receipt /> Comprobantes</Button>}
+              <Button variant="subtle" className="max-sm:grow" disabled={selectedFicha.es_cotizacion || isLoadingData} onClick={() => handleGenerarContrato(selectedFicha)} title="Generar contrato">
+                  <FileSignature /> Contrato
+                </Button>
+              {canEditFicha(selectedFicha) && (
+                <div className="flex flex-wrap items-center gap-2 max-sm:w-full sm:ml-auto [&>*:not(:first-child)]:max-sm:grow">
+                  <Button variant="ghost" onClick={() => handleDeleteFicha(selectedFicha)} title="Eliminar ficha"
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300">
+                    <Trash2 /> <span className="max-sm:sr-only">Eliminar</span>
+                  </Button>
+                  <Button variant="subtle" onClick={() => handleOpenEditModal(selectedFicha)}>
+                    <Edit /> Editar
+                  </Button>
+                  <Button variant="brand" onClick={() => iniciarRegistroAbono(selectedFicha)}>
+                    <CreditCard /> Registrar abono
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {fichaFiscal && <ComprobantesFicha key={`${fichaFiscal.brand}-${fichaFiscal.id}`} fichaId={fichaFiscal.id} brand={fichaFiscal.brand} clienteNombre={fichaFiscal.cliente_nombre} onClose={() => setFichaFiscal(null)} />}
+
+      {previewComprobanteUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[60] p-4 flex items-center justify-center"
+          onClick={() => setPreviewComprobanteUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewComprobanteUrl(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={previewComprobanteUrl}
+            alt="Vista ampliada de comprobante"
+            className="max-h-[90vh] max-w-[90vw] object-contain"
+          />
+        </div>
+      )}
+
+      {/* ── Add Modal ─────────────────────────────────────────── */}
+      {showAddModal && (
+        <Modal
+          open
+          onClose={handleCloseModal}
+          size="xl"
+          busy={isSaving}
+          title={formData.es_cotizacion ? (editingFichaId !== null ? "Editar Proforma" : "Nueva Proforma") : (editingFichaId !== null ? "Editar Ficha de Evento" : "Nueva Ficha de Evento")}
+          error={formError || undefined}
+          footer={
+            <>
+              <Button type="button" variant="subtle" size="lg" onClick={handleCloseModal} disabled={isSaving}>Cancelar</Button>
+              <Button type="submit" form="ficha-form" variant="brand" size="lg" loading={isSaving} disabled={isUploadingAbonoInicialComprobante}>
+                {isSaving ? "Guardando..." : isUploadingAbonoInicialComprobante ? "Subiendo comprobante..." : editingFichaId !== null ? "Guardar Cambios" : formData.es_cotizacion ? "Guardar Proforma" : "Guardar Ficha"}
+              </Button>
+            </>
+          }
+        >
+            <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className={etiqueta}>Documento</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[{ value: false, label: "Ficha confirmada" }, { value: true, label: "Cotización / proforma" }].map(opcion => (
+                    <button key={opcion.label} type="button" aria-pressed={formData.es_cotizacion === opcion.value}
+                      onClick={() => setFormData(prev => ({ ...prev, es_cotizacion: opcion.value, registrarAbonoInicial: false }))}
+                      className={`rounded-lg border p-3 text-sm ${formData.es_cotizacion === opcion.value ? "border-brand-orange bg-brand-orange/10 text-brand-orange" : "border-gray-200 dark:border-gray-600"}`}>{opcion.label}</button>
+                  ))}
+                </div>
+                {formData.es_cotizacion && <p className="mt-2 text-xs text-gray-500">Puedes enviar la proforma con el distrito y completar dirección, horarios y contacto después. Para confirmar, edítala y elige «Ficha confirmada». No reserva equipos, recursos ni personal hasta confirmarse.</p>}
+              </div>
+              {!formData.es_cotizacion && editingFichaId !== null && fichas.find(f => f.id === editingFichaId)?.es_cotizacion && (
+                <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">Completa los datos de la reserva. Al guardar se confirmará la proforma y se registrará el abono si lo seleccionas. Si prefieres confirmar sin abono, puedes marcar «Reserva a crédito».</p>
+              )}
+              {!formData.es_cotizacion && (
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-600">
+                  <input type="checkbox" checked={formData.es_credito} onChange={e => setFormData(prev => ({ ...prev, es_credito: e.target.checked }))} />
+                  Reserva a crédito
+                </label>
+              )}
+              {/* Título — encabezado principal de la ficha */}
+              <div>
+                <label className={etiqueta}>Título de la Ficha</label>
+                <input type="text" name="titulo" value={formData.titulo} onChange={handleInputChange} placeholder="Ej: Cumpleaños de Valentina" className={inputClass} />
+              </div>
+
+              {/* Tipo de Evento — va primero para condicionar el resto del form */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Tipo de Evento{!formData.es_cotizacion && " *"}</h4>
+                <SearchableSelect
+                  options={TIPOS_EVENTO}
+                  value={formData.tipoEvento}
+                  onChange={(value) => { setFormData((prev) => ({ ...prev, tipoEvento: value })); setTipoEventoMissing(false); }}
+                  placeholder="Seleccionar tipo de evento..."
+                />
+                {tipoEventoMissing && (
+                  <p className="text-xs text-red-500 mt-1">Selecciona un tipo de evento para continuar.</p>
+                )}
+              </div>
+
+              {/* Modalidad — determina tarifa de envío y si se ocultan recursos/personal */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Modalidad *</h4>
+                <div className="flex gap-3">
+                  {(["cumpleanos", "delivery"] as const).map((tipo) => (
+                    <label key={tipo} className={`flex-1 flex items-center justify-center px-4 py-3 rounded-lg border cursor-pointer transition-colors text-sm ${
+                      formData.transporte === tipo
+                        ? "border-brand-orange bg-brand-orange/10 text-brand-orange dark:bg-brand-orange/20"
+                        : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    }`}>
+                      <input type="radio" name="transporte" value={tipo} checked={formData.transporte === tipo} onChange={handleInputChange} className="sr-only" />
+                      {tipo === "cumpleanos" ? "Evento" : "Delivery"}
+                    </label>
+                  ))}
+                </div>
+                {formData.transporte === "delivery" && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">Delivery: solo se registra hora de entrega, sin recursos ni personal.</p>
+                )}
+              </div>
+
+              {/* Fecha */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Evento</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={etiqueta}>Fecha de Contacto del Cliente *</label>
+                    <input type="date" name="fecha_reserva" value={formData.fecha_reserva} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                    {formData.fecha_reserva && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {formatDiaSemana(formData.fecha_reserva)} {formatDate(formData.fecha_reserva)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className={etiqueta}>Fecha del Evento *</label>
+                    <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
+                    {formData.fecha_evento && (
+                      <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-brand-orange" : "text-gray-500 dark:text-gray-400"}`}>
+                        {formatDiaSemana(formData.fecha_evento)} {formatDate(formData.fecha_evento)}
+                        {esFinDeSemana(formData.fecha_evento) && " · fin de semana"}
+                      </p>
+                    )}
+                  </div>
+                  {formData.fecha_evento && formData.fecha_reserva && formData.fecha_evento < formData.fecha_reserva && (
+                    <p className="md:col-span-2 -mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      La fecha del evento es anterior a la fecha de contacto. Revisa que estén bien.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {brand === "donofrio" && <div>
+                <label className={etiqueta}>Presentación del pedido</label>
+                <select value={formData.presentacion} onChange={e => setFormData(prev => ({ ...prev, presentacion: e.target.value }))} className={inputClass}>
+                  <option value="carrito">Carrito</option><option value="lonchera">Lonchera</option>{formData.transporte === "delivery" && <option value="solo_helados">Solo helados</option>}<option value="tecnopor">Tecnopor</option>
+                </select>
+              </div>}
+              {/* Paquetes */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-brand-orange" /> Paquetes del Evento</h4>
+                <div className="space-y-3">
+                  {formData.paquetes.map((paq, idx) => (
+                    <div key={idx} className="flex gap-3 items-start bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Paquete</label>
+                        <select value={paq.paqueteId} onChange={e => handlePaqueteChange(idx, Number(e.target.value))}
+                          className={`${inputClass} text-sm`}>
+                          <option value={0}>Seleccionar paquete...</option>
+                          {paquetesDisponibles.map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre} {p.precio > 0 ? `- S/${p.precio}` : "- A cotizar"}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-24">
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad</label>
+                        <input type="number" value={paq.cantidad} onChange={e => handlePaqueteCantidadChange(idx, Number(e.target.value))} min={1}
+                          className={`${inputClass} text-sm`} />
+                      </div>
+                      <button type="button" onClick={() => handleRemoveFormPaquete(idx)} className="mt-5 p-2 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={handleAddFormPaquete} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar otro paquete</button>
+                </div>
+              </div>
+
+              {/* Productos sueltos */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-brand-orange" /> Productos Adicionales</h4>
+                {formData.productosSueltos.length === 0 ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mb-2">Sin productos adicionales.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.productosSueltos.map((prod, idx) => (
+                      <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto] md:items-center">
+                        <select value={prod.productoNombre}
+                          onChange={e => {
+                            const items = [...formData.productosSueltos];
+                            items[idx] = { ...items[idx], productoNombre: e.target.value };
+                            setFormData(prev => ({ ...prev, productosSueltos: items }));
+                          }}
+                          className={`${inputClass} min-w-0 text-sm`}>
+                          <option value="">Seleccionar producto...</option>
+                          {productNames.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <input type="number" value={prod.cantidad || ""}
+                          onChange={e => {
+                            const items = [...formData.productosSueltos];
+                            items[idx] = { ...items[idx], cantidad: Number(e.target.value) };
+                            setFormData(prev => ({ ...prev, productosSueltos: items }));
+                          }}
+                          placeholder="Cant." min={0} className={`${inputClass} w-full text-sm`} />
+                        <button type="button" onClick={() => handleRemoveProductoSuelto(idx)} className="justify-self-start md:justify-self-center p-2 text-red-400 hover:text-red-600 md:mt-0 mt-1"><X className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={handleAddProductoSuelto} className="mt-2 text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar producto suelto</button>
+              </div>
+
+              {/* Recursos, inflables, carritos y personal — oculto para delivery */}
+              {formData.transporte !== "delivery" && <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><PackageIcon className="w-4 h-4 text-brand-orange" /> Recursos</h4>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className={etiqueta}>Carritos</label>
+                      <button type="button" onClick={handleAddCarritoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar carrito</button>
+                    </div>
+                    {carritos.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay carritos registrados.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.carritoIds.map((carritoId, idx) => {
+                          const selectedIds = formData.carritoIds.filter((_, i) => i !== idx).filter((id) => id > 0);
+                          const availableCarritos = carritos.filter((carrito) => carrito.id === carritoId || !selectedIds.includes(carrito.id));
+                          const selectedCarrito = carritos.find((carrito) => carrito.id === carritoId);
+                          const carritoEstado = carritoId > 0 ? getDynamicCarritoEstado(carritoId, formData.fecha_evento) : null;
+
+                          return (
+                            <div key={`${carritoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select
+                                value={carritoId}
+                                onChange={(e) => handleCarritoChange(idx, Number(e.target.value))}
+                                className={`${inputClass} min-w-0 text-sm`}
+                              >
+                                <option value={0}>Seleccionar carrito...</option>
+                                {availableCarritos
+                                  .filter((carrito) => carrito.estado !== 'mantenimiento' || carrito.id === carritoId)
+                                  .map((carrito) => (
+                                    <option key={carrito.id} value={carrito.id}>
+                                      {carrito.codigo} — {carrito.modelo} · {getDynamicCarritoEstado(carrito.id, formData.fecha_evento)}
+                                    </option>
+                                  ))}
+                              </select>
+                              <div className="flex items-center justify-between gap-2 md:justify-end">
+                                <span className={`text-xs md:hidden truncate ${carritoEstado === "Ocupado" ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
+                                  {selectedCarrito ? `${selectedCarrito.codigo} — ${selectedCarrito.modelo} · ${carritoEstado}` : "Sin seleccionar"}
+                                </span>
+                                {carritoId > 0 && carritoEstado && (
+                                  <span className={`hidden md:inline-flex text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${carritoEstado === "Ocupado" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"}`}>
+                                    {carritoEstado}
+                                  </span>
+                                )}
+                                {carritoId > 0 && (
+                                  <button
+                                    type="button"
+                                    title="Ver fechas ocupadas"
+                                    onClick={() => setCarritoCalendarId(carritoCalendarId === carritoId ? null : carritoId)}
+                                    className={`p-2 rounded transition-colors ${carritoCalendarId === carritoId ? "text-brand-orange bg-brand-orange/10" : "text-gray-400 hover:text-brand-orange"}`}
+                                  >
+                                    <Calendar className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {formData.carritoIds.length > 1 ? (
+                                  <button type="button" onClick={() => handleRemoveCarritoRow(idx)} className="p-2 text-red-400 hover:text-red-600">
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <span className="hidden md:block" />
+                                )}
+                              </div>
+                              {carritoCalendarId === carritoId && carritoId > 0 && (() => {
+                                const fechasOcupadas = getFechasOcupadasCarrito(carritoId);
+                                const today = new Date();
+                                return (
+                                  <div className="col-span-full mt-1 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+                                      Fechas ocupadas de {selectedCarrito?.codigo} — {selectedCarrito?.modelo}
+                                    </p>
+                                    {fechasOcupadas.length === 0 ? (
+                                      <p className="text-xs text-green-600 dark:text-green-400">Sin eventos asignados</p>
+                                    ) : (
+                                      <>
+                                        <div className="flex flex-wrap gap-1.5 mb-2">
+                                          {fechasOcupadas.map((d, i) => (
+                                            <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                              {d.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}
+                                            </span>
+                                          ))}
+                                        </div>
+                                        <style>{`
+                                          .carrito-cal .rdp-day_selected { background: #ef4444 !important; color: #fff !important; border-radius: 100% !important; }
+                                          .carrito-cal .rdp-day_today:not(.rdp-day_selected) { border: 1px solid #EF8022; border-radius: 100%; }
+                                        `}</style>
+                                        <div className="carrito-cal overflow-auto">
+                                          <DayPicker
+                                            mode="multiple"
+                                            selected={fechasOcupadas}
+                                            defaultMonth={fechasOcupadas[0] ?? today}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.carritoIds.filter((carritoId) => carritoId > 0).length}</p>
+                  </div>
+                  {brand === "jugueton" && (
+                    <div>
+                      <label className={etiqueta}>Inflables</label>
+                      {inflablesIncluidos.total > 0 && (
+                        <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${inflablesIncluidos.restantes > 0 ? "border-brand-orange/40 bg-brand-orange/10 text-brand-orange" : "border-green-200 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-900/20 dark:text-green-400"}`}>
+                          {inflablesIncluidos.restantes > 0
+                            ? `${inflablesIncluidos.nombres.join(" y ")} ${inflablesIncluidos.nombres.length > 1 ? "incluyen" : "incluye"} ${inflablesIncluidos.total} inflable${inflablesIncluidos.total > 1 ? "s" : ""} a elección sin costo: elige ${inflablesIncluidos.restantes > 1 ? `${inflablesIncluidos.restantes} de` : "uno de"} los marcados «Incluido».`
+                            : `Inflable${inflablesIncluidos.total > 1 ? "s" : ""} incluido${inflablesIncluidos.total > 1 ? "s" : ""} elegido${inflablesIncluidos.total > 1 ? "s" : ""} ✓ Cualquier otro inflable que marques se cobra aparte.`}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {[...inflables]
+                          // Con paquetes que incluyen inflables, los que entran en el cupo van primero
+                          .sort((x, y) => Number(inflablesIncluidos.tiposIncluidos.has(y.tipoId)) - Number(inflablesIncluidos.tiposIncluidos.has(x.tipoId)))
+                          .map(inflable => {
+                          const inflableEstado = getDynamicInflableEstado(inflable.id, formData.fecha_evento);
+                          const isOcupado = inflableEstado === "Ocupado";
+                          const isSelected = formData.inflableIds.includes(inflable.id);
+                          const incluido = isSelected
+                            ? inflablesIncluidos.gratisIds.has(inflable.id)
+                            : inflablesIncluidos.tiposConCupoLibre.has(inflable.tipoId);
+                          return (
+                            <label key={inflable.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'border-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10' : incluido ? 'border-brand-orange/40 bg-brand-orange/5 hover:bg-brand-orange/10 dark:bg-brand-orange/10' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                              <input type="checkbox" checked={isSelected} onChange={() => handleToggleInflable(inflable.id)} className="w-4 h-4 accent-brand-navy" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm text-gray-900 dark:text-white truncate">{inflable.tipoNombre}</p>
+                                {incluido ? (
+                                  <p className="text-xs text-brand-orange truncate" title={`Incluido en ${inflablesIncluidos.paquetePorTipo.get(inflable.tipoId) ?? "el paquete"}`}>
+                                    {inflable.codigo} · Incluido en {inflablesIncluidos.paquetePorTipo.get(inflable.tipoId) ?? "el paquete"} · S/ 0
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{inflable.codigo} · S/{inflable.precioAlquiler}/día</p>
+                                )}
+                              </div>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${isOcupado ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                {inflableEstado}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className={etiqueta}>Recursos</label>
+                      <button type="button" onClick={handleAddRecursoRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar recurso</button>
+                    </div>
+                    {recursos.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">No hay recursos registrados.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.recursos.map((item, idx) => {
+                          const selectedIds = formData.recursos.filter((_, i) => i !== idx).map((entry) => entry.recursoId).filter((id) => id > 0);
+                          const availableRecursos = recursos.filter((recurso) => recurso.id === item.recursoId || !selectedIds.includes(recurso.id));
+
+                          return (
+                            <div key={`${item.recursoId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_120px_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select value={item.recursoId} onChange={(e) => handleRecursoChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
+                                <option value={0}>Seleccionar recurso...</option>
+                                {availableRecursos.map((recurso) => {
+                                  const disponible = stockDisponibleRecurso(recurso.id) ?? 0;
+                                  return (
+                                    <option key={recurso.id} value={recurso.id}>
+                                      {recurso.recurso} · {recurso.sku} · {disponible > 0 ? `${disponible} disp.` : "sin stock"}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <input type="number" min={1} value={item.cantidad} onChange={(e) => handleRecursoCantidadChange(idx, Number(e.target.value))} className={`${inputClass} w-full text-sm`} />
+                              {formData.recursos.length > 1 ? (
+                                <button type="button" onClick={() => handleRemoveRecursoRow(idx)} className="justify-self-start md:justify-self-center p-2 text-red-400 hover:text-red-600 md:mt-0 mt-1"><X className="w-4 h-4" /></button>
+                              ) : (
+                                <span className="hidden md:block" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.recursos.filter((recurso) => recurso.recursoId > 0).length}</p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <label className={etiqueta}>Personal</label>
+                      <button type="button" onClick={handleAddPersonalRow} className="text-sm text-brand-orange hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Agregar personal</button>
+                    </div>
+                    {personales.length === 0 ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">
+                        {isLoadingData ? "Cargando personal..." : "No hay personal registrado."}
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {formData.personalIds.map((personalId, idx) => {
+                          const selectedIds = formData.personalIds.filter((_, i) => i !== idx).filter((id) => id > 0);
+                          const availablePersonales = personales.filter((personal) => personal.rol?.toLowerCase() !== "chofer" && (personal.id === personalId || !selectedIds.includes(personal.id)));
+                          const selectedPersonal = personales.find((personal) => personal.id === personalId);
+
+                          return (
+                            <div key={`${personalId}-${idx}`} className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                              <select value={personalId} onChange={(e) => handlePersonalChange(idx, Number(e.target.value))} className={`${inputClass} min-w-0 text-sm`}>
+                                <option value={0}>Seleccionar personal...</option>
+                                {availablePersonales.map((personal) => (
+                                  <option key={personal.id} value={personal.id}>{personal.nombre_completo || personal.nombre} · {personal.tipo_reparto || personal.rol} · {formatMoney(formData.personalPrecios[personal.id] ?? personal.precio ?? 0)} · {getDynamicPersonalEstado(personal.id, formData.fecha_evento)}</option>
+                                ))}
+                              </select>
+                              <div className="flex items-center justify-between gap-2 md:justify-end">
+                                <span className="text-xs text-gray-500 dark:text-gray-400 md:hidden truncate">{selectedPersonal ? `${selectedPersonal.rol} · ${getDynamicPersonalEstado(selectedPersonal.id, formData.fecha_evento)}` : "Sin seleccionar"}</span>
+                                {formData.personalIds.length > 1 ? (
+                                  <button type="button" onClick={() => handleRemovePersonalRow(idx)} className="p-2 text-red-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                ) : (
+                                  <span className="hidden md:block" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Seleccionados: {formData.personalIds.filter((id) => id > 0).length}</p>
+                  </div>
+                </div>
+              </div>}
+
+              {/* Cliente */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><User className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Información del Cliente</h4>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className={etiqueta}>Cliente existente</label>
+                    <button
+                      type="button"
+                      onClick={handleOpenNewClientModal}
+                      className="text-xs text-brand-orange hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Nuevo cliente
+                    </button>
+                  </div>
+                  <select
+                    value={formData.cliente_id}
+                    onChange={(e) => handleExistingClientChange(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Seleccionar cliente (opcional)</option>
+                    {availableClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.nombre}
+                        {client.razon_social ? ` - ${client.razon_social}` : ""}
+                        {client.dni_ruc ? ` (${client.dni_ruc})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className={etiqueta}>Nombre del Cliente *</label><input type="text" name="cliente_nombre" value={formData.cliente_nombre} onChange={handleInputChange} required placeholder="Ej: María López" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Celular del Cliente{!formData.es_cotizacion && " *"}</label><input type="tel" name="cliente_celular" value={formData.cliente_celular} onChange={handleInputChange} required={!formData.es_cotizacion} placeholder="Ej: 999 888 777" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Contacto Alternativo</label><input type="text" name="contacto_nombre" value={formData.contacto_nombre} onChange={handleInputChange} placeholder="Ej: Juan Pérez" className={inputClass} /></div>
+                  <div><label className={etiqueta}>Celular del Contacto</label><input type="tel" name="contacto_celular" value={formData.contacto_celular} onChange={handleInputChange} placeholder="Ej: 988 777 666" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Ubicación */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-red-500" /> Ubicación</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className={etiqueta}>Distrito *</label>
+                    <select name="distrito" value={formData.distrito} onChange={handleInputChange} required className={inputClass}>
+                      <option value="">Seleccionar distrito</option>
+                      {distritos.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div><label className={etiqueta}>Dirección{!formData.es_cotizacion && " *"}</label><input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} required={!formData.es_cotizacion} placeholder="Ej: Av. Principal 123" className={inputClass} /></div>
+                  <div className="md:col-span-2"><label className={etiqueta}>Referencia</label><input type="text" name="referencia" value={formData.referencia} onChange={handleInputChange} placeholder="Ej: Frente al parque" className={inputClass} /></div>
+                </div>
+              </div>
+
+              {/* Horarios */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-navy dark:text-blue-400" /> Horarios</h4>
+                {brand === "jugueton" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className={etiqueta}>Hora de Entrega{!formData.es_cotizacion && " *"}</label>
+                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className={etiqueta}>Hora de Inicio{!formData.es_cotizacion && " *"}</label>
+                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                    </div>
+                    {formData.transporte !== "delivery" && (
+                      <div>
+                        <label className={etiqueta}>Hora de Recojo{!formData.es_cotizacion && " *"}</label>
+                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={etiqueta}>Hora de Entrega{!formData.es_cotizacion && " *"}</label>
+                      <HorarioSelector label="entrega" enRango={formData.entregaEnRango}
+                        onChange={(enRango) => setFormData(prev => ({ ...prev, entregaEnRango: enRango, hora_entrega_fin: enRango && prev.hora_entrega ? (prev.hora_entrega_fin || addHoraMasUnaHora(prev.hora_entrega)) : "" }))} />
+                      <div className={`grid gap-2 ${formData.entregaEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
+                        <div>
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.entregaEnRango ? "Desde" : "Hora exacta"}</span>
+                          <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                        </div>
+                        {formData.entregaEnRango && <div>
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
+                          <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                        </div>}
+                      </div>
+                    </div>
+                    {formData.transporte !== "delivery" && (
+                      <div>
+                        <label className={etiqueta}>Hora de Recojo{!formData.es_cotizacion && " *"}</label>
+                        <HorarioSelector label="recojo" enRango={formData.recojoEnRango}
+                          onChange={(enRango) => setFormData(prev => ({ ...prev, recojoEnRango: enRango, hora_recojo_fin: enRango && prev.hora_recojo ? (prev.hora_recojo_fin || addHoraMasUnaHora(prev.hora_recojo)) : "" }))} />
+                        <div className={`grid gap-2 ${formData.recojoEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
+                          <div>
+                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.recojoEnRango ? "Desde" : "Hora exacta"}</span>
+                            <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                          </div>
+                          {formData.recojoEnRango && <div>
+                            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
+                            <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                          </div>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Comentarios */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><Edit className="w-4 h-4 text-gray-400" /> Comentarios</h4>
+                <textarea name="comentarios" value={formData.comentarios} onChange={handleInputChange} rows={3} placeholder="Notas especiales o instrucciones" className={inputClass} />
+              </div>
+
+              {/* ── PRECIOS ───────────────────────────────────── */}
+              <div>
+                <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
+                <div className="mb-4 max-w-xs">
+                  <label className={etiqueta}>Movilidad por día (S/)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                    <input
+                      type="number"
+                      name="costo_envio"
+                      value={formData.costo_envio || ""}
+                      onChange={handleInputChange}
+                      min={0}
+                      step={0.01}
+                      placeholder="0.00"
+                      className={`${inputClass} pl-9`}
+                    />
+                  </div>
+                  {movilidadPorConfirmar && <div role="alert" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                    La movilidad delivery a {formData.distrito} no tiene tarifa definida. Ingresa el precio acordado.
+                    <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={formData.movilidad_confirmada} onChange={e => { setFormError(""); setFormData(prev => ({ ...prev, movilidad_confirmada: e.target.checked })); }} /> Confirmo la movilidad de {formatMoney(formData.costo_envio)} por día.</label>
+                  </div>}
+                  {tarifaCache && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Zona: {tarifaCache.zona}</p>
+                  )}
+                  <label htmlFor="dias-movilidad" className={`${etiqueta} mt-3`}>Días de movilidad</label>
+                  <input id="dias-movilidad" type="number" name="dias_movilidad" min={1} step={1} required
+                    value={formData.dias_movilidad} onChange={handleInputChange} className={inputClass} />
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                    {formData.dias_movilidad} {formData.dias_movilidad === 1 ? "día" : "días"} × {formatMoney(formData.costo_envio)} = {formatMoney(formData.costo_envio * formData.dias_movilidad)} antes de descuentos.
+                  </p>
+                </div>
+
+                {/* Desglose con descuento por ítem */}
+                <div className="mb-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                      <tr className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <th className="py-2 px-3 text-left">Ítem</th>
+                        <th className="py-2 px-3 text-center w-16">Cant.</th>
+                        <th className="py-2 px-3 text-right w-28">P. Unitario</th>
+                        <th className="py-2 px-3 text-center w-40">Descuento</th>
+                        <th className="py-2 px-3 text-right w-28">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {lineasFormulario.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-6 px-3 text-center text-gray-400 dark:text-gray-500">
+                            Agrega paquetes, productos, inflables o movilidad para ver el detalle.
+                          </td>
+                        </tr>
+                      )}
+                      {lineasFormulario.map((linea) => (
+                        <tr key={linea.key} className="align-top">
+                          <td className="py-2 px-3">
+                            <span className="mr-2 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                              {linea.grupo}
+                            </span>
+                            <span className="text-gray-900 dark:text-white">{linea.descripcion}</span>
+                            {linea.detalle && (
+                              <p className="mt-0.5 text-[11px] italic text-gray-400 dark:text-gray-500">{linea.detalle}</p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-center text-gray-600 dark:text-gray-400">{linea.cantidad}</td>
+                          <td className="py-2 px-3 text-right text-gray-600 dark:text-gray-400">{formatMoney(linea.precioUnitario)}</td>
+                          <td className="py-2 px-3">
+                            {linea.editable ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  value={linea.descuentoValor || ""}
+                                  onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoValor: Math.max(0, Number(e.target.value) || 0) })}
+                                  placeholder="0"
+                                  className="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-right text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                                />
+                                {linea.ref.tipo === "movilidad" ? (
+                                  <span className="text-xs text-gray-400 w-12">%</span>
+                                ) : (
+                                  <select
+                                    value={linea.descuentoTipo}
+                                    onChange={(e) => actualizarDescuentoLinea(linea.ref, { descuentoTipo: e.target.value as DescuentoTipo })}
+                                    className="w-12 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-1 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                                  >
+                                    <option value="porcentaje">%</option>
+                                    <option value="monto">S/</option>
+                                  </select>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+                                {linea.incluidoEnPaquete ? "Incluido" : "—"}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-900 dark:text-white">{formatMoney(linea.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-sm">
+                      <tr>
+                        <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Valor de lista</td>
+                        <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.subtotalBruto)}</td>
+                      </tr>
+                      {resumenFormulario.descuentos > 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Descuentos por ítem</td>
+                          <td className="py-1.5 px-3 text-right text-red-500">− {formatMoney(resumenFormulario.descuentos)}</td>
+                        </tr>
+                      )}
+                      {Math.abs(resumenFormulario.ajusteManual) >= 0.01 && (
+                        <tr>
+                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">{cotizacionEditada || registroCotizacion?.actual.origen === "manual" ? "Ajuste del total" : "Diferencia respecto al desglose"}</td>
+                          <td className="py-1.5 px-3 text-right text-amber-600 dark:text-amber-400">
+                            {resumenFormulario.ajusteManual > 0 ? "+ " : "− "}{formatMoney(Math.abs(resumenFormulario.ajusteManual))}
+                          </td>
+                        </tr>
+                      )}
+                      {resumenFormulario.descuentoGlobal > 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Descuento global ({formData.descuento}%)</td>
+                          <td className="py-1.5 px-3 text-right text-red-500">− {formatMoney(resumenFormulario.descuentoGlobal)}</td>
+                        </tr>
+                      )}
+                      {formData.aplicaIgv && (
+                        <>
+                          <tr>
+                            <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">Valor venta</td>
+                            <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.valorVenta)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={4} className="py-1.5 px-3 text-right text-gray-500 dark:text-gray-400">IGV (18%)</td>
+                            <td className="py-1.5 px-3 text-right text-gray-700 dark:text-gray-300">{formatMoney(resumenFormulario.igv)}</td>
+                          </tr>
+                        </>
+                      )}
+                      <tr>
+                        <td colSpan={4} className="py-2 px-3 text-right text-gray-700 dark:text-gray-300">Total a pagar</td>
+                        <td className="py-2 px-3 text-right text-brand-navy dark:text-blue-400">{formatMoney(resumenFormulario.total)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <DetalleAjusteCotizacion total={toMoneyNumber(formData.cotizacion)} base={resumenFormulario.totalLineas}
+                  registro={registroCotizacion} lineas={registrarLineas(lineasFormulario)} motivo={formData.ajusteMotivo}
+                  editado={cotizacionEditada} onMotivoChange={value => setFormData(prev => ({ ...prev, ajusteMotivo: value }))} />
+
+                <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={formData.aplicaIgv}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, aplicaIgv: e.target.checked }))}
+                    className="w-4 h-4 accent-brand-orange"
+                  />
+                  Desglosar IGV (18%) en la proforma y el contrato
+                </label>
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  {preciosCotizados.length > 0 && <>
+                    <span>Precios conservados de la cotización.</span>
+                    <button type="button" onClick={actualizarPreciosCatalogo} className="rounded-full border border-gray-300 px-2.5 py-1 hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">Actualizar precios del catálogo</button>
+                  </>}
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-gray-700">
+                    Modo: {cotizacionMode === "auto" ? "Autocalculado" : cotizacionEditada ? "Edición manual del total" : "Total guardado"}
+                  </span>
+                  <span className="rounded-full bg-brand-orange/10 px-2.5 py-1 text-brand-orange dark:bg-brand-orange/20">
+                    Sugerido: {formatMoney(cotizacionSugerida)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={useSuggestedCotizacion}
+                    className="rounded-full border border-brand-orange px-2.5 py-1 text-brand-orange hover:bg-brand-orange/10 transition-colors"
+                  >
+                    Usar sugerido
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className={etiqueta}>Cotización Total (S/) * {cotizacionMode === "auto" ? "(autocalculada)" : "(editable)"}</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>
+                      <input type="number" name="cotizacion" value={formData.cotizacion || ""} onChange={handleInputChange} required min={0} step={0.01}
+                        className={`${inputClass} pl-9`} placeholder="0.00" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className={etiqueta}>Descuento (%) <span className="text-gray-400">(máx. {descuentoMaxPct}%)</span></label>
+                      {isAdmin && !editingDescuentoCap && (
+                        <button type="button" onClick={handleStartEditDescuentoCap} className="text-xs text-brand-orange hover:underline">
+                          Editar tope
+                        </button>
+                      )}
+                    </div>
+                    {isAdmin && editingDescuentoCap ? (
+                      <div className="flex items-center gap-2">
+                        <input type="number" value={descuentoCapDraft} onChange={(e) => setDescuentoCapDraft(e.target.value)} min={0} max={100} step={0.5}
+                          className={inputClass} placeholder="10" autoFocus />
+                        <button type="button" onClick={handleSaveDescuentoCap} className="px-3 py-2 rounded-lg bg-brand-navy text-white text-sm hover:bg-brand-navy-hover">Guardar</button>
+                        <button type="button" onClick={() => setEditingDescuentoCap(false)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input type="number" name="descuento" value={formData.descuento || ""} onChange={handleInputChange} min={0} max={descuentoMaxPct} step={0.5}
+                          className={`${inputClass} pr-9`} placeholder="0" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className={etiqueta}>Total a Pagar</label>
+                    <div className="flex items-center h-[42px] px-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                      <span className="text-lg text-brand-navy dark:text-blue-400">
+                        {formatMoney(Math.max(0, (Number(formData.cotizacion) || 0) * (1 - (Number(formData.descuento) || 0) / 100)))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Paquetes, productos, carritos, inflables, recursos y transporte se suman automáticamente.</div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
+                </div>
+                {!formData.es_cotizacion && (
+                  <div className="mt-5 rounded-lg border border-green-200 bg-green-50/60 p-4 dark:border-green-900/60 dark:bg-green-900/10">
+                    <label className="flex cursor-pointer items-center gap-3 text-sm text-gray-800 dark:text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={formData.registrarAbonoInicial}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, registrarAbonoInicial: event.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-orange focus:ring-brand-orange"
+                      />
+                      <span className="font-medium">{editingFichaId === null ? "Registrar abono inicial" : "Registrar abono al guardar"}</span>
+                    </label>
+
+                    {formData.registrarAbonoInicial && (
+                      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className={etiqueta}>Monto del abono (S/) *</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">S/</span>
+                            <input
+                              type="number"
+                              name="abonoInicialMonto"
+                              value={formData.abonoInicialMonto || ""}
+                              onChange={handleInputChange}
+                              min={0}
+                              step={0.01}
+                              placeholder="0.00"
+                              className={`${inputClass} pl-9`}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={etiqueta}>Fecha del abono *</label>
+                          <input type="date" name="abonoInicialFecha" value={formData.abonoInicialFecha} onChange={handleInputChange} className={inputClass} />
+                        </div>
+                        <div>
+                          <label className={etiqueta}>Medio de pago</label>
+                          <select name="abonoInicialMedio" value={formData.abonoInicialMedio} onChange={handleInputChange} className={inputClass}>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Yape">Yape</option>
+                            <option value="Plin">Plin</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Link de Pago">Link de Pago</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className={etiqueta}>Nro. de operacion</label>
+                          <input
+                            type="text"
+                            name="abonoInicialNumeroOperacion"
+                            value={formData.abonoInicialNumeroOperacion}
+                            onChange={handleInputChange}
+                            placeholder="Opcional"
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className={etiqueta}>Foto del comprobante (opcional)</label>
+                          <div
+                            tabIndex={0}
+                            onPaste={(e) => void handleAbonoInicialComprobantePaste(e)}
+                            className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-orange ${
+                              isUploadingAbonoInicialComprobante ? "border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400" : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300"
+                            }`}
+                          >
+                            <label className={`flex cursor-pointer items-center justify-center gap-2 text-sm ${isUploadingAbonoInicialComprobante ? "cursor-not-allowed" : "hover:text-brand-orange"}`}>
+                              <Upload className="w-4 h-4" />
+                              <span>{isUploadingAbonoInicialComprobante ? "Subiendo..." : abonoInicialComprobanteName || "Subir imagen del comprobante"}</span>
+                              <input type="file" accept="image/*" onChange={handleAbonoInicialComprobanteChange} disabled={isUploadingAbonoInicialComprobante} className="hidden" />
+                            </label>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">o haz clic aquí y pega una imagen (Ctrl+V)</span>
+                          </div>
+                          {abonoInicialComprobante && (
+                            <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                              <img src={abonoInicialComprobante} alt="Vista previa del comprobante" className="max-h-48 w-full object-contain bg-black/5" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Puedes registrar abonos adicionales desde el detalle del evento.</p>
+              </div>
+
+            </form>
+        </Modal>
+      )}
+
+      {/* ── Nuevo Cliente (sub-modal dentro de la Ficha) ───────── */}
+      {showNewClientModal && (
+        <Modal
+          open
+          elevated
+          onClose={() => setShowNewClientModal(false)}
+          busy={isSavingNewClient}
+          title="Nuevo Cliente"
+          description={<>Se asignará automáticamente a{" "}
+            <span className={brand === "donofrio" ? "text-brand-navy dark:text-blue-400" : "text-brand-orange"}>
+              {brand === "donofrio" ? "D'Onofrio" : "Juguetón"}
+            </span></>}
+          error={newClientError || undefined}
+          footer={
+            <>
+              <Button type="button" variant="subtle" size="lg" onClick={() => setShowNewClientModal(false)} disabled={isSavingNewClient}>Cancelar</Button>
+              <Button type="button" variant="brand" size="lg" onClick={handleCreateClientInline} loading={isSavingNewClient}>
+                {isSavingNewClient ? "Guardando..." : "Guardar Cliente"}
+              </Button>
+            </>
+          }
+        >
+            <div className="space-y-4">
+              <div>
+                <label className={etiqueta}>Nombre *</label>
+                <input
+                  type="text"
+                  value={newClientForm.nombre}
+                  onChange={(e) => setNewClientForm({ ...newClientForm, nombre: e.target.value })}
+                  placeholder="Ej: Maria Lopez"
+                  className={inputClass}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={etiqueta}>Razón Social (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClientForm.razonSocial}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, razonSocial: e.target.value })}
+                    placeholder="Ej: Inversiones Lopez SAC"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={etiqueta}>DNI/RUC (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClientForm.dniRuc}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, dniRuc: e.target.value })}
+                    placeholder="Ej: 12345678"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={etiqueta}>Email</label>
+                  <input
+                    type="email"
+                    value={newClientForm.email}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, email: e.target.value })}
+                    placeholder="correo@ejemplo.com"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={etiqueta}>Teléfono *</label>
+                  <input
+                    type="tel"
+                    value={newClientForm.telefono}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, telefono: e.target.value })}
+                    placeholder="+51 987 654 321"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={etiqueta}>Dirección</label>
+                  <input
+                    type="text"
+                    value={newClientForm.direccion}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, direccion: e.target.value })}
+                    placeholder="Av. Principal 123"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={etiqueta}>Distrito / Ciudad</label>
+                  <input
+                    type="text"
+                    value={newClientForm.ciudad}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, ciudad: e.target.value })}
+                    placeholder="Miraflores"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={etiqueta}>Canal de adquisición</label>
+                  <select
+                    value={newClientForm.canal}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, canal: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="Referidos">Referidos</option>
+                    <option value="Pagina Web">Pagina Web</option>
+                    <option value="Google">Google</option>
+                    <option value="TikTok">TikTok</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Facebook">Facebook</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={etiqueta}>Estado</label>
+                  <select
+                    value={newClientForm.status}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, status: e.target.value as "active" | "inactive" })}
+                    className={inputClass}
+                  >
+                    <option value="active">Activo</option>
+                    <option value="inactive">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className={etiqueta}>Año del cliente</label>
+                  <input
+                    type="number"
+                    value={newClientForm.anioRegistro}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, anioRegistro: e.target.value })}
+                    placeholder="Ej: 2022"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={etiqueta}>Fichas base</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClientForm.fichasBase}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, fichasBase: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={etiqueta}>Recomendaciones</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newClientForm.recomendaciones}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, recomendaciones: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </div>
+        </Modal>
+      )}
+
+      {/* ── Abono Modal ───────────────────────────────────────── */}
+      {showAbonoModal && abonoTargetFicha && (
+        <AbonoModal
+          ficha={abonoTargetFicha}
+          abono={editingAbono}
+          onClose={() => { setShowAbonoModal(false); setAbonoTargetFicha(null); setEditingAbono(null); }}
+          onSave={handleAddAbono}
+          onUpdate={handleUpdateAbono}
+        />
+      )}
+    </div>
+  );
+}
