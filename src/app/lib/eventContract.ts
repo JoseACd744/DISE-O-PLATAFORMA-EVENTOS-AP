@@ -24,6 +24,9 @@ export interface EventContractData {
   total: number;
   abonado: number;
   saldo: number;
+  esCredito?: boolean;
+  observaciones?: string;
+  fechasDetalle?: Array<{ fecha:string; direccion:string; entrega:string; inicio?:string; recojo:string; personal?:string[]; observaciones?:string; total:number }>;
   logoUrl?: string;
   bannerUrl?: string;
   footerUrl?: string;
@@ -41,10 +44,10 @@ export function buildEventContractHtml(d: EventContractData): string {
   const logo = d.logoUrl || (donofrio ? "/images/eventos_ap.png" : "/images/jugueton.png");
   const dato = (label: string, value: string) => `<p><b>${e(label)}</b> ${e(value || "Por confirmar")}</p>`;
   const detalle = d.items.filter(item => item.descripcion !== "Ajuste de cotización acordado" && !/^(Movilidad|Personal)/i.test(item.descripcion) && item.monto !== undefined).map(item => `${(item.cantidad ?? 1) > 1 ? `${item.cantidad} × ` : ""}${item.descripcion}${item.detalle ? ` (${item.detalle})` : ""}`).join(" / ");
-  const horario = d.delivery ? d.horarioEntrega : d.horarioInicio ? `${d.horarioInicio} - ${d.horarioRecojo}` : d.horarioEntrega.includes(" - ") || d.horarioRecojo.includes(" - ") ? `Entrega: ${d.horarioEntrega} / Recojo: ${d.horarioRecojo}` : `${d.horarioEntrega} - ${d.horarioRecojo}`;
+  const horario = d.fechasDetalle?.length ? "Según detalle por fecha" : d.delivery ? d.horarioEntrega : d.horarioInicio ? `${d.horarioInicio} - ${d.horarioRecojo}` : d.horarioEntrega.includes(" - ") || d.horarioRecojo.includes(" - ") ? `Entrega: ${d.horarioEntrega} / Recojo: ${d.horarioRecojo}` : `${d.horarioEntrega} - ${d.horarioRecojo}`;
   const condiciones = [
     "Se emite factura o boleta.",
-    `Se adelanta el 50% del monto para separar su pedido, el saldo será cancelado un día antes de la ${donofrio ? "entrega del carrito" : "instalación"}.`,
+    d.esCredito ? "Reserva a crédito: el saldo se cancelará según lo acordado con el cliente." : `Se adelanta el 50% del monto para separar su pedido, el saldo será cancelado un día antes de la ${donofrio ? "entrega del carrito" : "instalación"}.`,
     ...(d.delivery ? [] : ["Entrega y recojo se realizarán el mismo día."]),
     ...(donofrio && !d.delivery ? ["El servicio será de 3 horas en algunos distritos lejanos."] : []),
   ];
@@ -60,7 +63,9 @@ export function buildEventContractHtml(d: EventContractData): string {
     <p class="intro"><strong>${donofrio ? "Carritos de Helados D’Onofrio en cumpleaños, matrimonios, reuniones familiares, baby shower, activaciones para empresas y más." : "Juegos inflables, carritos de snacks y complementos para cumpleaños, reuniones familiares y eventos empresariales."}</strong></p>
     <p class="intro">Nos caracterizamos por nuestro buen servicio, seguridad y garantía.</p>
     <section class="body"><div class="data">
-      ${dato("Cliente:", d.clienteNombre)}${dato("DNI:", d.clienteDocumento)}${dato("Correo:", d.clienteEmail)}${dato("Dirección de entrega:", d.direccionEvento)}${dato("Fecha de evento:", d.fechaEvento)}${dato("Horario de evento:", horario)}${dato("Celular:", d.clienteTelefono)}${dato("Detalle del paquete:", detalle)}${dato("Movilidad:", d.movilidad)}${dato("Personal de reparto:", d.personal.length ? "Sí" : "No")}
+      ${dato("Cliente:", d.clienteNombre)}${dato("DNI:", d.clienteDocumento)}${dato("Correo:", d.clienteEmail)}${dato("Dirección de entrega:", d.direccionEvento)}${dato("Fecha de evento:", d.fechaEvento)}${dato("Horario de evento:", horario)}${dato("Celular:", d.clienteTelefono)}${dato("Detalle del paquete:", detalle)}${dato("Movilidad:", d.movilidad)}${dato("Personal de reparto:", d.fechasDetalle?.length ? "Según detalle por fecha" : d.personal.length ? "Sí" : "No")}
+      ${d.observaciones?.trim() ? '<p style="white-space:pre-line"><b>Observaciones:</b> '+e(d.observaciones)+'</p>' : ''}
+      ${d.fechasDetalle?.length ? '<div><b>Detalle por fecha:</b>'+d.fechasDetalle.map(f=>'<div style="margin:3mm 0;break-inside:avoid"><b>'+e(f.fecha)+'</b> — '+e(f.direccion)+'<br>Entrega: '+e(f.entrega)+(f.inicio?' / Inicio: '+e(f.inicio):'')+' / Recojo: '+e(f.recojo)+' / Total: '+money(f.total)+(f.personal?.length?'<p><b>Personal de reparto:</b> '+f.personal.map(e).join(', ')+'</p>':'')+(f.observaciones?'<p style="white-space:pre-line"><b>Observaciones:</b> '+e(f.observaciones)+'</p>':'')+'</div>').join('')+'</div>' : ''}
       <div class="amounts">${dato("Total:", money(d.total))}${dato("A cuenta:", money(d.abonado))}${dato("Saldo:", money(d.saldo))}</div>
     </div><div class="terms"><p>Términos y condiciones:</p><ul>${condiciones.map(c => `<li>${e(c)}</li>`).join("")}</ul></div></section>
     <footer class="footer"><img src="${e(d.footerUrl || "/images/contrato-donofrio-footer.png")}" alt="Surquillo: Calle Yarinacocha 106 Urb. Calera de la Merced. Barranco: Calle Manco Cápac 102 (Heladería). Cel: 991 980 588 - 994 400 670"></footer>

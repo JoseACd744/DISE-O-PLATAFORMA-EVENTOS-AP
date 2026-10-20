@@ -84,6 +84,8 @@ type EstadoPago = "pagado" | "parcial" | "pendiente";
 
 interface Ficha {
   es_cotizacion?: boolean;
+  es_credito?: boolean;
+  reserva_grupo_id?: string;
   presentacion?: string;
   movilidad_confirmada?: boolean;
   personalPrecios?: Record<number, number>;
@@ -134,6 +136,7 @@ interface Ficha {
 interface FichaFormData {
   ajusteMotivo: string;
   es_cotizacion: boolean;
+  es_credito: boolean;
   presentacion: string;
   movilidad_confirmada: boolean;
   personalPrecios: Record<number, number>;
@@ -178,11 +181,18 @@ interface FichaFormData {
   abonoInicialNumeroOperacion: string;
 }
 
+interface FechaReservaDraft {
+  uid: string; id: number | null; data: FichaFormData; precios: LineaRegistrada[];
+  registro: TrazabilidadCotizacion | null; mode: "auto" | "manual"; editada: boolean;
+  comprobante: string; comprobanteName: string; comprobantePath: string;
+}
+
 const FICHAS_PER_PAGE = 10;
 
 const getInitialFormData = (): FichaFormData => ({
   ajusteMotivo: "",
   es_cotizacion: false,
+  es_credito: false,
   presentacion: "carrito",
   movilidad_confirmada: false,
   personalPrecios: {},
@@ -833,6 +843,8 @@ function mapFichaApi(f: any): Ficha {
     fecha: f.fecha_evento || f.fecha || "",
     distrito: f.distrito || "",
     es_cotizacion: f.es_cotizacion === true,
+    es_credito: f.es_credito === true,
+    reserva_grupo_id: f.reserva_grupo_id || undefined,
     presentacion: f.presentacion || "carrito",
     movilidad_confirmada: f.movilidad_confirmada === true,
     transporte: ((f.transporte || f.tipo_transporte) === "delivery" ? "delivery" : "cumpleanos") as "cumpleanos" | "delivery",
@@ -955,6 +967,9 @@ export function FichasPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [contactDateRange, setContactDateRange] = useState<DateRange | undefined>(undefined);
   const createFichaLockRef = useRef(false);
+  const abonoSolicitudRef = useRef<string>(crypto.randomUUID());
+  const reservaSolicitudRef = useRef<string>(crypto.randomUUID());
+  const movilidadGuardadaRef = useRef<{ uid: string; distrito: string } | null>(null);
   // Inflables que se marcaron solos por venir incluidos en un paquete
   const autoInflablesRef = useRef<number[]>([]);
   const dateRefreshLockRef = useRef(false);
@@ -963,6 +978,9 @@ export function FichasPage() {
   const [preciosCotizados, setPreciosCotizados] = useState<LineaRegistrada[]>([]);
   const [cotizacionMode, setCotizacionMode] = useState<"auto" | "manual">("auto");
   const [editingFichaId, setEditingFichaId] = useState<number | null>(null);
+  const [fechasReserva, setFechasReserva] = useState<FechaReservaDraft[]>([]);
+  const [fechaActiva, setFechaActiva] = useState(0);
+  const [grupoReserva, setGrupoReserva] = useState<string | null>(null);
   const [tarifaCache, setTarifaCache] = useState<TarifaEnvio | null>(null);
   const [distritosOptions, setDistritosOptions] = useState<string[]>([]);
   // Advertencia de disponibilidad: inflable/carrito ocupado ese día o recurso sin stock suficiente
@@ -1320,7 +1338,7 @@ export function FichasPage() {
         setTarifaCache(tarifa);
         // Al editar se conserva la movilidad guardada, incluso si se ajustó a mano.
         const fichaOriginal = fichas.find((f) => f.id === editingFichaId);
-        if (!fichaOriginal || fichaOriginal.distrito !== formData.distrito) {
+        if ((!fichaOriginal || fichaOriginal.distrito !== formData.distrito) && !(movilidadGuardadaRef.current?.uid === abonoSolicitudRef.current && movilidadGuardadaRef.current.distrito === formData.distrito)) {
           setFormData((prev) => actualizarMovilidad(prev, { costo_envio: getCostoFromTarifa(tarifa, prev.transporte) }));
         }
       })
@@ -1520,16 +1538,35 @@ export function FichasPage() {
     }
   };
 
+  const prepararDocumentoReserva = (ficha: Ficha) => {
+    const fechas = ficha.reserva_grupo_id ? fichas.filter(f => f.brand === ficha.brand && f.reserva_grupo_id === ficha.reserva_grupo_id).sort((a,b) => a.fecha_evento.localeCompare(b.fecha_evento)) : [ficha];
+    const lineas: LineaCotizacion[] = [];
+    for (const fecha of fechas) {
+      const propias = construirLineas(origenDesdeFicha(fecha), fecha.cotizacion_trazabilidad?.actual.lineas);
+      const diferencia = redondearDinero(fecha.cotizacion - propias.reduce((sum,l) => sum + l.total,0));
+      if (Math.abs(diferencia) >= 0.01 && !(fecha.cotizacion_trazabilidad?.actual.origen === "manual" && fecha.cotizacion_trazabilidad.actual.motivo.trim())) {
+        handleOpenEditModal(fecha); setFormError("El total guardado no coincide con los ítems de " + formatDate(fecha.fecha_evento) + ". Pulsa «Usar sugerido» y guarda, o indica el motivo real del ajuste."); return null;
+      }
+      if (fechas.length > 1 && Math.abs(diferencia) >= 0.01) propias.push({ ...SIN_DESCUENTO, key: "ajuste-"+fecha.id, grupo:"Producto", descripcion:"Ajuste: "+fecha.cotizacion_trazabilidad!.actual.motivo, cantidad:1, precioUnitario:diferencia, subtotal:diferencia, descuentoMonto:0, total:diferencia, editable:false, ref:{tipo:"producto"} });
+      lineas.push(...propias.map(l => fechas.length > 1 ? { ...l, key: fecha.id+"-"+l.key, descripcion: formatDate(fecha.fecha_evento)+" · "+l.descripcion } : l));
+    }
+    const cotizacion = fechas.reduce((sum,f)=>sum+f.cotizacion,0);
+    const total = fechas.reduce((sum,f)=>sum+getTotal(f),0);
+    const resumen: Ficha = fechas.length === 1 ? ficha : { ...ficha, cotizacion, descuento:cotizacion ? (1-total/cotizacion)*100 : 0, abonos:fechas.flatMap(f=>f.abonos), comentarios:"" };
+    const detalleHtml = fechas.length > 1 ? '<section style="margin:16px 0;font-size:12px;line-height:1.5"><strong>DETALLE POR FECHA</strong>'+fechas.map(f=>{
+      const operativa=prepararFichaOperativa(f,{paquetes:contextPaquetes,carritos,inflables,personal:personales},[]);
+      return '<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;break-inside:avoid"><strong>'+escapeHtml(formatDate(f.fecha_evento))+'</strong> · '+escapeHtml([f.distrito,f.direccion].filter(Boolean).join(' — ')||'Dirección por confirmar')+'<br>Entrega: '+escapeHtml(operativa.entrega)+(operativa.inicio?' · Inicio: '+escapeHtml(operativa.inicio):'')+' · Recojo: '+escapeHtml(operativa.recojo)+' · Total: '+formatMoney(getTotal(f))+(f.comentarios?'<div style="white-space:pre-line"><strong>Observaciones:</strong> '+escapeHtml(f.comentarios)+'</div>':'')+'</div>';
+    }).join('')+'</section>' : '';
+    const observacionesHtml = fechas.length === 1 && ficha.comentarios?.trim() ? '<section style="margin:16px 0;white-space:pre-line;overflow-wrap:anywhere"><strong>Observaciones:</strong> '+escapeHtml(ficha.comentarios)+'</section>' : '';
+    return { fechas, ficha:resumen, lineas, detalleHtml, observacionesHtml };
+  };
+
   const handleGenerarProforma = (ficha: Ficha) => {
+    const reserva = prepararDocumentoReserva(ficha); if (!reserva) return;
+    ficha = reserva.ficha;
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
-    const lineasFicha = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas);
-    const diferencia = redondearDinero(ficha.cotizacion - lineasFicha.reduce((sum, l) => sum + l.total, 0));
-    if (Math.abs(diferencia) >= 0.01 && !(ficha.cotizacion_trazabilidad?.actual.origen === "manual" && ficha.cotizacion_trazabilidad.actual.motivo.trim())) {
-      handleOpenEditModal(ficha);
-      setFormError("El total guardado no coincide con los ítems. Pulsa «Usar sugerido» y guarda, o indica un motivo real para conservar el ajuste antes de generar la proforma.");
-      return;
-    }
+    const lineasFicha = reserva.lineas;
     const valorVenta = ficha.aplica_igv ? total / (1 + IGV_RATE) : total;
     const igvMonto = total - valorVenta;
     // Valor de lista y descuento se calculan contra el total real para que la resta
@@ -1609,7 +1646,7 @@ export function FichasPage() {
       const bloqueStaff = [
         personalDetalle.length > 0 ? `Personal de staff: ${personalDetalle.join(", ")}` : "Personal de staff: 1 PERSONAL",
         "Incluye instalacion y desmontaje",
-        ficha.comentarios ? `Observacion: ${ficha.comentarios}` : "Precio incluye IGV",
+        "Precio incluye IGV",
       ].join("<br/>");
 
       filasJugueton.push({
@@ -1938,10 +1975,11 @@ export function FichasPage() {
               </div>
             </section>
 
+            ${reserva.detalleHtml}${reserva.observacionesHtml}
             <section class="legal">
               <p>Esta cotización tiene una validez de 30 días. Después de este tiempo deberá solicitar una nueva cotización y estará sujeta a variación de precios.</p>
               <p>Se emiten factura o boleta según la solicitud del cliente al momento de la reserva.</p>
-              <p class="highlight">Puedes reservar con el 50% del monto total y la diferencia un día antes de tu evento, o con el 100% si así lo prefieres.</p>
+              <p class="highlight">${ficha.es_credito ? "Reserva a crédito: el saldo se cancelará según lo acordado con el cliente." : "Puedes reservar con el 50% del monto total y la diferencia un día antes de tu evento, o con el 100% si así lo prefieres."}</p>
             </section>
 
             <section class="payments">
@@ -1993,16 +2031,7 @@ export function FichasPage() {
             destacado: false,
           }]
         : []),
-      ...(ficha.comentarios
-        ? [{
-            cantidad: 1,
-            descripcion: ficha.comentarios,
-            contenidoStr: undefined,
-            pu: 0,
-            total: 0,
-            destacado: false,
-          }]
-        : []),
+
     ];
 
     const filasTablaDonofrio = filasDonofrio
@@ -2297,10 +2326,11 @@ export function FichasPage() {
               </tbody>
             </table>
 
+            ${reserva.detalleHtml}${reserva.observacionesHtml}
             <section class="legal">
               <div>Se emiten factura o boleta segun la solicitud del cliente al momento de la reserva.</div>
-              <div>Forma de pago: para separar el pedido puede ser con el 100% o un adelanto del 50% del monto total.</div>
-              <div>El saldo restante debera ser cancelado a mas tardar al momento de la entrega.</div>
+              <div>${ficha.es_credito ? "Reserva a crédito: el saldo se cancelará según lo acordado con el cliente." : "Forma de pago: para separar el pedido puede ser con el 100% o un adelanto del 50% del monto total."}</div>
+              <div>${ficha.es_credito ? "" : "El saldo restante debera ser cancelado a mas tardar al momento de la entrega."}</div>
             </section>
 
             <section class="footer-info">
@@ -2342,6 +2372,9 @@ export function FichasPage() {
       notify.aviso("Espera a que termine de cargar el catálogo para generar el contrato completo.");
       return;
     }
+    const reserva = prepararDocumentoReserva(ficha); if (!reserva) return;
+    if (reserva.fechas.some(f => f.es_cotizacion)) { notify.aviso("Confirma todas las fechas de la reserva antes de generar el contrato."); return; }
+    ficha = reserva.ficha;
     const cliente = clients.find((item) => String(item.id) === String(ficha.cliente_id));
     const total = getTotal(ficha);
     const abonado = getTotalAbonado(ficha);
@@ -2356,7 +2389,7 @@ export function FichasPage() {
       Personal: "",
     };
 
-    const items: EventContractItem[] = construirLineas(origenDesdeFicha(ficha), ficha.cotizacion_trazabilidad?.actual.lineas).map((linea) => ({
+    const items: EventContractItem[] = reserva.lineas.map((linea) => ({
       descripcion: etiquetaContrato[linea.grupo]
         + linea.descripcion
         + (linea.incluidoEnPaquete ? " (incluido en el paquete)" : "")
@@ -2384,15 +2417,21 @@ export function FichasPage() {
       clienteDocumento: cliente?.dni_ruc || "",
       clienteEmail: cliente?.email || "",
       clienteTelefono: ficha.cliente_celular || cliente?.telefono || "",
-      fechaEvento: formatDate(ficha.fecha_evento || ficha.fecha),
-      direccionEvento,
+      fechaEvento: reserva.fechas.map(f => formatDate(f.fecha_evento || f.fecha)).join(" / "),
+      direccionEvento: reserva.fechas.length > 1 ? "Según detalle por fecha" : direccionEvento,
       horarioEntrega: operativa.entrega,
       horarioInicio: operativa.inicio,
       horarioRecojo: operativa.recojo,
       delivery: ficha.transporte === "delivery",
-      movilidad: (ficha.costo_envio ?? 0) > 0 ? `Sí${(ficha.dias_movilidad ?? 1) > 1 ? ` (${ficha.dias_movilidad} fechas)` : ""}` : "Sin cargo registrado",
+      movilidad: reserva.fechas.length > 1 ? "Según detalle por fecha" : (ficha.costo_envio ?? 0) > 0 ? `Sí${(ficha.dias_movilidad ?? 1) > 1 ? ` (${ficha.dias_movilidad} fechas)` : ""}` : "Sin cargo registrado",
       personal: operativa.personal,
       items,
+      esCredito: ficha.es_credito,
+      observaciones: ficha.comentarios,
+      fechasDetalle: reserva.fechas.length > 1 ? reserva.fechas.map(f => {
+        const op = prepararFichaOperativa(f, { paquetes:contextPaquetes,carritos,inflables,personal:personales }, []);
+        return { fecha:formatDate(f.fecha_evento), direccion:[f.distrito,f.direccion].filter(Boolean).join(" — "), entrega:op.entrega, inicio:op.inicio, recojo:op.recojo, personal:op.personal, observaciones:f.comentarios, total:getTotal(f) };
+      }) : undefined,
       total,
       abonado,
       saldo,
@@ -2422,6 +2461,7 @@ export function FichasPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === "distrito") movilidadGuardadaRef.current = null;
     if (name === "cotizacion") {
       setCotizacionEditada(true);
       setCotizacionMode("manual");
@@ -2822,15 +2862,11 @@ export function FichasPage() {
     setPreviewComprobanteUrl(null);
   };
 
-  const handleOpenEditModal = (ficha: Ficha) => {
-    setRegistroCotizacion(ficha.cotizacion_trazabilidad ?? null);
-    setPreciosCotizados(ficha.cotizacion_trazabilidad?.actual.lineas ?? registrarLineas(construirLineas(origenDesdeFicha(ficha))));
-    setCotizacionEditada(false);
-    autoInflablesRef.current = [];
-    setFormDataState({
+  const formularioDesdeFicha = (ficha: Ficha, conAbono = false): FichaFormData => ({
       ajusteMotivo: ficha.cotizacion_trazabilidad?.actual.motivo ?? "",
       personalPrecios: ficha.personalPrecios ?? {},
-      es_cotizacion: ficha.es_cotizacion === true,
+      es_cotizacion: conAbono ? false : ficha.es_cotizacion === true,
+      es_credito: ficha.es_credito === true,
       presentacion: ficha.presentacion || "carrito",
       movilidad_confirmada: ficha.movilidad_confirmada === true,
       entregaEnRango: Boolean(ficha.hora_entrega_fin),
@@ -2871,18 +2907,75 @@ export function FichasPage() {
         ? ficha.recursos!.map(r => ({ recursoId: r.recurso_id, cantidad: r.cantidad, descuentoTipo: r.descuentoTipo, descuentoValor: r.descuentoValor }))
         : [{ recursoId: 0, cantidad: 1, ...SIN_DESCUENTO }],
       aplicaIgv: ficha.aplica_igv === true,
-      registrarAbonoInicial: false,
+      registrarAbonoInicial: conAbono,
       abonoInicialFecha: getLocalDateString(),
       abonoInicialMonto: 0,
       abonoInicialMedio: "Transferencia",
       abonoInicialNumeroOperacion: "",
     });
+
+  const handleOpenEditModal = (ficha: Ficha, conAbono = false) => {
+    abonoSolicitudRef.current = crypto.randomUUID();
+    setRegistroCotizacion(ficha.cotizacion_trazabilidad ?? null);
+    setPreciosCotizados(ficha.cotizacion_trazabilidad?.actual.lineas ?? registrarLineas(construirLineas(origenDesdeFicha(ficha))));
+    setCotizacionEditada(false);
+    autoInflablesRef.current = [];
+    setFormDataState(formularioDesdeFicha(ficha, conAbono));
+    const miembros = ficha.reserva_grupo_id ? fichas.filter(f => f.brand === ficha.brand && f.reserva_grupo_id === ficha.reserva_grupo_id).sort((a,b) => a.fecha_evento.localeCompare(b.fecha_evento)) : [ficha];
+    setFechasReserva(miembros.map(f => ({ uid: f.id === ficha.id ? abonoSolicitudRef.current : crypto.randomUUID(), id: f.id, data: formularioDesdeFicha(f, conAbono && f.id === ficha.id), precios: f.cotizacion_trazabilidad?.actual.lineas ?? registrarLineas(construirLineas(origenDesdeFicha(f))), registro: f.cotizacion_trazabilidad ?? null, mode: "manual", editada: false, comprobante: "", comprobanteName: "", comprobantePath: "" })));
+    setFechaActiva(Math.max(0, miembros.findIndex(f => f.id === ficha.id)));
+    setGrupoReserva(ficha.reserva_grupo_id || null);
+    reservaSolicitudRef.current = crypto.randomUUID();
     setCotizacionMode("manual");
     setEditingFichaId(ficha.id);
     resetAbonoInicialComprobante();
     setFormError("");
     closeFichaDetail();
     setShowAddModal(true);
+  };
+
+  const capturarFecha = (): FechaReservaDraft => ({ uid: abonoSolicitudRef.current, id: editingFichaId, data: structuredClone(formData), precios: preciosCotizados, registro: registroCotizacion, mode: cotizacionMode, editada: cotizacionEditada, comprobante: abonoInicialComprobante, comprobanteName: abonoInicialComprobanteName, comprobantePath: abonoInicialComprobantePath });
+  const fechasActuales = (): FechaReservaDraft[] => {
+    const drafts = fechasReserva.length ? [...fechasReserva] : [capturarFecha()];
+    drafts[fechaActiva] = capturarFecha();
+    return drafts;
+  };
+  const mostrarFecha = (draft: FechaReservaDraft, index: number) => {
+    movilidadGuardadaRef.current = { uid: draft.uid, distrito: draft.data.distrito };
+    setFechaActiva(index); setEditingFichaId(draft.id); setFormDataState({ ...draft.data, es_cotizacion: formData.es_cotizacion, es_credito: formData.es_credito, cliente_id: formData.cliente_id, cliente_nombre: formData.cliente_nombre, cliente_celular: formData.cliente_celular });
+    setPreciosCotizados(draft.precios); setRegistroCotizacion(draft.registro); setCotizacionMode(draft.mode); setCotizacionEditada(draft.editada);
+    abonoSolicitudRef.current = draft.uid; autoInflablesRef.current = [];
+    setAbonoInicialComprobante(draft.comprobante); setAbonoInicialComprobanteName(draft.comprobanteName); setAbonoInicialComprobantePath(draft.comprobantePath);
+    setFormError("");
+  };
+  const cambiarFechaReserva = (index: number) => { const drafts = fechasActuales(); setFechasReserva(drafts); mostrarFecha(drafts[index], index); };
+  const agregarFechaReserva = () => {
+    const drafts = fechasActuales(); if (drafts.length >= 31) return;
+    const data = structuredClone(formData); const date = new Date(data.fecha_evento + "T12:00:00");
+    if (Number.isNaN(date.getTime())) { setFormError("Elige una fecha válida antes de agregar otra."); return; }
+    const ocupadas = new Set(drafts.map(d => d.data.fecha_evento));
+    do { date.setDate(date.getDate() + 1); data.fecha_evento = getLocalDateString(date); } while (ocupadas.has(data.fecha_evento));
+    data.dias_movilidad = 1; data.registrarAbonoInicial = false; data.abonoInicialMonto = 0;
+    const anteriores = construirLineas(origenDesdeFormulario(formData), preciosCotizados);
+    const nuevas = construirLineas(origenDesdeFormulario(data), preciosCotizados);
+    data.cotizacion = actualizarTotalPorLineas(formData.cotizacion, anteriores, nuevas, cotizacionEditada || Boolean(data.ajusteMotivo.trim()));
+    const next: FechaReservaDraft = { ...capturarFecha(), uid: crypto.randomUUID(), id: null, data, registro: null, comprobante: "", comprobanteName: "", comprobantePath: "" };
+    drafts.push(next); setFechasReserva(drafts); mostrarFecha(next, drafts.length - 1);
+  };
+  const quitarFechaReserva = async () => {
+    const drafts = fechasActuales(); if (editingFichaId !== null || drafts.length < 2) return;
+    if (abonoInicialComprobantePath) { try { await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path: abonoInicialComprobantePath }) }); } catch { setFormError("No se pudo eliminar el comprobante; vuelve a intentar."); return; } }
+    drafts.splice(fechaActiva, 1); const index = Math.max(0, fechaActiva - 1); setFechasReserva(drafts); mostrarFecha(drafts[index], index);
+  };
+
+  const iniciarRegistroAbono = (ficha: Ficha) => {
+    if (ficha.es_cotizacion) {
+      handleOpenEditModal(ficha, true);
+      return;
+    }
+    setAbonoTargetFicha(ficha);
+    setEditingAbono(null);
+    setShowAbonoModal(true);
   };
 
   const handleDeleteFicha = async (ficha: Ficha) => {
@@ -3028,7 +3121,7 @@ export function FichasPage() {
     setFormError("");
 
     const montoAbonoInicial = toMoneyNumber(formData.abonoInicialMonto);
-    const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100));
+    const totalAPagar = Math.max(0, Number(formData.cotizacion) * (1 - toMoneyNumber(formData.descuento) / 100) - (fichas.find(f => f.id === editingFichaId)?.abonos.reduce((sum, a) => sum + a.monto, 0) ?? 0));
     if (!formData.es_cotizacion && formData.registrarAbonoInicial && (montoAbonoInicial <= 0 || montoAbonoInicial > totalAPagar)) {
       setFormError(`El abono inicial debe ser mayor a S/ 0.00 y no superar el total a pagar (${formatMoney(totalAPagar)}).`);
       return;
@@ -3037,63 +3130,80 @@ export function FichasPage() {
     createFichaLockRef.current = true;
     setIsSaving(true);
 
-    const carritoIdsPayload = formData.transporte === "delivery" ? [] : formData.carritoIds.filter((carritoId) => carritoId > 0);
-    const inflableIdsPayload = formData.transporte === "delivery" ? [] : brand === "jugueton" ? formData.inflableIds : [];
+    const drafts = fechasActuales();
+    const payloadParaFecha = (draft: FechaReservaDraft) => {
+      const datos = { ...draft.data, es_cotizacion: formData.es_cotizacion, es_credito: formData.es_credito, cliente_id: formData.cliente_id, cliente_nombre: formData.cliente_nombre, cliente_celular: formData.cliente_celular };
+      const lineasFecha = construirLineas(origenDesdeFormulario(datos), draft.precios);
+      const baseFecha = redondearDinero(lineasFecha.reduce((sum, l) => sum + l.total, 0));
+      const ajusteFecha = datos.cotizacion - baseFecha;
+    const carritoIdsPayload = datos.transporte === "delivery" ? [] : datos.carritoIds.filter((carritoId) => carritoId > 0);
+    const inflableIdsPayload = datos.transporte === "delivery" ? [] : brand === "jugueton" ? datos.inflableIds : [];
 
-    const payload = {
-      es_cotizacion: formData.es_cotizacion,
-      presentacion: formData.presentacion,
-      movilidad_confirmada: formData.movilidad_confirmada,
-      fecha: formData.fecha_evento,
-      fecha_evento: formData.fecha_evento,
-      fecha_reserva: formData.fecha_reserva,
-      distrito: formData.distrito,
-      transporte: formData.transporte,
-      tipo_evento: formData.tipoEvento,
-      titulo: formData.titulo || null,
-      direccion: formData.direccion,
-      referencia: formData.referencia,
-      hora_entrega: formData.hora_entrega || null,
-      hora_entrega_fin: formData.hora_entrega_fin || null,
-      hora_recojo: formData.transporte === "delivery" ? null : (formData.hora_recojo || null),
-      hora_recojo_fin: brand === "jugueton" || formData.transporte === "delivery" ? null : (formData.hora_recojo_fin || null),
-      comentarios: formData.comentarios,
-      cliente_id: formData.cliente_id || null,
-      cliente_nombre: formData.cliente_nombre,
-      cliente_celular: formData.cliente_celular,
-      contacto_nombre: formData.contacto_nombre,
-      contacto_celular: formData.contacto_celular,
-      cotizacion: Number(formData.cotizacion),
+    return {
+      ...(draft.id !== null ? { id: draft.id } : {}),
+      es_cotizacion: datos.es_cotizacion,
+      es_credito: !datos.es_cotizacion && datos.es_credito,
+      ...(!datos.es_cotizacion && datos.registrarAbonoInicial ? { abono_inicial: {
+        solicitud_id: draft.uid,
+        fecha: datos.abonoInicialFecha, monto: toMoneyNumber(datos.abonoInicialMonto),
+        numero_operacion: datos.abonoInicialNumeroOperacion.trim() || null,
+        comprobante_url: draft.comprobante || null, medio: datos.abonoInicialMedio,
+      }} : {}),
+      presentacion: datos.presentacion,
+      movilidad_confirmada: datos.movilidad_confirmada,
+      fecha: datos.fecha_evento,
+      fecha_evento: datos.fecha_evento,
+      fecha_reserva: datos.fecha_reserva,
+      distrito: datos.distrito,
+      transporte: datos.transporte,
+      tipo_evento: datos.tipoEvento,
+      titulo: datos.titulo || null,
+      direccion: datos.direccion,
+      referencia: datos.referencia,
+      hora_entrega: datos.hora_entrega || null,
+      hora_entrega_fin: datos.hora_entrega_fin || null,
+      hora_recojo: datos.transporte === "delivery" ? null : (datos.hora_recojo || null),
+      hora_recojo_fin: brand === "jugueton" || datos.transporte === "delivery" ? null : (datos.hora_recojo_fin || null),
+      comentarios: datos.comentarios,
+      cliente_id: datos.cliente_id || null,
+      cliente_nombre: datos.cliente_nombre,
+      cliente_celular: datos.cliente_celular,
+      contacto_nombre: datos.contacto_nombre,
+      contacto_celular: datos.contacto_celular,
+      cotizacion: Number(datos.cotizacion),
       cotizacion_registro: {
-        origen: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "calculado"
-          : cotizacionEditada || formData.ajusteMotivo.trim() ? "manual"
+        origen: Math.abs(ajusteFecha) < 0.01 ? "calculado"
+          : draft.editada || datos.ajusteMotivo.trim() ? "manual"
             : "sin_registro",
-        motivo: Math.abs(resumenFormulario.ajusteManual) < 0.01 ? "" : formData.ajusteMotivo.trim(),
-        base: redondearDinero(resumenFormulario.totalLineas),
-        lineas: registrarLineas(lineasFormulario),
+        motivo: Math.abs(ajusteFecha) < 0.01 ? "" : datos.ajusteMotivo.trim(),
+        base: redondearDinero(baseFecha),
+        lineas: registrarLineas(lineasFecha),
       },
-      descuento: toMoneyNumber(formData.descuento),
-      costo_envio: toMoneyNumber(formData.costo_envio),
-      dias_movilidad: formData.dias_movilidad,
-      descuento_movilidad: toMoneyNumber(formData.descuento_movilidad),
-      aplica_igv: formData.aplicaIgv,
+      descuento: toMoneyNumber(datos.descuento),
+      costo_envio: toMoneyNumber(datos.costo_envio),
+      dias_movilidad: datos.dias_movilidad,
+      descuento_movilidad: toMoneyNumber(datos.descuento_movilidad),
+      aplica_igv: datos.aplicaIgv,
       brand,
       created_by: getAuthUser()?.id,
-      paquetes: formData.paquetes.filter(p => p.paqueteId > 0),
-      productosSueltos: formData.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
+      paquetes: datos.paquetes.filter(p => p.paqueteId > 0),
+      productosSueltos: datos.productosSueltos.filter(p => p.productoNombre && p.cantidad > 0),
       carritoIds: carritoIdsPayload,
       carritosDescuentos: carritoIdsPayload.map((carritoId) => ({
         carritoId,
-        ...(formData.carritosDescuentos[carritoId] ?? SIN_DESCUENTO),
+        ...(datos.carritosDescuentos[carritoId] ?? SIN_DESCUENTO),
       })),
       inflableIds: inflableIdsPayload,
       inflablesDescuentos: inflableIdsPayload.map((inflableId) => ({
         inflableId,
-        ...(formData.inflablesDescuentos[inflableId] ?? SIN_DESCUENTO),
+        ...(datos.inflablesDescuentos[inflableId] ?? SIN_DESCUENTO),
       })),
-      personalIds: formData.transporte === "delivery" ? [] : formData.personalIds.filter((personalId) => personalId > 0),
-      recursos: formData.transporte === "delivery" ? [] : formData.recursos.filter((recurso) => recurso.recursoId > 0),
+      personalIds: datos.transporte === "delivery" ? [] : datos.personalIds.filter((personalId) => personalId > 0),
+      recursos: datos.transporte === "delivery" ? [] : datos.recursos.filter((recurso) => recurso.recursoId > 0),
     };
+    };
+    const payload = payloadParaFecha(capturarFecha());
+
 
     // Cierra el formulario y refresca la lista (si el refresco falla, lo guardado igual quedó)
     const cerrarTrasGuardar = async () => {
@@ -3109,43 +3219,21 @@ export function FichasPage() {
     };
 
     try {
-      if (editingFichaId !== null) {
+      if (drafts.length > 1) {
+        await apiRequest("/fichas/reserva", { method: "POST", body: JSON.stringify({ brand, solicitud_id: reservaSolicitudRef.current, ...(grupoReserva ? { grupo_id: grupoReserva } : {}), fechas: drafts.map(payloadParaFecha) }) });
+        notify.ok(`Reserva guardada: ${drafts.length} fechas`);
+      } else if (editingFichaId !== null) {
         await apiRequest(`/fichas/${editingFichaId}`, { method: "PUT", body: JSON.stringify(payload) });
         notify.ok(`Ficha #${editingFichaId} actualizada`);
       } else {
-        const createdFicha = await apiRequest<{ id?: number; ficha?: { id?: number } }>("/fichas", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-        const fichaId = createdFicha?.id ?? createdFicha?.ficha?.id;
-
-        if (!formData.es_cotizacion && formData.registrarAbonoInicial) {
-          try {
-            if (!fichaId) throw new Error("");
-            await apiRequest(`/fichas/${fichaId}/abonos`, {
-              method: "POST",
-              body: JSON.stringify({
-                fecha: formData.abonoInicialFecha,
-                monto: montoAbonoInicial,
-                numero_operacion: formData.abonoInicialNumeroOperacion.trim() || null,
-                comprobante_url: abonoInicialComprobante || null,
-                medio: formData.abonoInicialMedio,
-              }),
-            });
-          } catch (errAbono) {
-            // La ficha ya se creó: se cierra el formulario para que un nuevo intento no la duplique
-            void cleanupAbonoInicialComprobante();
-            await cerrarTrasGuardar();
-            // Mensaje compuesto: qué se guardó, por qué falló el abono y qué hacer
-            notify.error(
-              `La ficha${fichaId ? ` #${fichaId}` : ""} se guardó, pero el abono inicial no se pudo registrar (${mensajeDeError(errAbono, "error desconocido").replace(/\.$/, "")}). Regístralo desde el detalle de la ficha.`
-            );
-            return;
-          }
-          notify.ok(`Ficha${fichaId ? ` #${fichaId}` : ""} creada con un abono de ${formatMoney(montoAbonoInicial)}`);
-        } else {
-          notify.ok(`Ficha${fichaId ? ` #${fichaId}` : ""} creada`);
-        }
+        // La ficha y el primer abono se guardan en una sola transacción.
+        // El identificador permite reintentar tras una respuesta perdida sin duplicarlos.
+        const createdFicha = payload.abono_inicial
+          ? (await apiRequest<{ fichas: Array<{ id: number }> }>("/fichas/reserva", {
+              method: "POST", body: JSON.stringify({ brand, solicitud_id: reservaSolicitudRef.current, fechas: [payload] }),
+            })).fichas[0]
+          : await apiRequest<{ id: number }>("/fichas", { method: "POST", body: JSON.stringify(payload) });
+        notify.ok(`Ficha #${createdFicha.id} creada${payload.abono_inicial ? " con abono registrado" : ""}`);
       }
 
       await cerrarTrasGuardar();
@@ -3179,7 +3267,10 @@ export function FichasPage() {
   };
 
   const handleCloseModal = () => {
-    void cleanupAbonoInicialComprobante();
+    if (isUploadingAbonoInicialComprobante) return;
+    const paths = [...new Set(fechasActuales().map(d => d.comprobantePath).filter(Boolean))];
+    paths.forEach(path => { void apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path }) }).catch(() => notify.aviso("No se pudo limpiar un comprobante temporal.")); });
+    setFechasReserva([]); setFechaActiva(0); setGrupoReserva(null);
     setShowAddModal(false);
     setFormData(getInitialFormData());
     setCotizacionMode("auto");
@@ -3451,7 +3542,7 @@ export function FichasPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <select value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)}
+            <select aria-label="Filtrar por distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)}
               className="flex-1 lg:flex-none px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm">
               {distritos.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
@@ -3462,7 +3553,7 @@ export function FichasPage() {
               <option value="evento_asc">Evento: fecha ascendente</option>
               <option value="evento_desc">Evento: fecha descendente</option>
             </select>
-            <button onClick={() => { autoInflablesRef.current = []; setRegistroCotizacion(null); setPreciosCotizados([]); setCotizacionEditada(false); setShowAddModal(true); setFormDataState(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); setFormError(""); }}
+            <button onClick={() => { movilidadGuardadaRef.current = null; setFechasReserva([]); setFechaActiva(0); setGrupoReserva(null); setEditingFichaId(null); autoInflablesRef.current = []; setRegistroCotizacion(null); setPreciosCotizados([]); setCotizacionEditada(false); setShowAddModal(true); setFormDataState(getInitialFormData()); setCotizacionMode("auto"); resetAbonoInicialComprobante(); abonoSolicitudRef.current = crypto.randomUUID(); reservaSolicitudRef.current = crypto.randomUUID(); setFormError(""); }}
               className="bg-brand-orange text-white px-6 py-3 rounded-lg hover:bg-brand-orange-hover transition-colors flex items-center gap-2 whitespace-nowrap text-sm">
               <Plus className="w-5 h-5" /> Nueva Ficha
             </button>
@@ -3522,6 +3613,8 @@ export function FichasPage() {
                     <TransporteBadge transporte={ficha.transporte} tipoEvento={ficha.tipo_evento} />
                     {ficha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
                     <EstadoPagoBadge estado={estado} />
+                    {ficha.reserva_grupo_id && fichas.filter(f => f.reserva_grupo_id === ficha.reserva_grupo_id).length > 1 && <span className="rounded-full bg-cyan-100 px-2 py-1 text-xs text-cyan-800">Reserva · {fichas.filter(f => f.reserva_grupo_id === ficha.reserva_grupo_id).length} fechas</span>}
+                    {ficha.es_credito && !ficha.es_cotizacion && <span className="rounded-full bg-purple-100 px-2 py-1 text-xs text-purple-700">A crédito</span>}
                     <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${brandMeta.badgeClass}`}>
                       <img src={brandMeta.logoUrl} alt={brandMeta.label} className={brandMeta.logoClass} />
                       {brandMeta.label}
@@ -3560,9 +3653,9 @@ export function FichasPage() {
                       <FileSignature className="w-5 h-5" />
                     </button>
                   {canEditFicha(ficha) && (
-                    <button disabled={ficha.es_cotizacion} onClick={() => { setAbonoTargetFicha(ficha); setEditingAbono(null); setShowAbonoModal(true); }}
+                    <button onClick={() => iniciarRegistroAbono(ficha)}
                       className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
-                      title="Registrar abono">
+                      title="Registrar abono" aria-label="Registrar abono">
                       <CreditCard className="w-5 h-5" />
                     </button>
                   )}
@@ -3786,7 +3879,7 @@ export function FichasPage() {
                   <h4 className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Resumen Financiero</h4>
                   {canEditFicha(selectedFicha) && (
                     <button
-                      disabled={selectedFicha.es_cotizacion} onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}
+                      onClick={() => iniciarRegistroAbono(selectedFicha)}
                       className="text-xs text-brand-orange hover:underline flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Registrar Abono
                     </button>
@@ -4074,7 +4167,7 @@ export function FichasPage() {
                   <Button variant="subtle" onClick={() => handleOpenEditModal(selectedFicha)}>
                     <Edit /> Editar
                   </Button>
-                  <Button variant="brand" disabled={selectedFicha.es_cotizacion} onClick={() => { setAbonoTargetFicha(selectedFicha); setEditingAbono(null); setShowAbonoModal(true); }}>
+                  <Button variant="brand" onClick={() => iniciarRegistroAbono(selectedFicha)}>
                     <CreditCard /> Registrar abono
                   </Button>
                 </div>
@@ -4122,6 +4215,16 @@ export function FichasPage() {
             </>
           }
         >
+            <div className="mb-4 rounded-lg border border-gray-200 p-3 dark:border-gray-600">
+              <p className="mb-2 text-sm font-medium">Fechas de la reserva</p>
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Fechas de la reserva">
+                {fechasActuales().map((d, i) => <button key={d.uid} type="button" role="tab" aria-selected={i === fechaActiva} disabled={isSaving || isUploadingAbonoInicialComprobante} onClick={() => cambiarFechaReserva(i)} className={`rounded-lg border px-3 py-2 text-sm ${i === fechaActiva ? "border-brand-orange bg-brand-orange/10 text-brand-orange" : "border-gray-200 dark:border-gray-600"}`}>Fecha {i + 1} · {formatDate(d.data.fecha_evento)}</button>)}
+                <Button type="button" variant="subtle" disabled={isSaving || isUploadingAbonoInicialComprobante || fechasReserva.length >= 31} onClick={agregarFechaReserva}>Agregar fecha</Button>
+                {fechasReserva.length > 1 && editingFichaId === null && <Button type="button" variant="ghost" disabled={isSaving || isUploadingAbonoInicialComprobante} onClick={() => void quitarFechaReserva()}>Quitar esta fecha</Button>}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">Cada fecha tiene su propio pedido, dirección, horarios, movilidad, precio y abono. El cliente, el crédito y el estado de confirmación son comunes.</p>
+              {fechasReserva.length > 1 && <p className="mt-2 text-sm font-medium">Total de la reserva: {formatMoney(fechasActuales().reduce((sum,d) => sum + d.data.cotizacion * (1-d.data.descuento/100), 0))}</p>}
+            </div>
             <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className={etiqueta}>Documento</label>
@@ -4134,6 +4237,15 @@ export function FichasPage() {
                 </div>
                 {formData.es_cotizacion && <p className="mt-2 text-xs text-gray-500">Puedes enviar la proforma con el distrito y completar dirección, horarios y contacto después. Para confirmar, edítala y elige «Ficha confirmada». No reserva equipos, recursos ni personal hasta confirmarse.</p>}
               </div>
+              {!formData.es_cotizacion && editingFichaId !== null && fichas.find(f => f.id === editingFichaId)?.es_cotizacion && (
+                <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">Completa los datos de la reserva. Al guardar se confirmará la proforma y se registrará el abono si lo seleccionas. Si prefieres confirmar sin abono, puedes marcar «Reserva a crédito».</p>
+              )}
+              {!formData.es_cotizacion && (
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-600">
+                  <input type="checkbox" checked={formData.es_credito} onChange={e => setFormData(prev => ({ ...prev, es_credito: e.target.checked }))} />
+                  Reserva a crédito
+                </label>
+              )}
               {/* Título — encabezado principal de la ficha */}
               <div>
                 <label className={etiqueta}>Título de la Ficha</label>
@@ -4843,7 +4955,7 @@ export function FichasPage() {
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Paquetes, productos, carritos, inflables, recursos y transporte se suman automáticamente.</div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-700/50">Si editas la cotización manualmente, puedes volver al cálculo con "Usar sugerido".</div>
                 </div>
-                {editingFichaId === null && !formData.es_cotizacion && (
+                {!formData.es_cotizacion && (
                   <div className="mt-5 rounded-lg border border-green-200 bg-green-50/60 p-4 dark:border-green-900/60 dark:bg-green-900/10">
                     <label className="flex cursor-pointer items-center gap-3 text-sm text-gray-800 dark:text-gray-200">
                       <input
@@ -4852,7 +4964,7 @@ export function FichasPage() {
                         onChange={(event) => setFormData((prev) => ({ ...prev, registrarAbonoInicial: event.target.checked }))}
                         className="h-4 w-4 rounded border-gray-300 text-brand-orange focus:ring-brand-orange"
                       />
-                      <span className="font-medium">Registrar abono inicial</span>
+                      <span className="font-medium">{editingFichaId === null ? "Registrar abono inicial" : "Registrar abono al guardar"}</span>
                     </label>
 
                     {formData.registrarAbonoInicial && (

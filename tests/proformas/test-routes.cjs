@@ -14,7 +14,7 @@ const adapter={query:async(sql,values)=>{
 const pool={...adapter,connect:async()=>adapter};
 const js=ts.transpileModule(fs.readFileSync(base+'/src/routes/fichas.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText;
 const moduleObject={exports:{}};
-vm.runInNewContext(js,{exports:moduleObject.exports,module:moduleObject,require:name=>name==='../db/pool'?{pool}:require(base+'/node_modules/'+name),console,Date,Map,Set});
+vm.runInNewContext(js,{exports:moduleObject.exports,module:moduleObject,require:name=>name==='../db/pool'?{pool}:name.startsWith('node:')?require(name):require(base+'/node_modules/'+name),console,Date,Map,Set});
 const router=moduleObject.exports.default;
 async function call(method,path,body={},params={},query={}) {
  const layer=router.stack.find(l=>l.route?.path===path && l.route.methods[method]);
@@ -76,5 +76,40 @@ assert.equal(olderClient.data.cotizacion_trazabilidad.actual.origen,'sin_registr
 assert.equal(olderClient.data.cotizacion_trazabilidad.actual.cotizacion,875);
 assert.equal(olderClient.data.cotizacion_trazabilidad.historial.length,3);
 console.log('Trazabilidad OK: ejemplo 805−427.50, motivo obligatorio, autor/fecha desde servidor, historial persistido sin duplicados, legado sin inventar origen y rechazo de desglose inválido.');
+
+const {randomUUID}=require('node:crypto');
+const initial=await call('post','/',{...quotation,recursos:[],carritoIds:[],distrito:'San Isidro'});
+const payment={solicitud_id:randomUUID(),fecha:'2026-10-19',monto:100,medio:'Yape'};
+const convert={...confirmed,recursos:[],carritoIds:[],distrito:'San Isidro',abono_inicial:payment,es_credito:true};
+const withPayment=await call('put','/:id',convert,{id:String(initial.data.id)});
+assert.equal(withPayment.status,200,JSON.stringify(withPayment.data));
+assert.equal(withPayment.data.es_cotizacion,false);assert.equal(withPayment.data.es_credito,true);
+assert.equal(Number((await db.query('SELECT sum(monto) total FROM abonos WHERE ficha_id=$1',[initial.data.id])).rows[0].total),100);
+assert.equal((await call('put','/:id',convert,{id:String(initial.data.id)})).status,200);
+assert.equal((await db.query('SELECT count(*)::int n FROM abonos WHERE ficha_id=$1',[initial.data.id])).rows[0].n,1);
+const failQuote=await call('post','/',{...quotation,recursos:[],carritoIds:[]});
+const failPayment=await call('put','/:id',{...convert,abono_inicial:{...payment,solicitud_id:randomUUID(),monto:201}},{id:String(failQuote.data.id)});
+assert.equal(failPayment.status,400,JSON.stringify(failPayment.data));
+assert.equal((await db.query('SELECT es_cotizacion FROM fichas WHERE id=$1',[failQuote.data.id])).rows[0].es_cotizacion,true);
+const credit=await call('put','/:id',{...convert,abono_inicial:null},{id:String(failQuote.data.id)});
+assert.equal(credit.status,200);assert.equal(credit.data.es_credito,true);
+assert.equal((await db.query('SELECT count(*)::int n FROM abonos WHERE ficha_id=$1',[failQuote.data.id])).rows[0].n,0);
+const baseCount=Number((await db.query('SELECT count(*) n FROM fichas')).rows[0].n);
+const groupBody={brand:'donofrio',solicitud_id:randomUUID(),fechas:[{...convert,fecha_evento:'2026-12-20',abono_inicial:{...payment,solicitud_id:randomUUID()}},{...convert,fecha_evento:'2026-12-21',abono_inicial:null}]};
+const group=await call('post','/reserva',groupBody);assert.equal(group.status,200,JSON.stringify(group.data));assert.equal(group.data.fichas.length,2);
+const repeat=await call('post','/reserva',groupBody);assert.equal(repeat.status,200);assert.deepEqual(repeat.data,JSON.parse(JSON.stringify(group.data)));
+assert.equal(Number((await db.query('SELECT count(*) n FROM fichas')).rows[0].n),baseCount+2);
+const conflictRepeat=await call('post','/reserva',{...groupBody,fechas:[{...groupBody.fechas[0],cotizacion:250},groupBody.fechas[1]]});assert.equal(conflictRepeat.status,409);
+const groupFail=await call('post','/reserva',{brand:'donofrio',solicitud_id:randomUUID(),fechas:[{...convert,fecha_evento:'2026-12-22',abono_inicial:{...payment,solicitud_id:randomUUID()}},{...convert,fecha_evento:'2026-12-23',abono_inicial:{...payment,solicitud_id:randomUUID(),monto:201}}]});
+assert.equal(groupFail.status,400,JSON.stringify(groupFail.data));
+assert.equal(Number((await db.query('SELECT count(*) n FROM fichas')).rows[0].n),baseCount+2);
+
+const groupEdit={brand:'donofrio',solicitud_id:randomUUID(),grupo_id:group.data.grupo_id,fechas:groupBody.fechas.map((f,i)=>({...f,id:group.data.fichas[i].id,abono_inicial:null,comentarios:'Fecha '+(i+1)}))};
+assert.equal((await call('post','/reserva',groupEdit)).status,200);
+const missingDate=await call('post','/reserva',{...groupEdit,solicitud_id:randomUUID(),fechas:groupEdit.fechas.slice(0,1)});assert.equal(missingDate.status,400);
+const duplicateDate=await call('post','/reserva',{...groupEdit,solicitud_id:randomUUID(),fechas:groupEdit.fechas.map(f=>({...f,fecha_evento:'2026-12-20'}))});assert.equal(duplicateDate.status,400);
+const changedPayment=await call('put','/:id',{...convert,abono_inicial:{...payment,fecha:'2026-10-18'}},{id:String(initial.data.id)});assert.equal(changedPayment.status,400);
+assert.equal((await db.query('SELECT comentarios FROM fichas WHERE id=$1',[group.data.fichas[1].id])).rows[0].comentarios,'Fecha 2');
+console.log('Confirmación + abono OK: San Isidro, crédito sin abono, persistencia de crédito, deduplicación al reintentar, sobrepago revierte confirmación; reservas atómicas de dos fechas y rollback completo.');
 await db.close();
 })().catch(e=>{console.error(e);process.exit(1)});
