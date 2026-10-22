@@ -18,6 +18,7 @@ export interface EventContractData {
   horarioInicio?: string;
   horarioRecojo: string;
   delivery: boolean;
+  variosDias?: boolean;
   movilidad: string;
   personal: string[];
   items: EventContractItem[];
@@ -48,7 +49,7 @@ export function buildEventContractHtml(d: EventContractData): string {
   const condiciones = [
     "Se emite factura o boleta.",
     d.esCredito ? "Reserva a crédito: el saldo se cancelará según lo acordado con el cliente." : `Se adelanta el 50% del monto para separar su pedido, el saldo será cancelado un día antes de la ${donofrio ? "entrega del carrito" : "instalación"}.`,
-    ...(d.delivery ? [] : ["Entrega y recojo se realizarán el mismo día."]),
+    ...(d.delivery ? [] : [d.variosDias ? "La entrega y el recojo se realizarán según las fechas y horarios indicados." : "Entrega y recojo se realizarán el mismo día."]),
     ...(donofrio && !d.delivery ? ["El servicio será de 3 horas en algunos distritos lejanos."] : []),
   ];
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contrato ${e(marca)} ${e(d.numero)}</title>

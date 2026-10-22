@@ -111,5 +111,25 @@ const duplicateDate=await call('post','/reserva',{...groupEdit,solicitud_id:rand
 const changedPayment=await call('put','/:id',{...convert,abono_inicial:{...payment,fecha:'2026-10-18'}},{id:String(initial.data.id)});assert.equal(changedPayment.status,400);
 assert.equal((await db.query('SELECT comentarios FROM fichas WHERE id=$1',[group.data.fichas[1].id])).rows[0].comentarios,'Fecha 2');
 console.log('Confirmación + abono OK: San Isidro, crédito sin abono, persistencia de crédito, deduplicación al reintentar, sobrepago revierte confirmación; reservas atómicas de dos fechas y rollback completo.');
+
+const multiDay={...confirmed,fecha_evento:'2027-02-01',fecha_evento_fin:'2027-02-04',recursos:[],carritoIds:[cid],cobro_evento:'por_dia'};
+const range=await call('post','/',multiDay);assert.equal(range.status,201,JSON.stringify(range.data));assert.equal(range.data.cobro_evento,'por_dia');assert.equal(new Date(range.data.fecha_evento_fin).toISOString().slice(0,10),'2027-02-04');
+for(const [ini,fin] of [['2027-01-31','2027-02-01'],['2027-02-02','2027-02-03'],['2027-02-04','2027-02-06']]) { const x=await call('post','/',{...multiDay,fecha_evento:ini,fecha_evento_fin:fin});assert.equal(x.status,409,JSON.stringify(x.data)); }
+const nextDay=await call('post','/',{...multiDay,fecha_evento:'2027-02-05',fecha_evento_fin:null});assert.equal(nextDay.status,201);
+const badRange=await call('post','/',{...multiDay,fecha_evento_fin:'2027-01-31'});assert.equal(badRange.status,400);
+const invalid=await call('post','/',{...multiDay,fecha_evento_fin:'2027-02-30'});assert.equal(invalid.status,400);
+const extend=await call('put','/:id',{fecha_evento_fin:'2027-02-05'},{id:String(range.data.id)});assert.equal(extend.status,409,JSON.stringify(extend.data));
+const afterRange=await call('get','/:id',{}, {id:String(range.data.id)});assert.equal(new Date(afterRange.data.fecha_evento_fin).toISOString().slice(0,10),'2027-02-04');
+const changeMode=await call('put','/:id',{cobro_evento:'una_vez'},{id:String(range.data.id)});assert.equal(changeMode.status,200);assert.equal(changeMode.data.cobro_evento,'una_vez');
+const removeRange=await call('put','/:id',{fecha_evento:'2027-02-06',fecha_evento_fin:null},{id:String(range.data.id)});assert.equal(removeRange.status,200,JSON.stringify(removeRange.data));assert.equal(removeRange.data.fecha_evento_fin,null);
+console.log('Intervalos OK: una ficha con inicio/fin y cobro elegido; conflictos al inicio, interior y fin inclusivo; día siguiente libre; fechas inválidas rechazadas; ampliar con conflicto revierte; modo y rango se editan/persisten.');
+
+const soporte=(await db.query("INSERT INTO personal(nombre,rol) VALUES('APOYO INTERVALO','apoyo') RETURNING id")).rows[0].id;
+const inflable=(await db.query('SELECT id FROM inflables ORDER BY id LIMIT 1')).rows[0].id;
+const staffed={...confirmed,carritoIds:[],recursos:[],personalIds:[soporte],inflableIds:[inflable],fecha_evento:'2027-03-10',fecha_evento_fin:'2027-03-12'};
+assert.equal((await call('post','/',staffed)).status,201);
+assert.equal((await call('post','/',{...staffed,fecha_evento:'2027-03-11',fecha_evento_fin:null,inflableIds:[]})).status,409);
+assert.equal((await call('post','/',{...staffed,fecha_evento:'2027-03-11',fecha_evento_fin:null,personalIds:[]})).status,409);
+console.log('Ocupación de intervalo OK también para personal de reparto e inflables durante los días intermedios.');
 await db.close();
 })().catch(e=>{console.error(e);process.exit(1)});

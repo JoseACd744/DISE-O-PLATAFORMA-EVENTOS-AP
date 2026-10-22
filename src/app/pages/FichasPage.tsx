@@ -1,3 +1,4 @@
+import { diasEvento, diasDelPeriodo, periodosSolapan } from "../lib/periodoEvento";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
 import { DayPicker, DateRange } from "react-day-picker";
@@ -91,6 +92,8 @@ interface Ficha {
   personalPrecios?: Record<number, number>;
   id: number;
   fecha_evento: string;
+  fecha_evento_fin?: string;
+  cobro_evento?: "una_vez" | "por_dia";
   fecha_reserva: string;
   fecha: string;
   distrito: string;
@@ -143,6 +146,8 @@ interface FichaFormData {
   entregaEnRango: boolean;
   recojoEnRango: boolean;
   fecha_evento: string;
+  fecha_evento_fin: string;
+  cobro_evento: "una_vez" | "por_dia";
   fecha_reserva: string;
   distrito: string;
   transporte: "cumpleanos" | "delivery";
@@ -199,6 +204,8 @@ const getInitialFormData = (): FichaFormData => ({
   entregaEnRango: true,
   recojoEnRango: true,
   fecha_evento: getLocalDateString(),
+  fecha_evento_fin: "",
+  cobro_evento: "una_vez",
   fecha_reserva: getLocalDateString(),
   distrito: "",
   transporte: "cumpleanos",
@@ -839,6 +846,8 @@ function mapFichaApi(f: any): Ficha {
     personalPrecios: Object.fromEntries((f.personal ?? []).map((p: any) => [Number(p.id), toMoneyNumber(p.precio_cotizado)])),
     id: f.id,
     fecha_evento: f.fecha_evento || f.fecha || "",
+    fecha_evento_fin: (f.fecha_evento_fin || "").slice(0,10),
+    cobro_evento: f.cobro_evento === "por_dia" ? "por_dia" : "una_vez",
     fecha_reserva: f.fecha_reserva || f.fecha || "",
     fecha: f.fecha_evento || f.fecha || "",
     distrito: f.distrito || "",
@@ -1070,7 +1079,7 @@ export function FichasPage() {
       // Verificar si tiene eventos en esa fecha específica
       const hasEventsOnDate = fichas.filter(f => !f.es_cotizacion).some(
         (f) => f.personalIds?.includes(personalId) &&
-        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+        periodosSolapan(eventDate, formData.fecha_evento_fin, f.fecha_evento || f.fecha, f.fecha_evento_fin)
       );
       return hasEventsOnDate ? "Ocupado" : formatEstadoPersonal(personales.find(p => p.id === personalId)?.estado || "disponible");
     }
@@ -1088,7 +1097,7 @@ export function FichasPage() {
       (f) =>
         f.id !== excludeId &&
         f.carritoIds?.includes(carritoId) &&
-        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+        periodosSolapan(eventDate, formData.fecha_evento_fin, f.fecha_evento || f.fecha, f.fecha_evento_fin)
     );
     return busyOnDate ? "Ocupado" : "Disponible";
   };
@@ -1104,22 +1113,13 @@ export function FichasPage() {
       (f) =>
         f.id !== excludeId &&
         f.inflableIds?.includes(inflableId) &&
-        (f.fecha_evento || f.fecha || "").split("T")[0] === eventDate.split("T")[0]
+        periodosSolapan(eventDate, formData.fecha_evento_fin, f.fecha_evento || f.fecha, f.fecha_evento_fin)
     );
     return busyOnDate ? "Ocupado" : "Disponible";
   };
 
   // Fechas en que un carrito ya está asignado (para el calendario)
-  const getFechasOcupadasCarrito = (carritoId: number): Date[] => {
-    return fichas
-      .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && f.carritoIds?.includes(carritoId))
-      .map((f) => {
-        const raw = (f.fecha_evento || f.fecha || "").split("T")[0];
-        const d = new Date(`${raw}T00:00:00`);
-        return isNaN(d.getTime()) ? null : d;
-      })
-      .filter((d): d is Date => d !== null);
-  };
+  const getFechasOcupadasCarrito = (carritoId: number): Date[] => fichas.filter(f=>!f.es_cotizacion && f.id !== editingFichaId && f.carritoIds?.includes(carritoId)).flatMap(f=>diasDelPeriodo(f.fecha_evento||f.fecha,f.fecha_evento_fin).map(day=>new Date(day+"T00:00:00")));
 
   const availableClients = useMemo(
     () => clients.filter((c) => c.status === "active"),
@@ -1139,6 +1139,7 @@ export function FichasPage() {
     }), guardadas);
 
   const origenDesdeFormulario = (form = formData): OrigenLineas => ({
+    diasEvento: diasEvento(form.fecha_evento, form.fecha_evento_fin), cobroEvento: form.cobro_evento,
     personal: form.transporte === "delivery" ? [] : form.personalIds.filter(id => id > 0).map(id => ({
       id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: form.personalPrecios[id] ?? personales.find(p => p.id === id)?.precio ?? 0,
     })),
@@ -1157,6 +1158,7 @@ export function FichasPage() {
   });
 
   const origenDesdeFicha = (ficha: Ficha): OrigenLineas => ({
+    diasEvento: diasEvento(ficha.fecha_evento, ficha.fecha_evento_fin), cobroEvento: ficha.cobro_evento,
     personal: (ficha.personalIds ?? []).map(id => ({ id, nombre: personales.find(p => p.id === id)?.nombre_completo || "", tipo: personales.find(p => p.id === id)?.tipo_reparto || "", precio: ficha.personalPrecios?.[id] ?? 0 })),
     brand: ficha.brand,
     paquetes: ficha.paquetes,
@@ -1397,7 +1399,8 @@ export function FichasPage() {
     const matchesRange = (fecha: string, range: DateRange | undefined) =>
       (!range?.from || fecha >= getLocalDateString(range.from)) &&
       (!range?.to || fecha <= getLocalDateString(range.to));
-    const matchesFecha = matchesRange((ficha.fecha_evento || ficha.fecha || "").slice(0, 10), dateRange);
+    const inicioFicha=(ficha.fecha_evento||ficha.fecha||"").slice(0,10), finFicha=(ficha.fecha_evento_fin||inicioFicha).slice(0,10);
+    const matchesFecha = (!dateRange?.from || finFicha >= getLocalDateString(dateRange.from)) && (!dateRange?.to || inicioFicha <= getLocalDateString(dateRange.to));
     const matchesFechaContacto = matchesRange((ficha.fecha_reserva || ficha.fecha || "").slice(0, 10), contactDateRange);
     return matchesSearch && matchesDistrito && matchesEstado && matchesBrand && matchesFecha && matchesFechaContacto;
   }).sort((a, b) => {
@@ -1491,6 +1494,8 @@ export function FichasPage() {
     return d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
   };
 
+  const formatPeriodo = (f: Pick<Ficha,"fecha_evento"|"fecha_evento_fin"|"fecha">) => formatDate(f.fecha_evento||f.fecha)+(f.fecha_evento_fin && f.fecha_evento_fin.slice(0,10)!==(f.fecha_evento||f.fecha).slice(0,10) ? " al "+formatDate(f.fecha_evento_fin) : "");
+
   const formatDiaSemana = (dateIso: string) => {
     if (!dateIso) return "";
     const raw = dateIso.includes("T") ? dateIso.slice(0, 10) : dateIso;
@@ -1545,19 +1550,19 @@ export function FichasPage() {
       const propias = construirLineas(origenDesdeFicha(fecha), fecha.cotizacion_trazabilidad?.actual.lineas);
       const diferencia = redondearDinero(fecha.cotizacion - propias.reduce((sum,l) => sum + l.total,0));
       if (Math.abs(diferencia) >= 0.01 && !(fecha.cotizacion_trazabilidad?.actual.origen === "manual" && fecha.cotizacion_trazabilidad.actual.motivo.trim())) {
-        handleOpenEditModal(fecha); setFormError("El total guardado no coincide con los ítems de " + formatDate(fecha.fecha_evento) + ". Pulsa «Usar sugerido» y guarda, o indica el motivo real del ajuste."); return null;
+        handleOpenEditModal(fecha); setFormError("El total guardado no coincide con los ítems de " + formatPeriodo(fecha) + ". Pulsa «Usar sugerido» y guarda, o indica el motivo real del ajuste."); return null;
       }
       if (fechas.length > 1 && Math.abs(diferencia) >= 0.01) propias.push({ ...SIN_DESCUENTO, key: "ajuste-"+fecha.id, grupo:"Producto", descripcion:"Ajuste: "+fecha.cotizacion_trazabilidad!.actual.motivo, cantidad:1, precioUnitario:diferencia, subtotal:diferencia, descuentoMonto:0, total:diferencia, editable:false, ref:{tipo:"producto"} });
-      lineas.push(...propias.map(l => fechas.length > 1 ? { ...l, key: fecha.id+"-"+l.key, descripcion: formatDate(fecha.fecha_evento)+" · "+l.descripcion } : l));
+      lineas.push(...propias.map(l => fechas.length > 1 ? { ...l, key: fecha.id+"-"+l.key, descripcion: formatPeriodo(fecha)+" · "+l.descripcion } : l));
     }
     const cotizacion = fechas.reduce((sum,f)=>sum+f.cotizacion,0);
     const total = fechas.reduce((sum,f)=>sum+getTotal(f),0);
     const resumen: Ficha = fechas.length === 1 ? ficha : { ...ficha, cotizacion, descuento:cotizacion ? (1-total/cotizacion)*100 : 0, abonos:fechas.flatMap(f=>f.abonos), comentarios:"" };
     const detalleHtml = fechas.length > 1 ? '<section style="margin:16px 0;font-size:12px;line-height:1.5"><strong>DETALLE POR FECHA</strong>'+fechas.map(f=>{
       const operativa=prepararFichaOperativa(f,{paquetes:contextPaquetes,carritos,inflables,personal:personales},[]);
-      return '<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;break-inside:avoid"><strong>'+escapeHtml(formatDate(f.fecha_evento))+'</strong> · '+escapeHtml([f.distrito,f.direccion].filter(Boolean).join(' — ')||'Dirección por confirmar')+'<br>Entrega: '+escapeHtml(operativa.entrega)+(operativa.inicio?' · Inicio: '+escapeHtml(operativa.inicio):'')+' · Recojo: '+escapeHtml(operativa.recojo)+' · Total: '+formatMoney(getTotal(f))+(f.comentarios?'<div style="white-space:pre-line"><strong>Observaciones:</strong> '+escapeHtml(f.comentarios)+'</div>':'')+'</div>';
+      return '<div style="margin-top:8px;padding-top:6px;border-top:1px solid #ddd;break-inside:avoid"><strong>'+escapeHtml(formatPeriodo(f))+'</strong> · '+escapeHtml([f.distrito,f.direccion].filter(Boolean).join(' — ')||'Dirección por confirmar')+'<br>Entrega: '+escapeHtml(operativa.entrega)+(operativa.inicio?' · Inicio: '+escapeHtml(operativa.inicio):'')+' · Recojo: '+escapeHtml(operativa.recojo)+' · Total: '+formatMoney(getTotal(f))+(f.comentarios?'<div style="white-space:pre-line"><strong>Observaciones:</strong> '+escapeHtml(f.comentarios)+'</div>':'')+'</div>';
     }).join('')+'</section>' : '';
-    const observacionesHtml = fechas.length === 1 && ficha.comentarios?.trim() ? '<section style="margin:16px 0;white-space:pre-line;overflow-wrap:anywhere"><strong>Observaciones:</strong> '+escapeHtml(ficha.comentarios)+'</section>' : '';
+    const observacionesHtml = (fechas.length === 1 && ficha.fecha_evento_fin ? '<section style="margin:12px 0"><strong>Periodo del evento:</strong> '+escapeHtml(formatPeriodo(ficha))+'</section>' : '') + (fechas.length === 1 && ficha.comentarios?.trim() ? '<section style="margin:16px 0;white-space:pre-line;overflow-wrap:anywhere"><strong>Observaciones:</strong> '+escapeHtml(ficha.comentarios)+'</section>' : '');
     return { fechas, ficha:resumen, lineas, detalleHtml, observacionesHtml };
   };
 
@@ -1618,7 +1623,7 @@ export function FichasPage() {
     if (ficha.brand === "jugueton") {
       const numeroCotizacion = String(ficha.id).padStart(4, "0");
       const eventDate = new Date(`${(ficha.fecha_evento || ficha.fecha || "").slice(0, 10)}T00:00:00`);
-      const fechaEventoTexto = Number.isNaN(eventDate.getTime())
+      const fechaEventoTexto = ficha.fecha_evento_fin ? formatPeriodo(ficha) : Number.isNaN(eventDate.getTime())
         ? (ficha.fecha_evento || ficha.fecha)
         : eventDate.toLocaleDateString("es-PE", { day: "numeric", month: "long", year: "numeric" })
             .replace(/(^.|\s.)/g, (m) => m.toUpperCase());
@@ -2417,12 +2422,13 @@ export function FichasPage() {
       clienteDocumento: cliente?.dni_ruc || "",
       clienteEmail: cliente?.email || "",
       clienteTelefono: ficha.cliente_celular || cliente?.telefono || "",
-      fechaEvento: reserva.fechas.map(f => formatDate(f.fecha_evento || f.fecha)).join(" / "),
+      fechaEvento: reserva.fechas.map(f => formatPeriodo(f)).join(" / "),
       direccionEvento: reserva.fechas.length > 1 ? "Según detalle por fecha" : direccionEvento,
       horarioEntrega: operativa.entrega,
       horarioInicio: operativa.inicio,
       horarioRecojo: operativa.recojo,
       delivery: ficha.transporte === "delivery",
+      variosDias: diasEvento(ficha.fecha_evento,ficha.fecha_evento_fin)>1,
       movilidad: reserva.fechas.length > 1 ? "Según detalle por fecha" : (ficha.costo_envio ?? 0) > 0 ? `Sí${(ficha.dias_movilidad ?? 1) > 1 ? ` (${ficha.dias_movilidad} fechas)` : ""}` : "Sin cargo registrado",
       personal: operativa.personal,
       items,
@@ -2430,7 +2436,7 @@ export function FichasPage() {
       observaciones: ficha.comentarios,
       fechasDetalle: reserva.fechas.length > 1 ? reserva.fechas.map(f => {
         const op = prepararFichaOperativa(f, { paquetes:contextPaquetes,carritos,inflables,personal:personales }, []);
-        return { fecha:formatDate(f.fecha_evento), direccion:[f.distrito,f.direccion].filter(Boolean).join(" — "), entrega:op.entrega, inicio:op.inicio, recojo:op.recojo, personal:op.personal, observaciones:f.comentarios, total:getTotal(f) };
+        return { fecha:formatPeriodo(f), direccion:[f.distrito,f.direccion].filter(Boolean).join(" — "), entrega:op.entrega, inicio:op.inicio, recojo:op.recojo, personal:op.personal, observaciones:f.comentarios, total:getTotal(f) };
       }) : undefined,
       total,
       abonado,
@@ -2462,7 +2468,9 @@ export function FichasPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     if (name === "distrito") movilidadGuardadaRef.current = null;
-    if (name === "cotizacion") {
+    if (name === "fecha_evento" || name === "fecha_evento_fin") {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    } else if (name === "cotizacion") {
       setCotizacionEditada(true);
       setCotizacionMode("manual");
       setFormData((prev) => ({ ...prev, cotizacion: Number(value) || 0 }));
@@ -2501,7 +2509,7 @@ export function FichasPage() {
       setFormData((prev) => ({ ...prev, [name]: value, ...(name === "distrito" || name === "transporte" ? { movilidad_confirmada: false } : {}) }));
     }
 
-    if (name === "fecha_evento" && !dateRefreshLockRef.current) {
+    if ((name === "fecha_evento" || name === "fecha_evento_fin") && !dateRefreshLockRef.current) {
       dateRefreshLockRef.current = true;
       // Para ver la disponibilidad del día basta con las fichas; antes recargaba también los 7 catálogos
       void loadFichas().finally(() => {
@@ -2872,6 +2880,8 @@ export function FichasPage() {
       entregaEnRango: Boolean(ficha.hora_entrega_fin),
       recojoEnRango: Boolean(ficha.hora_recojo_fin),
       fecha_evento: (ficha.fecha_evento || ficha.fecha || "").split("T")[0],
+      fecha_evento_fin: (ficha.fecha_evento_fin || "").slice(0,10),
+      cobro_evento: ficha.cobro_evento || "una_vez",
       fecha_reserva: (ficha.fecha_reserva || ficha.fecha || "").split("T")[0],
       distrito: ficha.distrito || "",
       transporte: ficha.transporte || "cumpleanos",
@@ -2949,25 +2959,6 @@ export function FichasPage() {
     setFormError("");
   };
   const cambiarFechaReserva = (index: number) => { const drafts = fechasActuales(); setFechasReserva(drafts); mostrarFecha(drafts[index], index); };
-  const agregarFechaReserva = () => {
-    const drafts = fechasActuales(); if (drafts.length >= 31) return;
-    const data = structuredClone(formData); const date = new Date(data.fecha_evento + "T12:00:00");
-    if (Number.isNaN(date.getTime())) { setFormError("Elige una fecha válida antes de agregar otra."); return; }
-    const ocupadas = new Set(drafts.map(d => d.data.fecha_evento));
-    do { date.setDate(date.getDate() + 1); data.fecha_evento = getLocalDateString(date); } while (ocupadas.has(data.fecha_evento));
-    data.dias_movilidad = 1; data.registrarAbonoInicial = false; data.abonoInicialMonto = 0;
-    const anteriores = construirLineas(origenDesdeFormulario(formData), preciosCotizados);
-    const nuevas = construirLineas(origenDesdeFormulario(data), preciosCotizados);
-    data.cotizacion = actualizarTotalPorLineas(formData.cotizacion, anteriores, nuevas, cotizacionEditada || Boolean(data.ajusteMotivo.trim()));
-    const next: FechaReservaDraft = { ...capturarFecha(), uid: crypto.randomUUID(), id: null, data, registro: null, comprobante: "", comprobanteName: "", comprobantePath: "" };
-    drafts.push(next); setFechasReserva(drafts); mostrarFecha(next, drafts.length - 1);
-  };
-  const quitarFechaReserva = async () => {
-    const drafts = fechasActuales(); if (editingFichaId !== null || drafts.length < 2) return;
-    if (abonoInicialComprobantePath) { try { await apiRequest("/upload", { method: "DELETE", body: JSON.stringify({ path: abonoInicialComprobantePath }) }); } catch { setFormError("No se pudo eliminar el comprobante; vuelve a intentar."); return; } }
-    drafts.splice(fechaActiva, 1); const index = Math.max(0, fechaActiva - 1); setFechasReserva(drafts); mostrarFecha(drafts[index], index);
-  };
-
   const iniciarRegistroAbono = (ficha: Ficha) => {
     if (ficha.es_cotizacion) {
       handleOpenEditModal(ficha, true);
@@ -3127,6 +3118,10 @@ export function FichasPage() {
       return;
     }
 
+    if (fechasActuales().some(d => d.data.fecha_evento_fin && d.data.fecha_evento_fin < d.data.fecha_evento)) { setFormError("La fecha de fin no puede ser anterior al inicio del evento."); return; }
+    const diasReserva = fechasActuales().map(d => d.data.fecha_evento);
+    if (new Set(diasReserva).size !== diasReserva.length) { setFormError("Has elegido la misma fecha de evento más de una vez. Revisa las fechas antes de guardar."); return; }
+
     createFichaLockRef.current = true;
     setIsSaving(true);
 
@@ -3153,6 +3148,8 @@ export function FichasPage() {
       movilidad_confirmada: datos.movilidad_confirmada,
       fecha: datos.fecha_evento,
       fecha_evento: datos.fecha_evento,
+      fecha_evento_fin: datos.fecha_evento_fin || null,
+      cobro_evento: datos.cobro_evento,
       fecha_reserva: datos.fecha_reserva,
       distrito: datos.distrito,
       transporte: datos.transporte,
@@ -3355,7 +3352,7 @@ export function FichasPage() {
           if (!fecha) return [];
           return fichas
             .filter((f) => !f.es_cotizacion && f.id !== editingFichaId && (esInflable ? f.inflableIds : f.carritoIds)?.includes(id)
-              && (f.fecha_evento || f.fecha || "").split("T")[0] === fecha)
+              && periodosSolapan(fecha, formData.fecha_evento_fin, f.fecha_evento || f.fecha, f.fecha_evento_fin))
             .map((f) => ({ fichaId: f.id, titulo: getFichaTitulo(f), cliente: f.cliente_nombre, fecha: f.fecha_evento || f.fecha }));
         };
         const orden = { libre: 0, "en-esta-ficha": 1, ocupada: 2, mantenimiento: 3 } as const;
@@ -3622,7 +3619,7 @@ export function FichasPage() {
                   </div>
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDiaSemana(ficha.fecha_evento || ficha.fecha)} {formatDate(ficha.fecha_evento || ficha.fecha)}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDiaSemana(ficha.fecha_evento || ficha.fecha)} {formatPeriodo(ficha)}</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">Contacto: {formatDate(ficha.fecha_reserva)}</span>
                   </div>
                   <h3 className="text-lg text-gray-900 dark:text-white mb-1 truncate">{getFichaTitulo(ficha)}</h3>
@@ -3838,7 +3835,7 @@ export function FichasPage() {
                 <h3 className="text-xl sm:text-2xl text-gray-900 dark:text-white mb-2 break-words">{getFichaTitulo(selectedFicha)}</h3>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Contacto: {formatDate(selectedFicha.fecha_reserva)}</span></div>
-                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatDate(selectedFicha.fecha_evento || selectedFicha.fecha)}</span></div>
+                  <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-600 dark:text-gray-400">Evento: {formatPeriodo(selectedFicha)}</span></div>
                   {selectedFicha.es_cotizacion && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">Proforma · por confirmar</span>}
                   <EstadoPagoBadge estado={getEstadoPago(selectedFicha)} />
                 </div>
@@ -4215,16 +4212,6 @@ export function FichasPage() {
             </>
           }
         >
-            <div className="mb-4 rounded-lg border border-gray-200 p-3 dark:border-gray-600">
-              <p className="mb-2 text-sm font-medium">Fechas de la reserva</p>
-              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Fechas de la reserva">
-                {fechasActuales().map((d, i) => <button key={d.uid} type="button" role="tab" aria-selected={i === fechaActiva} disabled={isSaving || isUploadingAbonoInicialComprobante} onClick={() => cambiarFechaReserva(i)} className={`rounded-lg border px-3 py-2 text-sm ${i === fechaActiva ? "border-brand-orange bg-brand-orange/10 text-brand-orange" : "border-gray-200 dark:border-gray-600"}`}>Fecha {i + 1} · {formatDate(d.data.fecha_evento)}</button>)}
-                <Button type="button" variant="subtle" disabled={isSaving || isUploadingAbonoInicialComprobante || fechasReserva.length >= 31} onClick={agregarFechaReserva}>Agregar fecha</Button>
-                {fechasReserva.length > 1 && editingFichaId === null && <Button type="button" variant="ghost" disabled={isSaving || isUploadingAbonoInicialComprobante} onClick={() => void quitarFechaReserva()}>Quitar esta fecha</Button>}
-              </div>
-              <p className="mt-2 text-xs text-gray-500">Cada fecha tiene su propio pedido, dirección, horarios, movilidad, precio y abono. El cliente, el crédito y el estado de confirmación son comunes.</p>
-              {fechasReserva.length > 1 && <p className="mt-2 text-sm font-medium">Total de la reserva: {formatMoney(fechasActuales().reduce((sum,d) => sum + d.data.cotizacion * (1-d.data.descuento/100), 0))}</p>}
-            </div>
             <form id="ficha-form" onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className={etiqueta}>Documento</label>
@@ -4300,14 +4287,10 @@ export function FichasPage() {
                     )}
                   </div>
                   <div>
-                    <label className={etiqueta}>Fecha del Evento *</label>
-                    <input type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={`${inputClass} max-w-xs`} />
-                    {formData.fecha_evento && (
-                      <p className={`mt-1 text-xs ${esFinDeSemana(formData.fecha_evento) ? "text-brand-orange" : "text-gray-500 dark:text-gray-400"}`}>
-                        {formatDiaSemana(formData.fecha_evento)} {formatDate(formData.fecha_evento)}
-                        {esFinDeSemana(formData.fecha_evento) && " · fin de semana"}
-                      </p>
-                    )}
+                    <label className={etiqueta} htmlFor="evento-desde">{formData.fecha_evento_fin ? "Desde *" : "Fecha del Evento *"}</label>
+                    <input id="evento-desde" type="date" name="fecha_evento" value={formData.fecha_evento} onChange={handleInputChange} required className={inputClass} />
+                    <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={Boolean(formData.fecha_evento_fin)} onChange={e => setFormData(prev => ({ ...prev, fecha_evento_fin: e.target.checked ? prev.fecha_evento : "" }))} />El evento dura varios días</label>
+                    {formData.fecha_evento_fin && <div className="mt-3"><label className={etiqueta} htmlFor="evento-hasta">Hasta *</label><input id="evento-hasta" type="date" name="fecha_evento_fin" value={formData.fecha_evento_fin} min={formData.fecha_evento} onChange={handleInputChange} required className={inputClass} /><p className="mt-1 text-xs text-gray-500">{diasEvento(formData.fecha_evento,formData.fecha_evento_fin)} días de evento, incluyendo inicio y fin.</p></div>}
                   </div>
                   {formData.fecha_evento && formData.fecha_reserva && formData.fecha_evento < formData.fecha_reserva && (
                     <p className="md:col-span-2 -mt-2 text-xs text-amber-600 dark:text-amber-400">
@@ -4316,6 +4299,13 @@ export function FichasPage() {
                   )}
                 </div>
               </div>
+
+              {fechasActuales().length > 1 && <div className="rounded-lg border p-3 text-sm"><p>Esta reserva tiene otras fechas guardadas:</p><div className="mt-2 flex flex-wrap gap-2">{fechasActuales().map((d,i)=><button type="button" key={d.uid} aria-label={`Editar detalles de la fecha ${i+1}`} aria-pressed={i===fechaActiva} onClick={()=>cambiarFechaReserva(i)} className="rounded border px-3 py-2">{formatDate(d.data.fecha_evento)}</button>)}</div></div>}
+              {formData.fecha_evento_fin && <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-600">
+                <label htmlFor="cobro-evento" className={etiqueta}>¿Cómo cobrar el pedido durante el intervalo?</label>
+                <select id="cobro-evento" name="cobro_evento" value={formData.cobro_evento} onChange={handleInputChange} className={inputClass}><option value="una_vez">Una sola vez por todo el evento</option><option value="por_dia">Por cada día del evento</option></select>
+                <p className="mt-2 text-xs text-gray-500">{formData.cobro_evento === "por_dia" ? `Paquetes, productos y servicios × ${diasEvento(formData.fecha_evento,formData.fecha_evento_fin)} días. Las cantidades del pedido son por día.` : "El pedido se cobra una sola vez. La movilidad se configura por separado."}</p>
+              </div>}
 
               {brand === "donofrio" && <div>
                 <label className={etiqueta}>Presentación del pedido</label>
@@ -4735,6 +4725,7 @@ export function FichasPage() {
               <div>
                 <h4 className="text-sm text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-500" /> Precios</h4>
                 <div className="mb-4 max-w-xs">
+                  {formData.fecha_evento_fin && <div className="mb-3"><p className={etiqueta}>Movilidad del intervalo</p><div className="flex flex-wrap gap-2"><Button type="button" variant="subtle" onClick={()=>setFormData(prev=>({...prev,dias_movilidad:1}))}>Cobrar una vez</Button><Button type="button" variant="subtle" onClick={()=>setFormData(prev=>({...prev,dias_movilidad:diasEvento(prev.fecha_evento,prev.fecha_evento_fin)}))}>Cobrar los {diasEvento(formData.fecha_evento,formData.fecha_evento_fin)} días</Button></div><p className="mt-1 text-xs text-gray-500">Puedes ajustar la cantidad de días de movilidad manualmente.</p></div>}
                   <label className={etiqueta}>Movilidad por día (S/)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">S/</span>

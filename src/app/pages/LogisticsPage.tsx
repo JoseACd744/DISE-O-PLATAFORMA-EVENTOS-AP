@@ -1,3 +1,4 @@
+import { periodosSolapan } from "../lib/periodoEvento";
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { User, Truck, MapPin, Shield, Search, Plus, Edit, CheckCircle2, AlertTriangle, X, ChevronRight, Trash2, Coffee, Map, FileText, Download } from "lucide-react";
@@ -59,6 +60,7 @@ interface FichaResumen {
   distrito: string;
   direccion: string;
   fecha: string;
+  fechaFin?: string;
   horaEntrega: string;
   horaRecojo: string;
   carrito: number;
@@ -165,7 +167,8 @@ export function LogisticsPage() {
           clienteNombre: f.cliente_nombre || "",
           distrito: f.distrito || "",
           direccion: f.direccion || "",
-          fecha: f.fecha,
+          fecha: f.fecha_evento || f.fecha,
+          fechaFin: f.fecha_evento_fin || undefined,
           horaEntrega: f.hora_entrega || "",
           horaRecojo: f.hora_recojo || "",
           carrito: 1,
@@ -1133,7 +1136,7 @@ export function LogisticsPage() {
                 <div className="space-y-1.5 max-h-52 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2">
                   {[...fichasRutas]
                     .filter(f =>
-                      (f.fecha || "").split("T")[0] === asignacionForm.fecha &&
+                      periodosSolapan(asignacionForm.fecha,asignacionForm.fecha,f.fecha,f.fechaFin) &&
                       (fichasSearch === "" ||
                         f.clienteNombre.toLowerCase().includes(fichasSearch.toLowerCase()) ||
                         f.distrito.toLowerCase().includes(fichasSearch.toLowerCase()) ||
@@ -1177,17 +1180,17 @@ export function LogisticsPage() {
                             <MapPin className="w-3 h-3 shrink-0" /> {ficha.direccion}, {ficha.distrito}
                           </p>
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                            {ficha.fecha} · Entrega {ficha.horaEntrega} – Recojo {ficha.horaRecojo}
+                            {(ficha.fecha||"").slice(0,10)}{ficha.fechaFin ? ` al ${ficha.fechaFin.slice(0,10)}` : ""} · Entrega {ficha.horaEntrega} – Recojo {ficha.horaRecojo}
                           </p>
                         </div>
                       </label>
                     );
                   })}
-                  {fichasRutas.filter(f => (f.fecha || "").split("T")[0] === asignacionForm.fecha).length === 0 && (
+                  {fichasRutas.filter(f => periodosSolapan(asignacionForm.fecha,asignacionForm.fecha,f.fecha,f.fechaFin)).length === 0 && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">No hay fichas para esta fecha</p>
                   )}
                   {fichasSearch !== "" && fichasRutas.filter(f =>
-                    (f.fecha || "").split("T")[0] === asignacionForm.fecha &&
+                    periodosSolapan(asignacionForm.fecha,asignacionForm.fecha,f.fecha,f.fechaFin) &&
                     !f.clienteNombre.toLowerCase().includes(fichasSearch.toLowerCase()) &&
                     !f.distrito.toLowerCase().includes(fichasSearch.toLowerCase()) &&
                     !f.direccion.toLowerCase().includes(fichasSearch.toLowerCase())

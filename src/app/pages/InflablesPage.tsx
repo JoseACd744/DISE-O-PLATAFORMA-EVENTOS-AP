@@ -1,3 +1,4 @@
+import { periodosSolapan } from "../lib/periodoEvento";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
@@ -62,6 +63,7 @@ interface Reserva {
   inflableId: number;
   clienteNombre: string;
   fecha: string;
+  fechaFin?: string;
   cantidad: number;
   evento: string;
   notas: string;
@@ -86,6 +88,7 @@ interface ReservaCarrito {
   unitId: number;     // id de la unidad física real (para DELETE)
   clienteNombre: string;
   fecha: string;
+  fechaFin?: string;
   cantidad: number;
   evento: string;
   notas: string;
@@ -101,6 +104,7 @@ interface FichaCalendario {
   clienteNombre: string;
   clienteCelular: string;
   fecha: string;
+  fechaFin?: string;
   horaEntrega: string;
   tipoEvento: string;
   distrito: string;
@@ -337,6 +341,7 @@ export function InflablesPage() {
             inflableId: tipoId,
             clienteNombre: f.cliente_nombre || "Ficha #" + f.id,
             fecha,
+            fechaFin: (f.fecha_evento_fin || "").slice(0,10),
             cantidad: 1,
             evento: f.distrito || "Evento Ficha",
             notas: "Ficha #" + f.id + (f.created_by_nombre ? ` (${f.created_by_nombre})` : ""),
@@ -372,6 +377,7 @@ export function InflablesPage() {
             unitId: unitId,
             clienteNombre: f.cliente_nombre || "Ficha #" + f.id,
             fecha,
+            fechaFin: (f.fecha_evento_fin || "").slice(0,10),
             cantidad: 1,
             evento: f.distrito || "Evento Ficha",
             notas: "Ficha #" + f.id + (f.created_by_nombre ? ` (${f.created_by_nombre})` : ""),
@@ -399,6 +405,7 @@ export function InflablesPage() {
         clienteNombre: f.cliente_nombre || "",
         clienteCelular: f.cliente_celular || "",
         fecha: (f.fecha_evento || f.fecha || "").split("T")[0],
+        fechaFin: (f.fecha_evento_fin || "").slice(0,10),
         horaEntrega: f.hora_entrega || "",
         tipoEvento: f.tipo_evento || "",
         distrito: f.distrito || "",
@@ -423,15 +430,15 @@ export function InflablesPage() {
   const filteredCarritos = carritos.filter(c => c.modelo.toLowerCase().includes(searchTerm.toLowerCase()) || c.descripcion.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const getReservedCount = (inflableId: number, date: string) =>
-    reservas.filter(r => r.inflableId === inflableId && r.fecha === date).reduce((s, r) => s + r.cantidad, 0);
+    reservas.filter(r => r.inflableId === inflableId && periodosSolapan(date,date,r.fecha,r.fechaFin)).reduce((s, r) => s + r.cantidad, 0);
   const getCarritoReservedCount = (carritoId: number, date: string) =>
-    reservasCarritos.filter(r => r.carritoId === carritoId && r.fecha === date).reduce((s, r) => s + r.cantidad, 0);
-  const getReservasByDate = (date: string) => reservas.filter(r => r.fecha === date);
-  const getReservasCarritoByDate = (date: string) => reservasCarritos.filter(r => r.fecha === date);
-  const getFichasByDate = (date: string) => fichasCalendario.filter(f => f.fecha === date);
+    reservasCarritos.filter(r => r.carritoId === carritoId && periodosSolapan(date,date,r.fecha,r.fechaFin)).reduce((s, r) => s + r.cantidad, 0);
+  const getReservasByDate = (date: string) => reservas.filter(r => periodosSolapan(date,date,r.fecha,r.fechaFin));
+  const getReservasCarritoByDate = (date: string) => reservasCarritos.filter(r => periodosSolapan(date,date,r.fecha,r.fechaFin));
+  const getFichasByDate = (date: string) => fichasCalendario.filter(f => periodosSolapan(date,date,f.fecha,f.fechaFin));
 
   const filteredFichasCalendario = [...fichasCalendario]
-    .filter(f => f.fecha === (selectedDate || todayStr))
+    .filter(f => periodosSolapan(selectedDate || todayStr,selectedDate || todayStr,f.fecha,f.fechaFin))
     .filter(f =>
       f.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase()) ||

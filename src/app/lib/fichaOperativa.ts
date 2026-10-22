@@ -4,6 +4,8 @@ export interface FichaParaOperacion {
   id: number;
   brand: "donofrio" | "jugueton";
   fecha_evento: string;
+  fecha_evento_fin?: string;
+  cobro_evento?: "una_vez" | "por_dia";
   fecha?: string;
   titulo?: string;
   tipo_evento?: string;
@@ -44,6 +46,7 @@ export interface FichaOperativa {
   id: number;
   marca: string;
   fecha: string;
+  fechaFin?: string;
   titulo: string;
   tipoEvento: string;
   modalidad: string;
@@ -99,7 +102,7 @@ export function prepararFichaOperativa(
     const paquete = catalogos.paquetes.find(item => item.id === p.paqueteId);
     if (paquete) paquete.contenido.forEach(item => sumar(item.productoNombre, item.cantidad * p.cantidad));
     else alertas.push(`Confirmar contenido de ${p.paqueteNombre || `paquete #${p.paqueteId}`}.`);
-    return `${p.cantidad} × ${p.paqueteNombre || paquete?.nombre || `Paquete #${p.paqueteId}`}`;
+    return `${p.cantidad} × ${p.paqueteNombre || paquete?.nombre || `Paquete #${p.paqueteId}`}${ficha.cobro_evento === "por_dia" ? " por día" : ""}`;
   });
   ficha.productosSueltos.forEach(p => sumar(p.productoNombre, p.cantidad));
   const carritos = (ficha.carritoIds ?? []).filter(id => id > 0).map(id => {
@@ -113,7 +116,7 @@ export function prepararFichaOperativa(
   const recursos = (ficha.recursos ?? []).filter(r => r.cantidad > 0).map(r => `${r.cantidad} × ${r.recurso_nombre}${r.sku ? ` · ${r.sku}` : ""}`);
   const equipos = [...carritos, ...inflables, ...recursos];
   const fecha = (ficha.fecha_evento || ficha.fecha || "").slice(0, 10);
-  const choferes = asignaciones.filter(a => a.fecha.slice(0, 10) === fecha && a.fichas_ids.includes(ficha.id) && a.estado !== "cancelada").map(a => ({
+  const choferes = asignaciones.filter(a => a.fecha.slice(0, 10) >= fecha && a.fecha.slice(0,10) <= (ficha.fecha_evento_fin || fecha).slice(0,10) && a.fichas_ids.includes(ficha.id) && a.estado !== "cancelada").map(a => ({
     nombre: a.chofer?.nombre_completo || a.chofer?.nombre || "Sin chofer asignado",
     telefono: a.chofer?.numero_telefono || a.chofer?.celular || "Sin teléfono",
     placa: a.vehiculo?.placa || "Sin placa",
@@ -121,7 +124,7 @@ export function prepararFichaOperativa(
   }));
   const delivery = ficha.transporte === "delivery";
   return {
-    id: ficha.id, marca: ficha.brand === "donofrio" ? "D’Onofrio" : "Juguetón", fecha,
+    id: ficha.id, marca: ficha.brand === "donofrio" ? "D’Onofrio" : "Juguetón", fecha, fechaFin: ficha.fecha_evento_fin,
     titulo: ficha.titulo || "", tipoEvento: ficha.tipo_evento || (delivery ? "Delivery" : "Evento"), modalidad: delivery ? "DELIVERY" : "EVENTO",
     distrito: ficha.distrito || "Distrito por confirmar", direccion: ficha.direccion || "Dirección por confirmar", referencia: ficha.referencia || "",
     entrega: ficha.brand === "jugueton" ? hora(ficha.hora_entrega) : rango(ficha.hora_entrega, ficha.hora_entrega_fin),
@@ -150,7 +153,7 @@ function fechaEtiqueta(fecha: string): string {
 function tarjeta(f: FichaOperativa): string {
   const lista = (items: string[]) => `<ul class="checklist">${items.map(item => `<li><i class="box"></i><span>${escape(item)}</span></li>`).join("")}</ul>`;
   return `<article class="order">
-    <header><strong>${escape(fechaEtiqueta(f.fecha))}</strong><span>Tipo de evento: ${escape(f.tipoEvento)}${f.modalidad === "DELIVERY" && f.tipoEvento !== "Delivery" ? " · DELIVERY" : ""}</span>${f.titulo ? `<b class="event-title">${escape(f.titulo)}</b>` : ""}</header>
+    <header><strong>${escape(fechaEtiqueta(f.fecha))}${f.fechaFin && f.fechaFin.slice(0,10)!==f.fecha ? " AL "+escape(fechaEtiqueta(f.fechaFin.slice(0,10))) : ""}</strong><span>Tipo de evento: ${escape(f.tipoEvento)}${f.modalidad === "DELIVERY" && f.tipoEvento !== "Delivery" ? " · DELIVERY" : ""}</span>${f.titulo ? `<b class="event-title">${escape(f.titulo)}</b>` : ""}</header>
     <div class="location"><b>${escape(f.distrito)}</b><span> · ${escape(f.direccion)}</span>${f.referencia ? `<small> · Ref: ${escape(f.referencia)}</small>` : ""}</div>
     <div class="times"><div><b>Entrega: ${escape(f.entrega)}</b></div>${f.inicio ? `<div><b>Inicio: ${escape(f.inicio)}</b></div>` : ""}<div><b>Recojo: ${escape(f.recojo)}</b></div></div>
     <div class="section order-items">${f.paquetes.length ? `<p class="packages">${f.paquetes.map(escape).join(" / ")}</p>` : ""}

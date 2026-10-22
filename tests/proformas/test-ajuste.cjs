@@ -27,3 +27,14 @@ const reverse=base.map(l=>Object.fromEntries(Object.entries(l).reverse()));
 assert.equal(compararLineas(base,reverse).length,0);
 assert.equal(compararLineas(base,base.map(l=>l.key==='producto-0'?{...l,precioUnitario:3,total:300}:l)).length,1);
 console.log('Ajuste de cotización OK: suma/resta de ítems, movilidad ×4, preservación de diferencia previa y comparación de precios sin falsos cambios por JSONB.');
+
+const periodMod={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(require('path').join(__dirname,'../../src/app/lib/periodoEvento.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2021}}).outputText,{module:periodMod,exports:periodMod.exports,Date,Math,Number,Array,Boolean});
+const {diasEvento,diasDelPeriodo,periodosSolapan}=periodMod.exports;
+assert.equal(diasEvento('2026-10-21','2026-10-24'),4);assert.equal(diasEvento('2028-02-28','2028-03-01'),3);assert.equal(diasEvento('2026-10-21',null),1);assert.equal(diasDelPeriodo('2026-10-21','2026-10-24').length,4);
+assert(periodosSolapan('2026-10-23','2026-10-25','2026-10-21','2026-10-24'));assert(!periodosSolapan('2026-10-25',null,'2026-10-21','2026-10-24'));
+const origin={brand:'donofrio',paquetes:[{paqueteId:1,paqueteNombre:'PAQUETE PRUEBA',cantidad:1,descuentoTipo:'porcentaje',descuentoValor:0}],productosSueltos:[],carritoIds:[],inflableIds:[],recursos:[],personal:[],carritosDescuentos:{},inflablesDescuentos:{},costoEnvio:50,diasMovilidad:4,descuentoMovilidad:0,distrito:'San Isidro',diasEvento:4,cobroEvento:'una_vez'};
+const cats={paquetes:[{id:1,nombre:'PAQUETE PRUEBA',precioUnitario:400,contenido:[]}],productos:[],carritos:[],inflables:[],recursos:[]};
+const once=calculator.exports.construirLineasCotizacion(origin,cats);const daily=calculator.exports.construirLineasCotizacion({...origin,cobroEvento:'por_dia'},cats);
+assert.equal(once.reduce((n,l)=>n+l.total,0),600);assert.equal(daily.reduce((n,l)=>n+l.total,0),1800);assert.equal(daily.find(l=>l.grupo==='Movilidad').total,200);
+const fixed=aplicarPreciosCotizados(calculator.exports.construirLineasCotizacion({...origin,cobroEvento:'por_dia'},{...cats,paquetes:[{...cats.paquetes[0],precioUnitario:999}]}),once);
+assert.equal(fixed.reduce((n,l)=>n+l.total,0),1800);console.log('Intervalo/cálculo OK: días inclusivos, febrero bisiesto, solapamiento; pedido400 una vez + movilidad4×50=600 o pedido4×400 + movilidad200=1800; precio cotizado conservado.');

@@ -1,3 +1,4 @@
+import { diasDelPeriodo, periodosSolapan } from "../lib/periodoEvento";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Package, Plus, Filter, X, Layers, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, ShoppingCart, History, Users, Pencil, MapPin, User } from "lucide-react";
 import { Pagination } from "../components/Pagination";
@@ -30,6 +31,7 @@ type CalendarFicha = {
   id: number;
   fecha: string;
   fechaEvento: string;
+  fechaEventoFin?: string;
   clienteNombre: string;
   distrito: string;
   horaEntrega: string;
@@ -431,7 +433,7 @@ export function ProductsPage() {
     const today = getLocalDateString(); // YYYY-MM-DD de hoy
     const hasEventsToday = fichasCalendario.some(
       (ficha) => ficha.personalIds.includes(personalId) && 
-      normalizeDateString(ficha.fechaEvento || ficha.fecha) === today
+      periodosSolapan(today,today,ficha.fechaEvento || ficha.fecha,ficha.fechaEventoFin)
     );
     if (hasEventsToday) return "ocupado";
     
@@ -448,8 +450,7 @@ export function ProductsPage() {
 
   const personalCalendarByDate = useMemo(() => {
     return personalCalendarEvents.reduce<Record<string, CalendarEntry[]>>((acc, ficha) => {
-      const dateKey = ficha.fechaEvento;
-      if (!dateKey) return acc;
+      for (const dateKey of diasDelPeriodo(ficha.fechaEvento,ficha.fechaEventoFin)) {
 
       if (!acc[dateKey]) acc[dateKey] = [];
       acc[dateKey].push({
@@ -461,6 +462,7 @@ export function ProductsPage() {
         personalCount: ficha.personalIds.length,
         carritoCount: ficha.carritoIds.length,
       });
+      }
       return acc;
     }, {});
   }, [personalCalendarEvents]);
@@ -478,13 +480,13 @@ export function ProductsPage() {
       if (selectedPersonalCalendarId && id !== selectedPersonalCalendarId) return;
       const p = persona(id);
       if (!p) return;
-      agregar(f.fechaEvento, {
+      diasDelPeriodo(f.fechaEvento,f.fechaEventoFin).forEach(dia => agregar(dia, {
         personalId: id,
         nombre: p.nombre_completo || p.nombre || `Personal #${id}`,
         rol: p.rol,
         hora: (f.horaEntrega || "").slice(0, 5),
         detalle: f.clienteNombre ? `Evento de ${f.clienteNombre}` : `Ficha #${f.id}`,
-      });
+      }));
     }));
     asignacionesCalendario.forEach((a) => {
       if (selectedPersonalCalendarId && a.choferId !== selectedPersonalCalendarId) return;
@@ -538,7 +540,7 @@ export function ProductsPage() {
   const getDynamicCarritoEstadoCalendar = (carritoId: number): "disponible" | "ocupado" => {
     const today = getLocalDateString();
     const busyToday = fichasCalendario.some(
-      (f) => f.carritoIds.includes(carritoId) && normalizeDateString(f.fechaEvento || f.fecha) === today
+      (f) => f.carritoIds.includes(carritoId) && periodosSolapan(today,today,f.fechaEvento || f.fecha,f.fechaEventoFin)
     );
     return busyToday ? "ocupado" : "disponible";
   };
@@ -555,8 +557,7 @@ export function ProductsPage() {
 
   const carritoCalendarByDate = useMemo(() => {
     return carritoCalendarEvents.reduce<Record<string, CalendarEntry[]>>((acc, ficha) => {
-      const dateKey = ficha.fechaEvento;
-      if (!dateKey) return acc;
+      for (const dateKey of diasDelPeriodo(ficha.fechaEvento,ficha.fechaEventoFin)) {
       if (!acc[dateKey]) acc[dateKey] = [];
       acc[dateKey].push({
         fichaId: ficha.id,
@@ -567,6 +568,7 @@ export function ProductsPage() {
         personalCount: ficha.personalIds.length,
         carritoCount: ficha.carritoIds.length,
       });
+      }
       return acc;
     }, {});
   }, [carritoCalendarEvents]);
@@ -617,6 +619,7 @@ export function ProductsPage() {
           id: f.id,
           fecha: fechaNormalizada,
           fechaEvento: fechaNormalizada,
+          fechaEventoFin: (f.fecha_evento_fin || "").slice(0,10),
           clienteNombre: f.cliente_nombre || "",
           distrito: f.distrito || "",
           horaEntrega: f.hora_entrega || "",
@@ -659,6 +662,7 @@ export function ProductsPage() {
           id: f.id,
           fecha: fechaNormalizada,
           fechaEvento: fechaNormalizada,
+          fechaEventoFin: (f.fecha_evento_fin || "").slice(0,10),
           clienteNombre: f.cliente_nombre || "",
           distrito: f.distrito || "",
           horaEntrega: f.hora_entrega || "",

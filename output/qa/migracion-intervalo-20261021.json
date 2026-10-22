@@ -1,0 +1,19 @@
+{
+  "migration": "049_intervalo_evento.sql",
+  "applied": true,
+  "before": {
+    "fichas": "212",
+    "cotizaciones": "114646.01",
+    "abonos": "288",
+    "abonado": "85392.00",
+    "clientes": "362"
+  },
+  "after": {
+    "fichas": "212",
+    "cotizaciones": "114646.01",
+    "abonos": "288",
+    "abonado": "85392.00",
+    "clientes": "362"
+  },
+  "preserved": true
+}

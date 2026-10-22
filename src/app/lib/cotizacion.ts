@@ -44,6 +44,8 @@ export interface OrigenProducto extends LineaDescuento {
 }
 
 export interface OrigenLineas {
+  diasEvento?: number;
+  cobroEvento?: "una_vez" | "por_dia";
   personal?: Array<{ id: number; nombre: string; precio: number; tipo?: string }>;
   brand: "donofrio" | "jugueton";
   paquetes: OrigenPaquete[];
@@ -142,6 +144,8 @@ export function construirLineasCotizacion(origen: OrigenLineas, catalogos: Catal
   const lineas: LineaCotizacion[] = [];
 
   const push = (base: Omit<LineaCotizacion, "subtotal" | "descuentoMonto" | "total">) => {
+    const veces = origen.cobroEvento === "por_dia" && base.grupo !== "Movilidad" ? Math.max(1, origen.diasEvento || 1) : 1;
+    if (veces > 1) base = { ...base, cantidad: base.cantidad * veces, detalle: [base.detalle, `${base.cantidad} × ${veces} días`].filter(Boolean).join(" · ") };
     const dinero = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
     const subtotal = dinero(base.precioUnitario * base.cantidad);
     const descuentoMonto = dinero(base.editable ? getDescuentoLinea(subtotal, base) : 0);
