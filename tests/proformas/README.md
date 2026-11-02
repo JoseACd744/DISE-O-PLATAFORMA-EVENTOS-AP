@@ -22,3 +22,5 @@ Se verifican los precios y cantidades de los doce afiches de tecnopor, la ausenc
 Las rutas prueban confirmación y abono en una transacción, deduplicación, sobrepago con rollback, reservas de varias fechas, membresía completa y fechas distintas. La migración 048 no convierte proformas ni registra pagos existentes.
 
 Los intervalos comprueban conflictos en extremos y días intermedios para carritos, inflables y personal, edición y eliminación del fin, rechazo de fechas inválidas, cálculo de días bisiestos y preservación de precios al cambiar el modo de cobro.
+
+`node tests/proformas/test-ui-login-existente.cjs` valida el login sin autorregistro, con Google en modo signin, rechazo de cuentas nuevas y acceso de cuentas existentes con Google o contraseña. Todas las APIs y credenciales son sintéticas. El backend añade `npm run test:auth`, que comprueba seis casos de autenticación sin conectar a Google ni a la base real.

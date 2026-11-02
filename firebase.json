@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "plataforma-eventos-ap",
     "public": "dist",
     "ignore": [
       "firebase.json",

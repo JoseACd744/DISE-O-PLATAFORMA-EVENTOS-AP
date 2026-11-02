@@ -31,7 +31,6 @@ export function LoginPage() {
       return false;
     }
   });
-  const [googleBrand, setGoogleBrand] = useState<"donofrio" | "jugueton">("donofrio");
   const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     email: "",
@@ -90,7 +89,6 @@ export function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idToken: credential,
-          brand: googleBrand,
         }),
       });
 
@@ -150,48 +148,21 @@ export function LoginPage() {
             <p className="text-gray-600 dark:text-gray-400">Bienvenido a Eventos AP</p>
           </div>
 
-          <div className="mb-6 space-y-3">
-            <label htmlFor="googleBrand" className="block text-sm text-gray-700 dark:text-gray-300">
-              Marca para primer acceso con Google
-            </label>
-            <select
-              id="googleBrand"
-              value={googleBrand}
-              onChange={(e) => setGoogleBrand(e.target.value as "donofrio" | "jugueton")}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-            >
-              <option value="donofrio">D'Onofrio</option>
-              <option value="jugueton">Juguetón</option>
-            </select>
-
-            {hasGoogleClientId ? (
-              <div className="w-full flex justify-center">
-                <GoogleLogin
-                  onSuccess={(credentialResponse) => {
-                    if (credentialResponse.credential) {
-                      handleGoogleLogin(credentialResponse.credential);
-                    } else {
-                      setError("Google no devolvió credenciales");
-                    }
-                  }}
-                  onError={() => setError("No se pudo iniciar sesión con Google")}
-                />
-              </div>
-            ) : (
-              <div className="w-full px-4 py-3 border border-amber-300 rounded-lg bg-amber-50 text-amber-700 text-sm dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">
-                Configura VITE_GOOGLE_CLIENT_ID para habilitar Google Sign-In.
-              </div>
-            )}
-          </div>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+          <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">Acceso exclusivo para usuarios registrados. Para solicitar acceso, contacta al administrador.</p>
+          {hasGoogleClientId && <>
+            <div className="mb-6 flex justify-center">
+              <GoogleLogin
+                text="signin_with"
+                context="signin"
+                onSuccess={(response) => response.credential ? void handleGoogleLogin(response.credential) : setError("Google no devolvió credenciales")}
+                onError={() => setError("No se pudo iniciar sesión con Google")}
+              />
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">O ingresa con tu cuenta</span>
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300 dark:border-gray-700" /></div>
+              <div className="relative flex justify-center text-sm"><span className="px-4 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400">O ingresa con tu cuenta</span></div>
             </div>
-          </div>
+          </>}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {error ? (
