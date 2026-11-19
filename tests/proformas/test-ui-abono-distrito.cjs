@@ -2,6 +2,15 @@ const http=require('http'),fs=require('fs'),path=require('path'),assert=require(
 const {chromium}=require('C:/Users/JOSE/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const root=path.resolve('dist');const port=Number(process.env.UI_PORT||5191);const testBrand=process.env.TEST_BRAND||'donofrio';let browser;
 const server=http.createServer((req,res)=>{const target=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));let file=target.startsWith(root)&&fs.existsSync(target)&&fs.statSync(target).isFile()?target:path.join(root,'index.html');res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':file.endsWith('.jpg')?'image/jpeg':'text/html');res.end(fs.readFileSync(file));});
+
+async function completarHora(page,nombre,valor) {
+ const [hora,minuto]=valor.split(':');
+ const group=page.getByRole('group',{name:nombre.replaceAll('_',' '),exact:true});
+ await group.getByLabel('Hora',{exact:true}).selectOption(String(Number(hora)%12||12));
+ await group.getByLabel('Minutos',{exact:true}).selectOption(minuto);
+ await group.getByLabel('AM o PM',{exact:true}).selectOption(Number(hora)>=12?'PM':'AM');
+}
+
 async function prepararImagenes(p) {
  const urls=await p.locator('img').evaluateAll(nodes=>nodes.map(n=>n.src));const data={};
  for(const url of urls){const file=path.resolve('public','.'+new URL(url).pathname);if(file.startsWith(path.resolve('public')+path.sep)&&fs.existsSync(file))data[url]='data:image/'+(file.endsWith('.png')?'png':'jpeg')+';base64,'+fs.readFileSync(file).toString('base64');}
@@ -79,9 +88,9 @@ async function prepararImagenes(p) {
  assert(await checked.isChecked());
  await page.locator('input[name="direccion"]').fill('Av. Prueba 123');
  await page.locator('input[name="cliente_celular"]').fill('999999999');
- await page.locator('input[name="hora_entrega"]').fill('14:00');
- await page.locator('input[name="hora_recojo"]').fill('18:00');
- if(testBrand==='jugueton')await page.locator('input[name="hora_entrega_fin"]').fill('14:30');
+ await completarHora(page,'hora_entrega','14:00');
+ await completarHora(page,'hora_recojo','18:00');
+ if(testBrand==='jugueton')await completarHora(page,'hora_entrega_fin','14:30');
  await page.locator('input[name="abonoInicialMonto"]').fill('100');
  failNextPayment=true;
  await page.getByRole('button',{name:'Guardar Cambios',exact:true}).click();
@@ -136,8 +145,8 @@ async function prepararImagenes(p) {
  await page.getByLabel('¿Cómo cobrar el pedido durante el intervalo?',{exact:true}).selectOption('una_vez');assert.equal(await page.locator('input[name="cotizacion"]').inputValue(),'600');
  await page.getByRole('button',{name:'Ficha confirmada',exact:true}).click();await page.getByRole('checkbox',{name:'Reserva a crédito'}).check();
  await page.locator('input[name="direccion"]').fill('Dirección del evento de cuatro días');await page.locator('input[name="cliente_celular"]').fill('999999999');
- await page.locator('input[name="hora_entrega"]').fill('14:00');await page.locator('input[name="hora_recojo"]').fill('18:00');
- const finEntrega=page.locator('input[name="hora_entrega_fin"]');if(await finEntrega.count())await finEntrega.fill('14:30');const finRecojo=page.locator('input[name="hora_recojo_fin"]');if(await finRecojo.count())await finRecojo.fill('18:30');
+ await completarHora(page,'hora_entrega','14:00');await completarHora(page,'hora_recojo','18:00');
+ if(await page.getByRole('group',{name:'hora entrega fin',exact:true}).count())await completarHora(page,'hora_entrega_fin','14:30');if(await page.getByRole('group',{name:'hora recojo fin',exact:true}).count())await completarHora(page,'hora_recojo_fin','18:30');
  await page.getByRole('button',{name:'Guardar Cambios',exact:true}).click();await page.locator('#ficha-form').waitFor({state:'hidden'});
  assert.equal(payload.cotizacion,600);assert.equal(payload.es_credito,true);assert.equal(payload.fecha_evento_fin,'2026-12-23');
  const cWait=page.waitForEvent('popup');await card.getByTitle('Generar contrato').click();const contract=await cWait;await contract.waitForLoadState('domcontentloaded');

@@ -1,3 +1,4 @@
+import { HoraInput } from "../components/HoraInput";
 import { diasEvento, diasDelPeriodo, periodosSolapan } from "../lib/periodoEvento";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Calendar, MapPin, Clock, User, Phone, Package as PackageIcon, Plus, Eye, Edit, Search, X, Trash2, Layers, ShoppingBag, DollarSign, CreditCard, Receipt, Upload, CheckCircle2, AlertCircle, CircleDashed, Hash, Wind, FileText, Image as ImageIcon, ExternalLink, Download, Percent, Settings, ChevronDown, Check, FileSignature } from "lucide-react";
@@ -2465,7 +2466,7 @@ export function FichasPage() {
     setFormData((prev) => actualizarPersonalFicha(prev, prev.personalIds.map((value, i) => (i === idx ? personalId : value))));
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: { target: { name: string; value: string } }) => {
     const { name, value } = e.target;
     if (name === "distrito") movilidadGuardadaRef.current = null;
     if (name === "fecha_evento" || name === "fecha_evento_fin") {
@@ -4664,16 +4665,16 @@ export function FichasPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className={etiqueta}>Hora de Entrega{!formData.es_cotizacion && " *"}</label>
-                      <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                      <HoraInput name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                     </div>
                     <div>
                       <label className={etiqueta}>Hora de Inicio{!formData.es_cotizacion && " *"}</label>
-                      <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                      <HoraInput name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                     </div>
                     {formData.transporte !== "delivery" && (
                       <div>
                         <label className={etiqueta}>Hora de Recojo{!formData.es_cotizacion && " *"}</label>
-                        <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                        <HoraInput name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                       </div>
                     )}
                   </div>
@@ -4686,11 +4687,11 @@ export function FichasPage() {
                       <div className={`grid gap-2 ${formData.entregaEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                         <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.entregaEnRango ? "Desde" : "Hora exacta"}</span>
-                          <input type="time" name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                          <HoraInput name="hora_entrega" value={formData.hora_entrega} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                         </div>
                         {formData.entregaEnRango && <div>
                           <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                          <input type="time" name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                          <HoraInput name="hora_entrega_fin" value={formData.hora_entrega_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                         </div>}
                       </div>
                     </div>
@@ -4702,11 +4703,11 @@ export function FichasPage() {
                         <div className={`grid gap-2 ${formData.recojoEnRango ? "grid-cols-2" : "grid-cols-1"}`}>
                           <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{formData.recojoEnRango ? "Desde" : "Hora exacta"}</span>
-                            <input type="time" name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                            <HoraInput name="hora_recojo" value={formData.hora_recojo} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                           </div>
                           {formData.recojoEnRango && <div>
                             <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1">Hasta</span>
-                            <input type="time" name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
+                            <HoraInput name="hora_recojo_fin" value={formData.hora_recojo_fin} onChange={handleInputChange} required={!formData.es_cotizacion} className={inputClass} />
                           </div>}
                         </div>
                       </div>
