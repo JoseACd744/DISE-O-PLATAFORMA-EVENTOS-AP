@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation } from "react-router";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, CalendarClock, Download, Loader2, Minus, Pencil, Table2, BarChart3, Target, Truck, Users, Wallet,
@@ -240,17 +241,23 @@ function BarrasHorizontales({ data, formato, nombre }: { data: { etiqueta: strin
 
 export function ReportsPage() {
   const { brand } = useBrand();
+  const location = useLocation();
+  const consultaHelados = new URLSearchParams(location.search).get("vista") === "helados";
   const {
     paquetes: catalogoPaquetes, allProducts: catalogoProductos, carritos: catalogoCarritos,
     inflables: catalogoInflables, recursos: catalogoRecursos, reloadData,
   } = useProducts();
 
   const hoy = getLocalDateString();
-  const [modo, setModo] = useState<Modo>("month");
+  const [modo, setModo] = useState<Modo>(consultaHelados ? "day" : "month");
   const [mesSel, setMesSel] = useState(hoy.slice(0, 7));
   const [diaSel, setDiaSel] = useState(hoy);
   const [desdeSel, setDesdeSel] = useState(hoy);
   const [hastaSel, setHastaSel] = useState(hoy);
+
+  useEffect(() => {
+    if (consultaHelados) setModo("day");
+  }, [consultaHelados, location.key]);
 
   // Datos: todas las fichas con detalle, clientes y asignaciones (desde la caché compartida)
   const [fichas, setFichas] = useState<any[]>([]);
@@ -533,6 +540,14 @@ export function ReportsPage() {
       setGuardandoCuota(false);
     }
   };
+
+  useEffect(() => {
+    if (!consultaHelados || brand !== "donofrio") return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("helados-por-ficha")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [consultaHelados, brand, cargando, location.key]);
 
   const etiquetaPeriodo = modo === "month"
     ? nombreMes(mesSel)
@@ -835,9 +850,21 @@ export function ReportsPage() {
           </ChartCard>}
         </div>
         {brand === "donofrio" && (
-          <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div id="helados-por-ficha" className="scroll-mt-32 bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
             <h3 className="text-gray-900 dark:text-white">Helados por ficha</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">Contenido de cada paquete según el catálogo, más los productos sueltos</p>
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <label className="text-sm text-gray-700 dark:text-gray-300">
+                Fecha del evento
+                <input type="date" value={diaSel} onChange={event => {
+                  if (event.target.value) { setDiaSel(event.target.value); setModo("day"); }
+                }} className={inputClass + " block mt-1"} />
+              </label>
+              {modo !== "day" && <Button variant="outline" onClick={() => setModo("day")}>Consultar este día</Button>}
+              <p className="text-sm font-medium text-gray-900 dark:text-white py-2">
+                {cargando ? "Cargando helados…" : `${entero(operacion.unidadesHelado)} helados`} · {etiquetaPeriodo}
+              </p>
+            </div>
             {operacion.helados.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center">Sin helados en el período</p>
             ) : (

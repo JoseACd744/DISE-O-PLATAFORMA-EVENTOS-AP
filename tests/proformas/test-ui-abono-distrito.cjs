@@ -122,7 +122,7 @@ async function prepararImagenes(p) {
  await page.locator('input[name="fecha_evento"]').fill('2026-12-20');
  await page.locator('input[name="cliente_nombre"]').fill('CLIENTE EVENTO VARIOS DÍAS');
  await page.locator('select[name="distrito"]').selectOption('San Isidro');
- const packages=page.locator('select').filter({has:page.locator('option[value="39"]')});await packages.selectOption('39');
+ const packages=page.locator('select').filter({has:page.locator('option[value="39"]').filter({hasText:'PREMIUM I'})});await packages.selectOption('39');
  await page.locator('textarea[name="comentarios"]').fill('Evento del 20 al 23. Ingreso lateral <literal>');
  assert.equal(await page.getByRole('tablist').count(),0);assert.equal(await page.getByText('Fechas de la reserva',{exact:true}).count(),0);
  assert.equal(await page.getByRole('button',{name:'Agregar otra fecha de evento',exact:true}).count(),0);

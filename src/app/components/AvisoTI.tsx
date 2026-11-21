@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Megaphone, X } from "lucide-react";
+import { Link } from "react-router";
+import { useBrand } from "../contexts/BrandContext";
 
 /**
  * Aviso temporal del área de TI: franja dentro del panel, después de iniciar sesión.
@@ -14,18 +16,15 @@ const AVISO: {
   /** Lista opcional que se despliega con "Ver detalle" */
   detalle?: string[];
 } = {
-  id: "aviso-ti-2026-10-01-movilidad-y-personal",
-  hasta: "2026-10-02T02:20:00Z", // 01/10 21:20 (Lima), aproximadamente 5 h de publicación
-  titulo: "Aviso de TI · Mejoras en cotizaciones y fichas",
+  id: "aviso-ti-2026-11-21-helados-por-dia",
+  hasta: "2026-12-06T05:00:00Z",
+  titulo: "Helados necesarios por día",
   mensaje:
-    "Ya puedes cotizar la movilidad por varios días y agregar personal de reparto con precio editable. También tienes filtros de crédito y fechas, y horarios exactos o por rango para D’Onofrio.",
+    "En Reportes puedes consultar el total de helados de una fecha y el detalle por ficha. Abre la consulta y elige el día que necesitas preparar.",
   detalle: [
-    "Movilidad por días: ingresa el precio por día y la cantidad de días. Por ejemplo, 4 días × S/ 80 = S/ 320. Se refleja en el total y en la proforma.",
-    "Al editar una ficha, se conserva el precio de movilidad guardado y el total se ajusta cuando cambias el costo, los días o el descuento de movilidad.",
-    "Productos › Personal: puedes crear y reutilizar tipos de personal con el nombre que necesites. El nombre del tipo y el precio del servicio se editan por separado.",
-    "Al asignar personal a una ficha, su tarifa se suma una vez a la cotización y aparece en la proforma. El precio queda guardado para conservar las cotizaciones anteriores.",
-    "Fichas: filtra por crédito completado, pendiente o parcial, y combina ese filtro con los rangos de fecha de contacto y fecha del evento.",
-    "D’Onofrio: elige hora exacta o rango de hora por separado para entrega y recojo. Al cambiar de rango a hora exacta, la hora final anterior se elimina.",
+    "Pulsa «Ver helados por día» para abrir Reportes en la consulta diaria.",
+    "Elige la fecha en «Fecha del evento». Verás el total de helados y el desglose por ficha, con paquetes y productos sueltos.",
+    "Puedes descargar el detalle con «Exportar helados (Excel)».",
   ],
 };
 
@@ -33,6 +32,7 @@ const CLAVE = `avisoCerrado:${AVISO.id}`;
 const vence = new Date(AVISO.hasta).getTime();
 
 export function AvisoTI() {
+  const { brand } = useBrand();
   const [cerrado, setCerrado] = useState(() => {
     try { return localStorage.getItem(CLAVE) === "1"; } catch { return false; }
   });
@@ -46,7 +46,7 @@ export function AvisoTI() {
     return () => clearTimeout(t);
   }, [activo]);
 
-  if (!activo || cerrado) return null;
+  if (brand !== "donofrio" || !activo || cerrado) return null;
 
   const cerrar = () => {
     setCerrado(true);
@@ -67,6 +67,7 @@ export function AvisoTI() {
             </ul>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <Link to="/dashboard/reportes?vista=helados#helados-por-ficha" className="font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">Ver helados por día</Link>
             {AVISO.detalle?.length ? (
               <button type="button" onClick={() => setVerLista((v) => !v)} aria-expanded={verLista}
                 className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-50">

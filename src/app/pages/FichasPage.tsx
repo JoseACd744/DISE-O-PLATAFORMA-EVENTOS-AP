@@ -1382,7 +1382,7 @@ export function FichasPage() {
   // Catálogo de paquetes filtrado por la marca activa
   const movilidadPorConfirmar = formData.transporte === "delivery" && ["mala", "santa rosa"].includes(formData.distrito.trim().toLowerCase());
   const paquetesDisponibles = contextPaquetes
-    .filter(p => p.brand === brand && (brand !== "donofrio" || (p.presentacion || "carrito") === formData.presentacion || (formData.presentacion === "solo_helados" && (p.presentacion || "carrito") === "carrito") || formData.paquetes.some(linea => linea.paqueteId === p.id)))
+    .filter(p => p.brand === brand && (brand !== "donofrio" || (p.presentacion || "carrito") === formData.presentacion || (["solo_helados", "congeladora"].includes(formData.presentacion) && (p.presentacion || "carrito") === "carrito") || formData.paquetes.some(linea => linea.paqueteId === p.id)))
     .map(p => ({ id: p.id, nombre: p.nombre, precio: p.precioUnitario }));
 
   const distritos = distritosOptions.length > 0
@@ -4311,7 +4311,7 @@ export function FichasPage() {
               {brand === "donofrio" && <div>
                 <label className={etiqueta}>Presentación del pedido</label>
                 <select value={formData.presentacion} onChange={e => setFormData(prev => ({ ...prev, presentacion: e.target.value }))} className={inputClass}>
-                  <option value="carrito">Carrito</option><option value="lonchera">Lonchera</option>{formData.transporte === "delivery" && <option value="solo_helados">Solo helados</option>}<option value="tecnopor">Tecnopor</option>
+                  <option value="carrito">Carrito</option><option value="lonchera">Lonchera</option>{formData.transporte === "delivery" && <option value="solo_helados">Solo helados</option>}<option value="tecnopor">Tecnopor</option>{brand === "donofrio" && <option value="congeladora">Congeladora</option>}
                 </select>
               </div>}
               {/* Paquetes */}
